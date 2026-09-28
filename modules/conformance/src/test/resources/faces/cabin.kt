@@ -15,6 +15,7 @@ import ridl.rt.error.Transport
 import ridl.rt.loopback.Loopback
 import ridl.rt.payload.Rule
 import ridl.rt.payload.Violation
+import ridl.rt.port.ReadError
 import ridl.rt.port.SendError
 import ridl.rt.sample.Cause
 import ridl.rt.sample.Detection
@@ -22,7 +23,7 @@ import ridl.rt.sample.Provenance
 import veh.cabin.Average
 import veh.cabin.AverageCodec
 import veh.cabin.Cabin
-import veh.cabin.CabinClient
+import veh.cabin.CabinPollClient
 import veh.cabin.CabinProvider
 import veh.cabin.CabinPublisher
 import veh.cabin.Health
@@ -75,7 +76,7 @@ private val corrupt: ByteBuffer get() = ByteBuffer.wrap(byteArrayOf(0x7F, 0, 0, 
 
 fun probe(): List<String> {
     val rt = Loopback(Cabin.catalog)
-    val client = CabinClient(rt)
+    val client = CabinPollClient(rt)
     val publisher = CabinPublisher(rt)
     val provider = Recorder()
     val buffer = ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)
@@ -111,7 +112,7 @@ fun probe(): List<String> {
             invalidateTemperature()
             commit()
         }
-        CabinClient(fresh).temperature().let {
+        CabinPollClient(fresh).temperature().let {
             expectEqual("a signal invalidated before any publication reads its init value", Temperature.of(0), it.value)
             expectEqual("a signal invalidated before any publication is Invalid(Declared)", Provenance.Invalid(Cause.Declared), it.provenance)
         }
@@ -119,7 +120,7 @@ fun probe(): List<String> {
     Loopback(Cabin.catalog).let { fresh ->
         fresh.set(Cabin.number, Ordinal(1u), ByteBuffer.allocate(0))
         fresh.commit()
-        CabinClient(fresh).temperature().let {
+        CabinPollClient(fresh).temperature().let {
             expectEqual("no live signal bytes read as the init value", Temperature.of(0), it.value)
             expectEqual("no live signal bytes are detected", Provenance.Invalid(Cause.Detected(Detection.Corrupt)), it.provenance)
         }
@@ -205,5 +206,15 @@ fun probe(): List<String> {
     expectEqual("a second interface's signal reads back", Health.WARN, HornClient(rt).active().value)
     expectEqual("its descriptor has its own number", InterfaceNo(2u), Horn.number)
     expect("the reply codec is the descriptor's", AverageCodec.maxSize == Cabin.members[3].payloads[1].maxSize.flatbuffers?.toInt())
+
+    // dispatch lets the handler's read failure through: serve reports it.
+    val failing = object : ridl.rt.port.Handler by rt {
+        override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Detached
+    }
+    try {
+        Cabin.dispatch(failing, provider, buffer)
+        failures += "a read failure of the handler reaches dispatch's caller"
+    } catch (_: ReadError.Detached) {
+    }
     return failures
 }

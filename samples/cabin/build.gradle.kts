@@ -11,8 +11,10 @@ plugins {
 val ridlOverride = providers.environmentVariable("RIDL_BIN")
 val ridlBin = ridlOverride
     .orElse(project(":conformance").layout.buildDirectory.file("ridl/ridl").map { it.asFile.absolutePath })
-val plugin = project(":ridlc-gen-kotlin").layout.buildDirectory
-    .file("install/ridlc-gen-kotlin/bin/ridlc-gen-kotlin")
+// The installed distribution, jar included: the start script alone does not
+// change when the plugin does, so it cannot stand for the plugin as an input.
+val pluginDist = project(":ridlc-gen-kotlin").layout.buildDirectory.dir("install/ridlc-gen-kotlin")
+val plugin = pluginDist.map { it.file("bin/ridlc-gen-kotlin") }
 val source = layout.projectDirectory.dir("ridl")
 val generated = layout.buildDirectory.dir("generated/ridl")
 
@@ -22,7 +24,7 @@ val generateCabin = tasks.register<Exec>("generateCabin") {
     // The pinned release, installed by the conformance module, unless RIDL_BIN names one.
     if (!ridlOverride.isPresent) dependsOn(":conformance:installRidl")
     inputs.dir(source)
-    inputs.file(plugin)
+    inputs.dir(pluginDist)
     inputs.property("ridl", ridlBin)
     outputs.dir(generated)
     val out = generated.get().asFile

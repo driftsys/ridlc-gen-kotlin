@@ -13,7 +13,7 @@ import ridl.rt.loopback.Loopback
 import ridl.rt.sample.Provenance
 import veh.cabin.Average
 import veh.cabin.Cabin
-import veh.cabin.CabinClient
+import veh.cabin.CabinPollClient
 import veh.cabin.CabinProvider
 import veh.cabin.CabinPublisher
 import veh.cabin.Health
@@ -44,14 +44,14 @@ fun demo(): List<String> {
             temperature(Temperature.of(21))
             commit()
         }
-        val sample = CabinClient(port).temperature()
+        val sample = CabinPollClient(port).temperature()
         check(sample.value == Temperature.of(21) && sample.provenance == Provenance.Live) { "signal: $sample" }
         lines += "signal ok ${sample.value.value}"
     }
 
     // 2 — event
     Loopback(Cabin.catalog).let { port ->
-        val client = CabinClient(port)
+        val client = CabinPollClient(port)
         client.subscribeWarning()
         CabinPublisher(port).warning(Warning(Level.of(5), Health.WARN))
         val event = client.nextEvent() as? Cabin.Event.Warning ?: error("event: no occurrence")
@@ -62,7 +62,7 @@ fun demo(): List<String> {
 
     // 3 — command
     Loopback(Cabin.catalog).let { port ->
-        val client = CabinClient(port)
+        val client = CabinPollClient(port)
         val correlation = client.setLevel(Level.of(42))
         val provider = CabinService(average = 0)
         check(Cabin.dispatch(port, provider, ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)) == 1) { "command: not dispatched" }
@@ -72,7 +72,7 @@ fun demo(): List<String> {
 
     // 4 — query
     Loopback(Cabin.catalog).let { port ->
-        val client = CabinClient(port)
+        val client = CabinPollClient(port)
         val correlation = client.average(Window.of(10))
         val provider = CabinService(average = 7)
         check(Cabin.dispatch(port, provider, ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)) == 1) { "query: not dispatched" }

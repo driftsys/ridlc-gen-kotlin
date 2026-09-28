@@ -9,7 +9,7 @@ import kt.values.Even
 import kt.values.Mode
 import kt.values.Offset
 import kt.values.Probe
-import kt.values.ProbeClient
+import kt.values.ProbePollClient
 import kt.values.ProbeOffset
 import kt.values.ProbeProvider
 import kt.values.ProbePublisher
@@ -49,7 +49,7 @@ private fun refusedBy(label: String, block: () -> Unit) {
 
 fun probe(): List<String> {
     val rt = Loopback(Probe.catalog)
-    val client = ProbeClient(rt)
+    val client = ProbePollClient(rt)
     val provider = Halver()
     val buffer = ByteBuffer.allocate(Probe.MAX_BUFFER_SIZE)
 

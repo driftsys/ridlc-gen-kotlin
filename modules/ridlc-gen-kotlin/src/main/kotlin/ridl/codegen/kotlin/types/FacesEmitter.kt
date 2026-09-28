@@ -241,7 +241,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         fun emit() {
             types += descriptor()
             members.forEachIndexed { row, m -> types += interaction(m, row) }
-            if (signals.isNotEmpty() || events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty()) types += client()
+            val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty()
+            if (waits) {
+                types += client(ClassName(pkg, "${name}PollClient"), pollFace = true)
+            } else if (signals.isNotEmpty()) {
+                types += client(ClassName(pkg, "${name}Client"), pollFace = false)
+            }
             if (signals.isNotEmpty() || events.isNotEmpty()) types += publisher()
             if (commands.isNotEmpty() || queries.isNotEmpty()) types += provider()
         }
@@ -293,7 +298,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     TypeSpec.classBuilder(correlation(m).simpleName)
                         .addKdoc("Identifies one sent %L `%L` to its caller: returned by its send method, accepted by its own outcome method only.",
                             if (m.interaction.hasCommand()) "command" else "query", m.declared)
-                        .addModifiers(KModifier.VALUE).addAnnotation(JvmInline::class)
+                        .addModifiers(KModifier.INTERNAL, KModifier.VALUE).addAnnotation(JvmInline::class)
                         .primaryConstructor(FunSpec.constructorBuilder().addParameter("correlation", CORRELATION).build())
                         .addProperty(PropertySpec.builder("correlation", CORRELATION).initializer("correlation").build())
                         .build(),
@@ -464,15 +469,24 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
         private fun ordinal(m: Member): CodeBlock = CodeBlock.of("%T(%Lu)", ORDINAL, m.ordinal)
 
-        private fun client(): TypeSpec {
+        private fun client(className: ClassName, pollFace: Boolean): TypeSpec {
             val bounds = buildList<TypeName> {
                 if (signals.isNotEmpty()) add(SIGNAL_READER)
                 if (events.isNotEmpty()) add(EVENT_SOURCE)
                 if (commands.isNotEmpty() || queries.isNotEmpty()) add(CALLER)
             }
             val p = TypeVariableName("P", bounds)
-            val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}Client")).visibility()
-                .addKdoc("The consumer face of interface `%L`, over exactly the ports its interactions need.", iface.declared.declared)
+            val builder = TypeSpec.classBuilder(className)
+                .apply { if (pollFace) addModifiers(KModifier.INTERNAL) else visibility() }
+                .addKdoc(
+                    if (pollFace) {
+                        "The poll face of interface `%L`: a send returns a correlation, and an outcome is read without " +
+                            "waiting. Internal: the clients and `serve` are built over it."
+                    } else {
+                        "The consumer face of interface `%L`, over exactly the ports its interactions need."
+                    },
+                    iface.declared.declared,
+                )
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
                 .addProperty(PropertySpec.builder("port", p, KModifier.PRIVATE).initializer("port").build())
@@ -655,7 +669,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
         private fun provider(): TypeSpec {
             val builder = TypeSpec.interfaceBuilder(ClassName(pkg, "${name}Provider")).visibility()
-                .addKdoc("What an application implements to serve interface `%L`'s calls, driven by [%T.dispatch].", iface.declared.declared, self)
+                .addKdoc("What an application implements to serve interface `%L`'s calls, driven by `serve` or `serveAsync`.", iface.declared.declared)
             for (m in commands) {
                 val (param, arg) = argument(m)
                 builder.addFunction(
@@ -699,7 +713,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("var settled = 0")
                 .beginControlFlow("while (true)")
                 .addStatement("buffer.clear()")
-                .addStatement("val claim = try { handler.nextClaim(buffer) } catch (_: %T) { null } ?: return settled", READ_ERROR)
+                .addStatement("val claim = handler.nextClaim(buffer) ?: return settled")
                 .addStatement("val args = buffer.duplicate().flip()")
                 .beginControlFlow("val accepted = if (claim.iface != number)")
                 .addStatement("settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)
@@ -762,9 +776,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "interface or ordinal `UnknownInteraction`, bytes that fail their structure `Transport.Corrupt`, a " +
                         "constraint `InvalidValue`, a failed `require` `PreconditionFailed`, a failed `ensure` " +
                         "`ContractBroken`. A command is settled before its provider method runs, because its " +
-                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply.",
+                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A read " +
+                        "failure of the handler is thrown: `serve` reports it as `ProviderError.Claim`.",
                     iface.declared.declared,
                 )
+                .addModifiers(KModifier.INTERNAL)
                 .addParameter("handler", HANDLER).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
                 .returns(INT).addCode(code.build()).build()
         }

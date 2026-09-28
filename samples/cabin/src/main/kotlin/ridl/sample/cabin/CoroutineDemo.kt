@@ -20,7 +20,7 @@ import ridl.rt.coroutines.await
 import ridl.rt.loopback.Loopback
 import ridl.rt.port.Interest
 import veh.cabin.Cabin
-import veh.cabin.CabinClient
+import veh.cabin.CabinPollClient
 import veh.cabin.CabinPublisher
 import veh.cabin.Health
 import veh.cabin.Level
@@ -33,7 +33,7 @@ import java.util.Collections
 fun coroutineDemo(): List<String> = runBlocking {
     withTimeout(10_000) {
         val port = Loopback(Cabin.catalog)
-        val client = CabinClient(port)
+        val client = CabinPollClient(port)
         val service = CabinService(average = 7)
         val levels = Collections.synchronizedList(mutableListOf<Long>())
 
