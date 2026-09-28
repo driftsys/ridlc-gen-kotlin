@@ -207,14 +207,15 @@ fun probe(): List<String> {
     expectEqual("its descriptor has its own number", InterfaceNo(2u), Horn.number)
     expect("the reply codec is the descriptor's", AverageCodec.maxSize == Cabin.members[3].payloads[1].maxSize.flatbuffers?.toInt())
 
-    // dispatch lets the handler's read failure through: serve reports it.
+    // dispatch reports the handler's read failure as serve does.
     val failing = object : ridl.rt.port.Handler by rt {
         override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Detached
     }
     try {
         Cabin.dispatch(failing, provider, buffer)
         failures += "a read failure of the handler reaches dispatch's caller"
-    } catch (_: ReadError.Detached) {
+    } catch (e: ridl.rt.error.ProviderError.Claim) {
+        expectEqual("as ProviderError.Claim", ReadError.Detached, e.error)
     }
     return failures
 }

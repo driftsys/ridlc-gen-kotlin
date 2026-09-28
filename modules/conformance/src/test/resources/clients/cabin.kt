@@ -86,6 +86,7 @@ fun probe(): List<String> {
     callObjects()
     blocking()
     async()
+    readErrors()
     return failures
 }
 
@@ -266,5 +267,35 @@ private fun async() = runBlocking {
             expectEqual("then the second is sent and replied", Average.of(250), second.await())
             provider.cancelAndJoin()
         }
+    }
+}
+
+/** A loopback whose event source is detached: every read of an occurrence fails. */
+private class Detached(rt: Loopback) :
+    ridl.rt.port.SignalReader by rt,
+    ridl.rt.port.EventSource by rt,
+    ridl.rt.port.Caller by rt,
+    ridl.rt.port.Clock by rt,
+    Wakeable by rt {
+    private val rt = rt
+    override val catalog: ridl.rt.contract.CatalogRef get() = rt.catalog
+    override fun next(out: ByteBuffer): ridl.rt.port.RawOccurrence? = throw ReadError.Detached
+}
+
+/** A read failure reaches a client's caller as `ClientError.Read`, and a provider's own `ReadError` leaves serve unchanged. */
+private fun readErrors() {
+    Loopback(Cabin.catalog).let { rt ->
+        expectEqual("a blocking nextEvent over a detached source", ReadError.Detached,
+            expectThrows<ClientError.Read>("a blocking nextEvent throws Read") { CabinClient(Detached(rt)).nextEvent() }?.error)
+        expectEqual("an async nextEvent over a detached source", ReadError.Detached,
+            expectThrows<ClientError.Read>("an async nextEvent throws Read") { runBlocking { CabinAsyncClient(Detached(rt)).nextEvent() } }?.error)
+    }
+    Loopback(Cabin.catalog).let { rt ->
+        val reading = object : CabinProvider {
+            override fun setLevel(level: Level) = throw ReadError.Detached
+            override fun average(window: Window): Average = Average.of(0)
+        }
+        CabinSetLevelCall(rt, Level.of(1))
+        expectThrows<ReadError.Detached>("a provider's ReadError leaves serve unchanged") { Cabin.serve(rt, reading, 1.seconds) }
     }
 }

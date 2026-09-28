@@ -531,7 +531,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addParameter("buffer", BYTE_BUFFER).addParameter("waker", WAKER)
                 .returns(NOTHING.copy(nullable = true))
                 .addStatement("handler.wakeOn(%T.Claim(number), waker)", INTEREST)
-                .addStatement("try { dispatch(handler, provider, buffer) } catch (e: %T) { throw %T.Claim(e) }", READ_ERROR, PROVIDER_ERROR)
+                .addStatement("dispatch(handler, provider, buffer)")
                 .addStatement("return null")
                 .build()
         }
@@ -913,7 +913,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .addKdoc("Waits for the next occurrence of any subscribed event of `%L`, or returns `null` at [timeout].", iface.declared.declared)
                         .addStatement("return %M(deadline(timeout)) { waker ->", BLOCK_ON)
                         .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
-                        .addStatement("  poll.nextEvent()")
+                        .addStatement("  try { poll.nextEvent() } catch (e: %T) { throw %T.Read(e) }", READ_ERROR, CLIENT_ERROR)
                         .addStatement("}")
                         .build(),
                 )
@@ -924,9 +924,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val f = FunSpec.builder(m.method).addParameter(value, arg.type)
                     .addKdoc("Calls %L `%L` and waits for its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
                 if (m.interaction.hasQuery()) {
-                    f.returns(reply(m).type).addStatement("return %T(port, %L).block(timeout)", callClass(m), value)
+                    f.returns(reply(m).type).addStatement("return %T(this.port, %L).block(this.timeout)", callClass(m), value)
                 } else {
-                    f.addStatement("%T(port, %L).block(timeout)", callClass(m), value)
+                    f.addStatement("%T(this.port, %L).block(this.timeout)", callClass(m), value)
                 }
                 builder.addFunction(f.build())
             }
@@ -957,7 +957,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .addKdoc("Suspends until the next occurrence of any subscribed event of `%L`.", iface.declared.declared)
                         .addStatement("return %M({}) { waker ->", AWAIT_POLL)
                         .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
-                        .addStatement("  poll.nextEvent()")
+                        .addStatement("  try { poll.nextEvent() } catch (e: %T) { throw %T.Read(e) }", READ_ERROR, CLIENT_ERROR)
                         .addStatement("}")
                         .build(),
                 )
@@ -968,9 +968,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val f = FunSpec.builder(m.method).addModifiers(KModifier.SUSPEND).addParameter(value, arg.type)
                     .addKdoc("Calls %L `%L` and suspends until its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
                 if (m.interaction.hasQuery()) {
-                    f.returns(reply(m).type).addStatement("return calls.%M { %T(port, %L).await() }", WITH_LOCK, callClass(m), value)
+                    f.returns(reply(m).type).addStatement("return this.calls.%M { %T(this.port, %L).await() }", WITH_LOCK, callClass(m), value)
                 } else {
-                    f.addStatement("calls.%M { %T(port, %L).await() }", WITH_LOCK, callClass(m), value)
+                    f.addStatement("this.calls.%M { %T(this.port, %L).await() }", WITH_LOCK, callClass(m), value)
                 }
                 builder.addFunction(f.build())
             }
@@ -1132,7 +1132,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("var settled = 0")
                 .beginControlFlow("while (true)")
                 .addStatement("buffer.clear()")
-                .addStatement("val claim = handler.nextClaim(buffer) ?: return settled")
+                // Only the claim read is the handler's failure: a provider's own ReadError passes unchanged.
+                .addStatement(
+                    "val claim = try { handler.nextClaim(buffer) } catch (e: %T) { throw %T.Claim(e) } ?: return settled",
+                    READ_ERROR, PROVIDER_ERROR,
+                )
                 .addStatement("val args = buffer.duplicate().flip()")
                 .beginControlFlow("val accepted = if (claim.iface != number)")
                 .addStatement("settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)

@@ -17,3 +17,10 @@ interface Probe {
     require by >= -4.5
   ]
 }
+
+// Parameters named like the clients' own members, which the generated
+// methods must not shadow.
+interface Names {
+  command arm(timeout: Even) @[..50ms]
+  query   peek(calls: Even): Even @[..200ms]
+}
