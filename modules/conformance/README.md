@@ -67,3 +67,19 @@ number, a settlement the handler refuses, a buffer too short. `kt-values`'
 `Probe` adds a failing `ensure`, a float clause and a signal's own init. A wrong
 comparison operator, a wrong settlement or a missing interface check each turns
 it red.
+
+The test of #7, `ClientsTest`: the clients and `serve` generated for `cabin`,
+over `ridl-rt-kt-loopback`, driven by the probe of `resources/clients/`. The
+call objects directly: a failing `require` sends nothing, `Busy` leaves a call
+unsent until a slot frees, a call at exactly its `max` is within it and one past
+it throws `Send(Busy)` unsent or `Call(Undelivered)` and `Call(Timeout)` sent,
+an outcome taken or a `cancel` forgets the call once, and a finished call polled
+again throws. The blocking client and `serve` round-trip every kind with the
+provider on its own thread, throw the documented error at the timeout for a sent
+and an unsent call, and `serve` throws `ProviderError.Serve` and
+`ProviderError.Claim`. The async client and `serveAsync` round-trip, a cancelled
+coroutine gives its call's slot back, and a client runs one call at a time.
+Horn, signal-only, keeps its one client. A deadline compared with `>=`, a call
+that does not forget its outcome, a `cancel` that does not forget, `block`'s two
+errors swapped, an async call outside its lock, or a coroutine cancellation that
+does not cancel the call each turns it red.

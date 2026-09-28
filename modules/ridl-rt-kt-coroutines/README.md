@@ -55,3 +55,9 @@ sample's two calls:
 The recommendation, for disposition, is the first: the generic `await` is the
 whole adapter, the generated face stays free of any coroutine dependency, and a
 call's suspending form is its send and one `await`.
+
+Reversed for generated code by #7: every `<Iface>AsyncClient` is generated and
+runs its calls through `awaitPoll`, so a generated package with an event, a
+command or a query depends on `kotlinx-coroutines-core`. An application that
+never calls the async client loses its code when its release build shrinks
+unused classes.

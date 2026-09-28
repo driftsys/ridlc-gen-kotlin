@@ -16,9 +16,9 @@ Stages K2a to K3a: the reader, the launcher, the schema refusal, the option
 parsing, and three files per package in its `kotlin-package`, emitted with
 KotlinPoet from the request's model: `Types.kt`, the value objects of §4;
 `Codec.kt`, their FlatBuffers codec; and `Faces.kt`, the interaction face of §5
-for every declared interface. No AIDL is generated; the last section below says
-why. `just dist` builds the distribution, and
-`ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
+for every declared interface, with its clients and `serve`. No AIDL is
+generated; the last section below says why. `just dist` builds the distribution,
+and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
@@ -26,6 +26,8 @@ in the one response: a stream (O-K5), a reference that resolves to nothing, two
 tuples spelling one name, an enum with no value, a union with no arm, and every
 position the Rust codec emitter refuses — a type with no finite FlatBuffers
 bound, a bare `string` or `bytes`, an optional array element or map part.
+
+#7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
 Tested against ridl `editor-v0.2.2` (`modules/conformance/ridl-release`).
 
@@ -109,11 +111,28 @@ to that over 10,266 buffers (`CodecTest`).
 Per declared interface, the Rust face of the pinned release spelled in Kotlin
 (ADR-0023): the descriptor `object <Iface> : Interface`, with its `MEMBERS`
 rows, `MAX_BUFFER_SIZE`, `EVENT_SOURCE_BUFFER_SIZE`, one correlation value class
-per call, the `Event` sealed interface and `dispatch`; one descriptor object per
-interaction, `<Iface><Member>`, with its codec and its `require`, `ensure` or
-`init`; `<Iface>Client<P>`, bound to exactly the ports its kinds need;
-`<Iface>Publisher<W>`; and `<Iface>Provider`. `dispatch` settles as the Rust one
-does, a command before its provider method runs and a query after.
+per call, the `Event` sealed interface, `dispatch`, and `serve` and
+`serveAsync`; one descriptor object per interaction, `<Iface><Member>`, with its
+codec and its `require`, `ensure` or `init`; the clients, bound to exactly the
+ports their kinds need (RA-19); `<Iface>Publisher<W>`; and `<Iface>Provider`.
+`dispatch` settles as the Rust one does, a command before its provider method
+runs and a query after.
+
+- **The clients replace the public poll face.** docs/design.md §5 describes the
+  poll face as public, with an `averageAwait` extension per call. The face now
+  generates, per interface that waits, the blocking
+  `<Iface>Client<P>(port,
+  timeout)`, the suspending `<Iface>AsyncClient<P>`,
+  and `serve` and `serveAsync` on the descriptor, all over one internal
+  `<Iface><Member>Call` per command and query, whose `InteractionCall` base
+  carries every call rule. The poll face, `<Iface>PollClient`, its correlations,
+  its `…Ack` and `…Reply` methods and `dispatch` are internal. A call returns
+  its reply and throws `ClientError` for anything else; `serve` throws
+  `ProviderError`. A signal-only interface keeps one public `<Iface>Client` and
+  nothing else.
+- **An interface whose member names collide with the clients'** — a member
+  spelled `nextEvent` or `timeout` in an interface that waits — is skipped with
+  a warning until driftsys/ridl#570 is decided.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a
