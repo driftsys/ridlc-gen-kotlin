@@ -7,6 +7,7 @@
 // value, which is what a polling read of a face already is.
 package ridl.rt.task
 
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.LockSupport
 import kotlin.time.Duration
 import kotlin.time.TimeSource
@@ -52,18 +53,26 @@ public fun noopWaker(): Waker = object : Waker {
  *   poll answers `null` at or after [deadline]. [poll] runs at least once,
  *   even when [deadline] has passed on entry. Each park is given at most the
  *   time left.
+ *
+ * The waker goes inert when the wait returns: a port may keep it and wake it
+ * later, and that wake must not end an unrelated park of this thread.
  */
 public fun <T : Any> blockOn(deadline: TimeSource.Monotonic.ValueTimeMark?, poll: (Waker) -> T?): T? {
     val thread = Thread.currentThread()
-    val waker = Waker { LockSupport.unpark(thread) }
-    while (true) {
-        poll(waker)?.let { return it }
-        if (deadline == null) {
-            LockSupport.park()
-        } else {
-            val left = -deadline.elapsedNow()
-            if (left <= Duration.ZERO) return null
-            LockSupport.parkNanos(left.inWholeNanoseconds)
+    val waiting = AtomicBoolean(true)
+    val waker = Waker { if (waiting.get()) LockSupport.unpark(thread) }
+    try {
+        while (true) {
+            poll(waker)?.let { return it }
+            if (deadline == null) {
+                LockSupport.park()
+            } else {
+                val left = -deadline.elapsedNow()
+                if (left <= Duration.ZERO) return null
+                LockSupport.parkNanos(left.inWholeNanoseconds)
+            }
         }
+    } finally {
+        waiting.set(false)
     }
 }

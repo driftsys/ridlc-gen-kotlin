@@ -73,7 +73,10 @@ driftsys/ridlc-gen-kotlin#6 adds the runtime helpers of story E11.19 (ridl
 - **`blockOn(deadline, poll)`** takes the future last, so it can be a trailing
   lambda, and the deadline as a `TimeSource.Monotonic.ValueTimeMark`, the
   monotonic clock `std::time::Instant` is. The JVM always has what the Rust
-  `std` feature adds, so `ridl.rt.task` is not optional.
+  `std` feature adds, so `ridl.rt.task` is not optional. Its waker goes inert
+  when the wait returns: Rust drops a waker with its task, while a port may keep
+  a finished wait's waker and wake it later, which would otherwise leave a
+  permit that ends an unrelated park of the thread at once.
 - **The E11.19 helpers take the encoding as an argument**:
   `member.reservation(Encoding.FlatBuffers)` and
   `tableBudget(members, encoding)` where Rust has

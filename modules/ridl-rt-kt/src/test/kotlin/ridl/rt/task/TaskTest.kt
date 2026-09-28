@@ -177,4 +177,16 @@ class TaskTest {
         }
         assertTrue(polls.get() <= 3, "only the first poll and the deadline's: ${polls.get()}")
     }
+
+    // JVM only: Rust drops a waker with its task, while a port may keep the
+    // waker of a finished wait and wake it later.
+    @Test
+    fun `a waker woken after its wait has returned leaves no permit on the thread`() {
+        val kept = AtomicReference<Waker?>(null)
+        assertEquals(1, blockOn(null) { w -> kept.set(w); 1 })
+        kept.get()!!.wake()
+        val start = TimeSource.Monotonic.markNow()
+        LockSupport.parkNanos(200.milliseconds.inWholeNanoseconds)
+        assertTrue(start.elapsedNow() >= 150.milliseconds, "a stale wake ended an unrelated park at once: ${start.elapsedNow()}")
+    }
 }
