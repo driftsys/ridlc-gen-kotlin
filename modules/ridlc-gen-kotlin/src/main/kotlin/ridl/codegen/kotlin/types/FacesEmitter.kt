@@ -101,10 +101,16 @@ class EmittedFaces(val path: String, val text: String?, val errors: List<String>
  * `Faces.kt`: the interaction face of every declared interface of the
  * package (docs/design.md §5, ADR-0023), the Rust face of the pinned release
  * spelled in Kotlin. Per interface: the descriptor object and one descriptor
- * per interaction; `<Iface>Client<P>`, bound to exactly the ports its kinds
- * need; `<Iface>Publisher<W>`; `<Iface>Provider`; and the descriptor's
- * `dispatch`, with the Rust settlement table. An interface the face cannot
- * carry is skipped with a warning naming why, as the Rust pipeline skips it.
+ * per interaction; `<Iface>Publisher<W>`; `<Iface>Provider`; and the clients,
+ * bound to exactly the ports their kinds need (RA-19). An interface that waits
+ * — an event, a command or a query — gets the blocking `<Iface>Client`, the
+ * suspending `<Iface>AsyncClient`, and, with a call, `serve` and `serveAsync`
+ * on its descriptor, all over the internal poll face `<Iface>PollClient`, one
+ * internal `<Iface><Member>Call` per call and the descriptor's internal
+ * `dispatch`, with the Rust settlement table; a signal-only interface gets
+ * one plain `<Iface>Client`. An interface the face cannot carry, or whose
+ * generated names would collide, is skipped with a warning naming why, as the
+ * Rust pipeline skips it.
  */
 class FacesEmitter(private val model: Model, private val options: Options) {
     private val pkg = options.kotlinPackage
@@ -118,6 +124,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
     /** Whether any interface faced has a command or a query: the file then needs the call helpers. */
     private var calls = false
+
+    /** The top-level names of `Types.kt` and `Codec.kt`, which no face type may take. */
+    private val declared: Set<String> =
+        model.declarationsList.filter { !it.hasConstant() }.flatMap { listOf(it.name.camel, it.name.camel + "Codec") }.toSet() + "Constants"
+
+    /** The top-level types of the interfaces faced so far. */
+    private val faced = mutableSetOf<String>()
 
     fun emit(): EmittedFaces {
         val path = pkg.replace('.', '/') + "/Faces.kt"
@@ -449,9 +462,25 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             if (signals.isNotEmpty() || events.isNotEmpty()) types += publisher()
             if (hasCalls) types += provider()
+            checkNames(hasCalls)
             // Set last: an interface refused above adds nothing to the file, helpers included.
             if (waits) this@FacesEmitter.waits = true
             if (hasCalls) this@FacesEmitter.calls = true
+            faced += types.map { it.name!! }
+        }
+
+        /** Refuses the interface when a type it generates would take a name already taken in the package. */
+        private fun checkNames(hasCalls: Boolean) {
+            val own = types.map { it.name!! }
+            val helper = if (hasCalls) listOf("InteractionCall") else emptyList()
+            (own + helper).groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.let {
+                refuse("the type `${it.key}` is generated twice")
+            }
+            (own + helper).firstOrNull { it in declared }?.let { refuse("the generated `$it` collides with a declaration") }
+            own.firstOrNull { it in faced || (it == "InteractionCall" && this@FacesEmitter.calls) }?.let {
+                refuse("the generated `$it` is also generated for another interface")
+            }
+            helper.firstOrNull { it in faced }?.let { refuse("the generated `$it` is also generated for another interface") }
         }
 
         private fun TypeSpec.Builder.visibility(): TypeSpec.Builder = apply { if (internal) addModifiers(KModifier.INTERNAL) }
@@ -528,10 +557,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
             return FunSpec.builder("servePass").addModifiers(KModifier.PRIVATE).addTypeVariable(h)
                 .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
-                .addParameter("buffer", BYTE_BUFFER).addParameter("waker", WAKER)
+                .addParameter("buffer", BYTE_BUFFER).addParameter("until", VALUE_TIME_MARK.copy(nullable = true))
+                .addParameter("waker", WAKER)
                 .returns(NOTHING.copy(nullable = true))
                 .addStatement("handler.wakeOn(%T.Claim(number), waker)", INTEREST)
-                .addStatement("dispatch(handler, provider, buffer)")
+                .addStatement("dispatch(handler, provider, buffer, until)")
                 .addStatement("return null")
                 .build()
         }
@@ -551,7 +581,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("claimServed(handler)")
                 .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
                 // An explicit null: a `Unit?` lambda returning servePass's `Nothing?` fails JVM verification.
-                .addStatement("%M<Unit>(deadline(timeout)) { waker -> servePass(handler, provider, buffer, waker); null }", BLOCK_ON)
+                .addStatement("val until = deadline(timeout)")
+                .addStatement("%M<Unit>(until) { waker -> servePass(handler, provider, buffer, until, waker); null }", BLOCK_ON)
                 .build()
         }
 
@@ -712,8 +743,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         private fun callClass(m: Member): ClassName = ClassName(pkg, "$name${m.camel}Call")
 
         private fun call(m: Member): TypeSpec {
-            val (param, arg) = argument(m)
-            val value = param.name.camel.replaceFirstChar(Char::lowercaseChar)
+            val (_, arg) = argument(m)
+            // Not the ridl parameter's name, which could be `port`.
+            val value = "value"
             val query = m.interaction.hasQuery()
             val result = if (query) reply(m).type else UNIT
             val p = TypeVariableName("P", listOf(CALLER, CLOCK, WAKEABLE))
@@ -849,7 +881,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .returns(NOTHING)
                 .addStatement("claimServed(handler)")
                 .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
-                .addStatement("return %M<Nothing>({}) { waker -> servePass(handler, provider, buffer, waker) }", AWAIT_POLL)
+                .addStatement("return %M<Nothing>({}) { waker -> servePass(handler, provider, buffer, null, waker) }", AWAIT_POLL)
                 .build()
         }
 
@@ -952,13 +984,21 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 builder.addProperty(PropertySpec.builder("calls", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
             }
             if (events.isNotEmpty()) {
+                // The port keeps one event waker per handle: two waits at once would displace and wake each other forever.
+                builder.addProperty(PropertySpec.builder("events", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
+            }
+            if (events.isNotEmpty()) {
                 builder.addFunction(
                     FunSpec.builder("nextEvent").addModifiers(KModifier.SUSPEND).returns(self.nestedClass("Event"))
-                        .addKdoc("Suspends until the next occurrence of any subscribed event of `%L`.", iface.declared.declared)
-                        .addStatement("return %M({}) { waker ->", AWAIT_POLL)
+                        .addKdoc(
+                            "Suspends until the next occurrence of any subscribed event of `%L`. Concurrent calls take " +
+                                "occurrences one at a time.",
+                            iface.declared.declared,
+                        )
+                        .addStatement("return this.events.%M { %M({}) { waker ->", WITH_LOCK, AWAIT_POLL)
                         .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
                         .addStatement("  try { poll.nextEvent() } catch (e: %T) { throw %T.Read(e) }", READ_ERROR, CLIENT_ERROR)
-                        .addStatement("}")
+                        .addStatement("} }")
                         .build(),
                 )
             }
@@ -1036,7 +1076,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("throw %T.Contract(%T.PreconditionFailed)", SEND_ERROR, CONTRACT)
                 .endControlFlow()
                 .addStatement(
-                    "return %T(port.%L(%L, %L, encoded(%T, %L)))",
+                    "return %T(this.port.%L(%L, %L, encoded(%T, %L)))",
                     correlation(m), kind, number(), ordinal(m), arg.codec, argName,
                 )
                 .build()
@@ -1131,6 +1171,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .endControlFlow()
                 .addStatement("var settled = 0")
                 .beginControlFlow("while (true)")
+                .addStatement("if (until != null && until.hasPassedNow()) return settled")
                 .addStatement("buffer.clear()")
                 // Only the claim read is the handler's failure: a provider's own ReadError passes unchanged.
                 .addStatement(
@@ -1141,9 +1182,10 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .beginControlFlow("val accepted = if (claim.iface != number)")
                 .addStatement("settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)
                 .nextControlFlow("else when (claim.ord)")
+            // The decoded argument is always `arg`: a ridl parameter's own name could shadow a local here.
+            val value = "arg"
             for (m in commands) {
-                val (param, arg) = argument(m)
-                val value = param.name.camel.replaceFirstChar(Char::lowercaseChar)
+                val (_, arg) = argument(m)
                 code.beginControlFlow("%L ->", ordinal(m))
                     .addStatement("callOutcome(%T, args).fold(", arg.codec)
                     .indent()
@@ -1162,9 +1204,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .endControlFlow()
             }
             for (m in queries) {
-                val (param, arg) = argument(m)
+                val (_, arg) = argument(m)
                 val reply = reply(m)
-                val value = param.name.camel.replaceFirstChar(Char::lowercaseChar)
                 code.beginControlFlow("%L ->", ordinal(m))
                     .addStatement("callOutcome(%T, args).fold(", arg.codec)
                     .indent()
@@ -1200,11 +1241,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "constraint `InvalidValue`, a failed `require` `PreconditionFailed`, a failed `ensure` " +
                         "`ContractBroken`. A command is settled before its provider method runs, because its " +
                         "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A read " +
-                        "failure of the handler is thrown: `serve` reports it as `ProviderError.Claim`.",
+                        "failure of the handler is thrown as `ProviderError.Claim`. Past [until], when it is set, it " +
+                        "takes no further claim, so a claim stream that never ends cannot hold it.",
                     iface.declared.declared,
                 )
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("handler", HANDLER).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
+                .addParameter(ParameterSpec.builder("until", VALUE_TIME_MARK.copy(nullable = true)).defaultValue("null").build())
                 .returns(INT).addCode(code.build()).build()
         }
     }

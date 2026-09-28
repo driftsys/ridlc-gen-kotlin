@@ -128,11 +128,17 @@ runs and a query after.
   carries every call rule. The poll face, `<Iface>PollClient`, its correlations,
   its `…Ack` and `…Reply` methods and `dispatch` are internal. A call returns
   its reply and throws `ClientError` for anything else; `serve` throws
-  `ProviderError`. A signal-only interface keeps one public `<Iface>Client` and
-  nothing else.
+  `ProviderError`. A signal-only interface has one plain `<Iface>Client` beside
+  its descriptors and publisher, and no async client, poll face or `serve`.
+  `serve(timeout)` takes no claim past its timeout, and the async client's
+  `nextEvent` takes occurrences one at a time.
 - **An interface whose member names collide with the clients'** — a member
   spelled `nextEvent` or `timeout` in an interface that waits — is skipped with
-  a warning until driftsys/ridl#570 is decided.
+  a warning until driftsys/ridl#570 is decided. So is an interface whose
+  generated types would take a name already taken: two of its own (members `set`
+  and `set_call` both give `<Iface>SetCall`), a declaration's or its codec's, or
+  another interface's. A parameter's name never shadows the generated code's
+  own.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a

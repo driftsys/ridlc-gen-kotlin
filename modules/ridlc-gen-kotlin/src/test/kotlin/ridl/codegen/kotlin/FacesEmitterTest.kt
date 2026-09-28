@@ -92,4 +92,42 @@ class FacesEmitterTest {
         assertNull(emitted.text)
         assertTrue("collides with the generated `nextEvent`" in emitted.warnings.single(), emitted.warnings.single())
     }
+
+    private val level = TypeRef.newBuilder().setReference("Level").setResolved(true).setIndex(0).setKind(DeclKind.DECL_KIND_SCALAR)
+
+    private fun scalar(name: String) = Declaration.newBuilder().setName(spelled(name)).setScalar(
+        Scalar.newBuilder().setClass_(ScalarClass.SCALAR_CLASS_INTEGER).setIntWidth(IntWidth.INT_WIDTH_U8),
+    )
+
+    /** A command taking one `Level`, spelled [declared] and [camel]. */
+    private fun command(ordinal: Int, declared: String, camel: String) = InteractionSlot.newBuilder().setOrdinal(ordinal).setInteraction(
+        Interaction.newBuilder().setName(Spellings.newBuilder().setDeclared(declared).setCamel(camel)).setCommand(
+            CommandShape.newBuilder()
+                .addParams(Param.newBuilder().setName(spelled("level")).setType(Type.newBuilder().setNamed(level)))
+                .setRequest(Payload.newBuilder().setType(level).setFlatbuffersMaxSize(43)),
+        ),
+    )
+
+    private fun faces(vararg declarations: String, iface: Interface.Builder) = FacesEmitter(
+        Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo"))
+            .addAllDeclarations(declarations.map { scalar(it).build() }).addInterfaces(iface).build(),
+        options,
+    ).emit()
+
+    @Test
+    fun `two generated types of one name skip their interface`() {
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(command(1, "set", "Set")).addSlots(command(2, "set_call", "SetCall"))
+        val emitted = faces("Level", iface = iface)
+        assertNull(emitted.text)
+        assertTrue("`DriveSetCall` is generated twice" in emitted.warnings.single(), emitted.warnings.single())
+    }
+
+    @Test
+    fun `a generated type named like a declared one skips its interface`() {
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
+        val emitted = faces("Level", "InteractionCall", iface = iface)
+        assertNull(emitted.text)
+        assertTrue("`InteractionCall` collides with a declaration" in emitted.warnings.single(), emitted.warnings.single())
+    }
 }

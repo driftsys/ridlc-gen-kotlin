@@ -18,9 +18,15 @@ interface Probe {
   ]
 }
 
-// Parameters named like the clients' own members, which the generated
-// methods must not shadow.
+// Parameters named like the generated code's own members and locals, which
+// they must not shadow.
 interface Names {
   command arm(timeout: Even) @[..50ms]
   query   peek(calls: Even): Even @[..200ms]
+  command push(port: Even) @[..50ms]
+  query   pull(provider: Even): Even @[..200ms]
+  command hand(handler: Even) @[..50ms]
+  command fill(buffer: Even) @[..50ms]
+  query   grab(claim: Even): Even @[..200ms]
+  query   echo(reply: Even): Even @[..200ms]
 }

@@ -87,9 +87,12 @@ and an unsent call, and `serve` throws `ProviderError.Serve` and
 read included, a cancelled coroutine gives its call's slot back, and a client
 runs one call at a time. A detached event source makes either client's
 `nextEvent` throw `ClientError.Read`, and a provider's own `ReadError` leaves
-`serve` unchanged. Horn, signal-only, keeps its one client, and `kt-values`'
-`Names` interface, whose parameters are named `timeout` and `calls`, compiles. A
-deadline compared with `>=`, a call that does not forget its outcome, a `cancel`
-that does not forget, `block`'s two errors swapped, an async call outside its
-lock, or a coroutine cancellation that does not cancel the call each turns it
-red.
+`serve` unchanged. `serve` keeps to its timeout under a claim stream that never
+ends, two async `nextEvent` calls wait without waking each other, and Horn,
+signal-only, keeps its one client, and `kt-values`' `Names` interface, whose
+parameters are named after the generated code's own members and locals
+(`timeout`, `calls`, `port`, `provider`, `handler`, `buffer`, `claim`, `reply`),
+compiles. A deadline compared with `>=`, a call that does not forget its
+outcome, a `cancel` that does not forget, `block`'s two errors swapped, an async
+call outside its lock, or a coroutine cancellation that does not cancel the call
+each turns it red.

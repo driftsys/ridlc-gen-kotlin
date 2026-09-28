@@ -87,6 +87,7 @@ fun probe(): List<String> {
     blocking()
     async()
     readErrors()
+    bounds()
     return failures
 }
 
@@ -299,5 +300,55 @@ private fun readErrors() {
         }
         CabinSetLevelCall(rt, Level.of(1))
         expectThrows<ReadError.Detached>("a provider's ReadError leaves serve unchanged") { Cabin.serve(rt, reading, 1.seconds) }
+    }
+}
+
+/** A loopback that counts the `Event` registrations made through it. */
+private class Counting(val rt: Loopback) :
+    ridl.rt.port.SignalReader by rt,
+    ridl.rt.port.EventSource by rt,
+    ridl.rt.port.Caller by rt,
+    ridl.rt.port.Clock by rt,
+    Wakeable by rt {
+    val eventWaits = java.util.concurrent.atomic.AtomicInteger()
+    override val catalog: ridl.rt.contract.CatalogRef get() = rt.catalog
+    override fun wakeOn(what: ridl.rt.port.Interest, waker: ridl.rt.task.Waker) {
+        if (what is ridl.rt.port.Interest.Event) eventWaits.incrementAndGet()
+        rt.wakeOn(what, waker)
+    }
+}
+
+/** serve keeps to its timeout under a claim stream that never ends, and two nextEvent calls wait without waking each other. */
+private fun bounds() {
+    Loopback(Cabin.catalog).let { rt ->
+        val until = kotlin.time.TimeSource.Monotonic.markNow() + 3.seconds
+        var id = 0L
+        val endless = object : Handler by rt, Wakeable by rt {
+            override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = Unit
+            override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = if (until.hasPassedNow()) null else ridl.rt.port.Claim(
+                ridl.rt.port.ClaimId(++id), ridl.rt.contract.InterfaceNo(99u), Ordinal(1u),
+                ridl.rt.sample.Envelope(ridl.rt.sample.Timestamp(0), 0u), null, 0,
+            )
+            override fun settle(claim: ridl.rt.port.ClaimId, outcome: Result<ByteBuffer>) = Unit
+        }
+        val start = kotlin.time.TimeSource.Monotonic.markNow()
+        Cabin.serve(endless, Recorder(), 100.milliseconds)
+        expect("serve returns at its timeout under a claim stream: ${start.elapsedNow()}", start.elapsedNow() < 1.seconds)
+    }
+    runBlocking {
+        withTimeout(10_000) {
+            val port = Counting(Loopback(Cabin.catalog))
+            val client = CabinAsyncClient(port)
+            client.subscribeWarning()
+            val first = async(Dispatchers.Default) { client.nextEvent() }
+            val second = async(Dispatchers.Default) { client.nextEvent() }
+            kotlinx.coroutines.delay(200)
+            expect("two waiting nextEvent calls do not wake each other: ${port.eventWaits.get()} registrations", port.eventWaits.get() <= 4)
+            CabinPublisher(port.rt).let {
+                it.warning(Warning(Level.of(1), Health.WARN))
+                it.warning(Warning(Level.of(2), Health.WARN))
+            }
+            expect("both receive an occurrence", first.await() is Cabin.Event.Warning && second.await() is Cabin.Event.Warning)
+        }
     }
 }
