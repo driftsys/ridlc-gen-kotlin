@@ -17,6 +17,7 @@ import ridl.rt.sample.Duration
 import ridl.rt.task.noopWaker
 import veh.cabin.Average
 import veh.cabin.Cabin
+import veh.cabin.CabinAsyncClient
 import veh.cabin.CabinAverageCall
 import veh.cabin.CabinClient
 import veh.cabin.CabinProvider
@@ -28,6 +29,13 @@ import veh.cabin.Temperature
 import veh.cabin.Warning
 import veh.cabin.Window
 import java.nio.ByteBuffer
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.concurrent.thread
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -77,6 +85,7 @@ private val waker = noopWaker()
 fun probe(): List<String> {
     callObjects()
     blocking()
+    async()
     return failures
 }
 
@@ -202,5 +211,60 @@ private fun blocking() {
         }
         rt.query(Cabin.number, Ordinal(4u), ByteBuffer.allocate(veh.cabin.WindowCodec.maxSize).also { veh.cabin.WindowCodec.encode(Window.of(10), it) }.flip())
         expectThrows<IllegalStateException>("a provider's exception leaves serve unchanged") { Cabin.serve(rt, broken, 1.seconds) }
+    }
+}
+
+private fun async() = runBlocking {
+    withTimeout(10_000) {
+        // The round trips, with serveAsync on another thread.
+        Loopback(Cabin.catalog).let { rt ->
+            val recorder = Recorder()
+            val handler = rt.handler()
+            val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, recorder) }
+            val client = CabinAsyncClient(rt)
+            client.setLevel(Level.of(42))
+            expectEqual("a query replies", Average.of(250), client.average(Window.of(10)))
+            expectEqual("the command ran", listOf(Level.of(42)), synchronized(recorder) { recorder.levels.toList() })
+            client.subscribeWarning()
+            CabinPublisher(rt).warning(Warning(Level.of(5), Health.WARN))
+            expect("an event is received", client.nextEvent() is Cabin.Event.Warning)
+            provider.cancelAndJoin()
+            expect("a cancelled serveAsync ends", provider.isCancelled)
+        }
+        // A cancelled coroutine forgets its call (#7's Done when).
+        Loopback(Cabin.catalog).let { rt ->
+            val call = launch(start = CoroutineStart.UNDISPATCHED) { CabinAsyncClient(rt).setLevel(Level.of(1)) }
+            // Count the free slots without keeping them: send until Busy, then forget each.
+            val counted = mutableListOf<ridl.rt.port.Correlation>()
+            try { while (true) counted += rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0)) } catch (_: SendError.Busy) {}
+            expectEqual("the waiting call holds a slot", Loopback.SLOTS - 1, counted.size)
+            counted.forEach(rt::forget)
+            call.cancelAndJoin()
+            expectEqual("the cancelled call gave its slot back", Loopback.SLOTS, sendsUntilBusy(rt))
+        }
+        // A cancelled call still unsent forgets nothing and ends quietly.
+        Loopback(Cabin.catalog).let { rt ->
+            fill(rt)
+            val call = launch(start = CoroutineStart.UNDISPATCHED) { CabinAsyncClient(rt).setLevel(Level.of(1)) }
+            call.cancelAndJoin()
+            expect("an unsent call cancelled ends", call.isCancelled)
+            expectEqual("and the table is as full as before", 0, sendsUntilBusy(rt))
+        }
+        // One call at a time per client.
+        Loopback(Cabin.catalog).let { rt ->
+            val client = CabinAsyncClient(rt)
+            val first = async(start = CoroutineStart.UNDISPATCHED) { client.setLevel(Level.of(1)) }
+            val second = async(start = CoroutineStart.UNDISPATCHED) { client.average(Window.of(10)) }
+            val handler = rt.handler()
+            val claim = handler.nextClaim(ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE))
+            expect("the first call is sent", claim != null)
+            expect("the second waits for the first", handler.nextClaim(ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)) == null)
+            handler.settle(claim!!.id, Result.success(ByteBuffer.allocate(0)))
+            first.await()
+            val recorder = Recorder()
+            val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, recorder) }
+            expectEqual("then the second is sent and replied", Average.of(250), second.await())
+            provider.cancelAndJoin()
+        }
     }
 }

@@ -88,6 +88,8 @@ private val TIMESTAMP = ClassName("$RT.sample", "Timestamp")
 private val WAKER = ClassName("$RT.task", "Waker")
 private val BLOCK_ON = MemberName("$RT.task", "blockOn")
 private val AWAIT_POLL = MemberName("$RT.coroutines", "awaitPoll")
+private val MUTEX = ClassName("kotlinx.coroutines.sync", "Mutex")
+private val WITH_LOCK = MemberName("kotlinx.coroutines.sync", "withLock")
 private val TIME_DURATION = ClassName("kotlin.time", "Duration")
 private val TIME_SOURCE = ClassName("kotlin.time", "TimeSource")
 private val VALUE_TIME_MARK = TIME_SOURCE.nestedClass("Monotonic").nestedClass("ValueTimeMark")
@@ -434,6 +436,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             if (waits) {
                 types += client(ClassName(pkg, "${name}PollClient"), pollFace = true)
                 types += blockingClient()
+                types += asyncClient()
             } else if (signals.isNotEmpty()) {
                 types += client(ClassName(pkg, "${name}Client"), pollFace = false)
             }
@@ -500,6 +503,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             if (events.isNotEmpty()) builder.addType(eventType())
             if (commands.isNotEmpty() || queries.isNotEmpty()) {
                 builder.addFunction(dispatch()).addFunction(claimServed()).addFunction(servePass()).addFunction(serve())
+                    .addFunction(serveAsync())
             }
             return builder.build()
         }
@@ -826,6 +830,22 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             return builder.build()
         }
 
+        private fun serveAsync(): FunSpec {
+            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
+            return FunSpec.builder("serveAsync").addModifiers(KModifier.SUSPEND).addTypeVariable(h)
+                .addKdoc(
+                    "Serves interface `%L`'s calls, suspending between claims. It never returns normally: it ends by " +
+                        "throwing `ProviderError`, as [serve] does, or by the cancellation of its coroutine.",
+                    iface.declared.declared,
+                )
+                .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
+                .returns(NOTHING)
+                .addStatement("claimServed(handler)")
+                .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
+                .addStatement("return %M<Nothing>({}) { waker -> servePass(handler, provider, buffer, waker) }", AWAIT_POLL)
+                .build()
+        }
+
         /** The ports a waiting client needs (RA-19): a signal reads, an event waits, a call sends and waits on the clock. */
         private fun waitingBounds(): List<TypeName> = buildList {
             if (signals.isNotEmpty()) add(SIGNAL_READER)
@@ -900,6 +920,50 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     f.returns(reply(m).type).addStatement("return %T(port, %L).block(timeout)", callClass(m), value)
                 } else {
                     f.addStatement("%T(port, %L).block(timeout)", callClass(m), value)
+                }
+                builder.addFunction(f.build())
+            }
+            return builder.build()
+        }
+
+        private fun asyncClient(): TypeSpec {
+            val p = TypeVariableName("P", waitingBounds())
+            val poll = ClassName(pkg, "${name}PollClient")
+            val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}AsyncClient")).visibility()
+                .addKdoc(
+                    "The suspending client of interface `%L`: each call suspends until its outcome and throws `ClientError` " +
+                        "for a failed one; a cancelled call is forgotten. Calls run one at a time: a second concurrent call " +
+                        "waits for the first, so use a second client over a second caller handle for concurrency.",
+                    iface.declared.declared,
+                )
+                .addTypeVariable(p)
+                .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
+                .addProperty(PropertySpec.builder("port", p, KModifier.PRIVATE).initializer("port").build())
+                .addProperty(PropertySpec.builder("poll", poll.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", poll).build())
+                .delegatedReads()
+            if (commands.isNotEmpty() || queries.isNotEmpty()) {
+                builder.addProperty(PropertySpec.builder("calls", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
+            }
+            if (events.isNotEmpty()) {
+                builder.addFunction(
+                    FunSpec.builder("nextEvent").addModifiers(KModifier.SUSPEND).returns(self.nestedClass("Event"))
+                        .addKdoc("Suspends until the next occurrence of any subscribed event of `%L`.", iface.declared.declared)
+                        .addStatement("return %M({}) { waker ->", AWAIT_POLL)
+                        .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
+                        .addStatement("  poll.nextEvent()")
+                        .addStatement("}")
+                        .build(),
+                )
+            }
+            for (m in commands + queries) {
+                val (param, arg) = argument(m)
+                val value = param.name.camel.replaceFirstChar(Char::lowercaseChar)
+                val f = FunSpec.builder(m.method).addModifiers(KModifier.SUSPEND).addParameter(value, arg.type)
+                    .addKdoc("Calls %L `%L` and suspends until its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
+                if (m.interaction.hasQuery()) {
+                    f.returns(reply(m).type).addStatement("return calls.%M { %T(port, %L).await() }", WITH_LOCK, callClass(m), value)
+                } else {
+                    f.addStatement("calls.%M { %T(port, %L).await() }", WITH_LOCK, callClass(m), value)
                 }
                 builder.addFunction(f.build())
             }
