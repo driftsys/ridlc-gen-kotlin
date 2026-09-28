@@ -4,20 +4,33 @@ package ridl.conformance.probe.clients.cabin
 
 import ridl.rt.contract.Ordinal
 import ridl.rt.error.ClientError
+import ridl.rt.error.ProviderError
 import ridl.rt.error.Contract
 import ridl.rt.error.Transport
 import ridl.rt.loopback.Loopback
+import ridl.rt.port.Handler
+import ridl.rt.port.ReadError
 import ridl.rt.port.SendError
+import ridl.rt.port.ServeError
+import ridl.rt.port.Wakeable
 import ridl.rt.sample.Duration
 import ridl.rt.task.noopWaker
 import veh.cabin.Average
 import veh.cabin.Cabin
 import veh.cabin.CabinAverageCall
+import veh.cabin.CabinClient
 import veh.cabin.CabinProvider
+import veh.cabin.CabinPublisher
 import veh.cabin.CabinSetLevelCall
+import veh.cabin.Health
 import veh.cabin.Level
+import veh.cabin.Temperature
+import veh.cabin.Warning
 import veh.cabin.Window
 import java.nio.ByteBuffer
+import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 private val failures = mutableListOf<String>()
 
@@ -55,7 +68,7 @@ private fun fill(rt: Loopback) = List(Loopback.SLOTS) {
 
 private class Recorder : CabinProvider {
     val levels = mutableListOf<Level>()
-    override fun setLevel(level: Level) { levels += level }
+    override fun setLevel(level: Level) { synchronized(this) { levels += level } }
     override fun average(window: Window): Average = Average.of(250)
 }
 
@@ -63,6 +76,7 @@ private val waker = noopWaker()
 
 fun probe(): List<String> {
     callObjects()
+    blocking()
     return failures
 }
 
@@ -120,5 +134,73 @@ private fun callObjects() {
         call.cancel()
         expectEqual("cancel forgot the call", Loopback.SLOTS, sendsUntilBusy(rt))
         expectThrows<IllegalStateException>("a cancelled call polled again throws") { call.poll(waker) }
+    }
+}
+
+private fun blocking() {
+    // The round trips, with the provider on a thread of its own.
+    Loopback(Cabin.catalog).let { rt ->
+        val recorder = Recorder()
+        val handler = rt.handler()
+        // serve returns at each short timeout, so the flag stops it within one.
+        val running = java.util.concurrent.atomic.AtomicBoolean(true)
+        val provider = thread { while (running.get()) Cabin.serve(handler, recorder, 100.milliseconds) }
+        val client = CabinClient(rt, timeout = 5.seconds)
+        CabinPublisher(rt).apply { temperature(Temperature.of(21)); commit() }
+        expectEqual("a signal reads", Temperature.of(21), client.temperature().value)
+        client.setLevel(Level.of(42))
+        expectEqual("a query replies", Average.of(250), client.average(Window.of(10)))
+        expectEqual("the command ran before the query was served", listOf(Level.of(42)), synchronized(recorder) { recorder.levels.toList() })
+        client.subscribeWarning()
+        CabinPublisher(rt).warning(Warning(Level.of(5), Health.WARN))
+        expect("an event is received", client.nextEvent() is Cabin.Event.Warning)
+        running.set(false)
+        provider.join()
+    }
+    // A timeout too large to represent waits with no bound and returns.
+    Loopback(Cabin.catalog).let { rt ->
+        val handler = rt.handler()
+        val running = java.util.concurrent.atomic.AtomicBoolean(true)
+        val provider = thread { while (running.get()) Cabin.serve(handler, Recorder(), 100.milliseconds) }
+        expectEqual("an infinite timeout still returns the reply", Average.of(250),
+            CabinClient(rt, timeout = kotlin.time.Duration.INFINITE).average(Window.of(10)))
+        running.set(false)
+        provider.join()
+    }
+    // The timeout: sent, unsent, and an event.
+    Loopback(Cabin.catalog).let { rt ->
+        val client = CabinClient(rt, timeout = 50.milliseconds)
+        expectEqual("a sent command past the timeout", Transport.Undelivered,
+            expectThrows<ClientError.Call>("a sent command past the timeout throws Call") { client.setLevel(Level.of(1)) }?.error)
+        expectEqual("a sent query past the timeout", Transport.Timeout,
+            expectThrows<ClientError.Call>("a sent query past the timeout throws Call") { client.average(Window.of(10)) }?.error)
+        expectEqual("both were forgotten", Loopback.SLOTS, sendsUntilBusy(rt))
+    }
+    Loopback(Cabin.catalog).let { rt ->
+        fill(rt)
+        val client = CabinClient(rt, timeout = 50.milliseconds)
+        expectEqual("an unsent call past the timeout", SendError.Busy,
+            expectThrows<ClientError.Send>("an unsent call past the timeout throws Send") { client.setLevel(Level.of(1)) }?.error)
+        client.subscribeWarning()
+        expectEqual("no event before the timeout", null, client.nextEvent())
+    }
+    // serve's two failures, and a provider's own exception.
+    Loopback(Cabin.catalog).let { rt ->
+        val refusing = object : Handler by rt, Wakeable by rt {
+            override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = throw ServeError.NotOwner
+        }
+        expectEqual("a refused serve", ServeError.NotOwner,
+            expectThrows<ProviderError.Serve>("a refused serve throws Serve") { Cabin.serve(refusing, Recorder()) }?.error)
+        val failing = object : Handler by rt, Wakeable by rt {
+            override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Detached
+        }
+        expectEqual("a failed claim read", ReadError.Detached,
+            expectThrows<ProviderError.Claim>("a failed claim read throws Claim") { Cabin.serve(failing, Recorder()) }?.error)
+        val broken = object : CabinProvider {
+            override fun setLevel(level: Level) = Unit
+            override fun average(window: Window): Average = throw IllegalStateException("the provider's own failure")
+        }
+        rt.query(Cabin.number, Ordinal(4u), ByteBuffer.allocate(veh.cabin.WindowCodec.maxSize).also { veh.cabin.WindowCodec.encode(Window.of(10), it) }.flip())
+        expectThrows<IllegalStateException>("a provider's exception leaves serve unchanged") { Cabin.serve(rt, broken, 1.seconds) }
     }
 }

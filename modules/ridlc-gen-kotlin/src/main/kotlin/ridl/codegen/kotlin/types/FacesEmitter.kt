@@ -11,6 +11,8 @@ import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.LambdaTypeName
 import com.squareup.kotlinpoet.LIST
 import com.squareup.kotlinpoet.MemberName
+import com.squareup.kotlinpoet.NOTHING
+import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.STRING
@@ -73,6 +75,8 @@ private val CLAIM_ID = ClassName("$RT.port", "ClaimId")
 private val READ_ERROR = ClassName("$RT.port", "ReadError")
 private val SEND_ERROR = ClassName("$RT.port", "SendError")
 private val SETTLE_ERROR = ClassName("$RT.port", "SettleError")
+private val SERVE_ERROR = ClassName("$RT.port", "ServeError")
+private val PROVIDER_ERROR = ClassName("$RT.error", "ProviderError")
 private val BYTE_BUFFER = ClassName("java.nio", "ByteBuffer")
 private val RESULT = ClassName("kotlin", "Result")
 private val CLOCK = ClassName("$RT.port", "Clock")
@@ -429,6 +433,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             for (m in commands + queries) types += call(m)
             if (waits) {
                 types += client(ClassName(pkg, "${name}PollClient"), pollFace = true)
+                types += blockingClient()
             } else if (signals.isNotEmpty()) {
                 types += client(ClassName(pkg, "${name}Client"), pollFace = false)
             }
@@ -493,8 +498,50 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 )
             }
             if (events.isNotEmpty()) builder.addType(eventType())
-            if (commands.isNotEmpty() || queries.isNotEmpty()) builder.addFunction(dispatch())
+            if (commands.isNotEmpty() || queries.isNotEmpty()) {
+                builder.addFunction(dispatch()).addFunction(claimServed()).addFunction(servePass()).addFunction(serve())
+            }
             return builder.build()
+        }
+
+        private fun claimServed(): FunSpec = FunSpec.builder("claimServed").addModifiers(KModifier.PRIVATE)
+            .addParameter("handler", HANDLER)
+            .addStatement(
+                "try { handler.serve(number, listOf(%L)) } catch (e: %T) { throw %T.Serve(e) }",
+                (commands + queries).map { ordinal(it) }.joinToCode(", "), SERVE_ERROR, PROVIDER_ERROR,
+            )
+            .build()
+
+        /** One pass of `serve`: registers for the next claim, then settles every claim waiting. */
+        private fun servePass(): FunSpec {
+            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
+            return FunSpec.builder("servePass").addModifiers(KModifier.PRIVATE).addTypeVariable(h)
+                .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
+                .addParameter("buffer", BYTE_BUFFER).addParameter("waker", WAKER)
+                .returns(NOTHING.copy(nullable = true))
+                .addStatement("handler.wakeOn(%T.Claim(number), waker)", INTEREST)
+                .addStatement("try { dispatch(handler, provider, buffer) } catch (e: %T) { throw %T.Claim(e) }", READ_ERROR, PROVIDER_ERROR)
+                .addStatement("return null")
+                .build()
+        }
+
+        private fun serve(): FunSpec {
+            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
+            return FunSpec.builder("serve").addTypeVariable(h)
+                .addKdoc(
+                    "Serves interface `%L`'s calls on this thread: registers its members with [handler], then settles each " +
+                        "claim as it arrives. Returns when [timeout] passes; with no timeout it returns only by throwing " +
+                        "`ProviderError`: `Serve` when [handler] refuses the members, `Claim` when a claim read fails, every " +
+                        "claim settled before it staying settled. An exception [provider] throws is thrown unchanged.",
+                    iface.declared.declared,
+                )
+                .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
+                .addParameter(ParameterSpec.builder("timeout", TIME_DURATION.copy(nullable = true)).defaultValue("null").build())
+                .addStatement("claimServed(handler)")
+                .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
+                // An explicit null: a `Unit?` lambda returning servePass's `Nothing?` fails JVM verification.
+                .addStatement("%M<Unit>(deadline(timeout)) { waker -> servePass(handler, provider, buffer, waker); null }", BLOCK_ON)
+                .build()
         }
 
         private fun correlation(m: Member): ClassName = self.nestedClass("${m.camel}Correlation")
@@ -775,6 +822,86 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .addStatement("return outcome.fold({ callOutcome(%T, buf.flip()) }, { %T.failure(it) })", reply.codec, RESULT)
                         .build(),
                 )
+            }
+            return builder.build()
+        }
+
+        /** The ports a waiting client needs (RA-19): a signal reads, an event waits, a call sends and waits on the clock. */
+        private fun waitingBounds(): List<TypeName> = buildList {
+            if (signals.isNotEmpty()) add(SIGNAL_READER)
+            if (events.isNotEmpty()) add(EVENT_SOURCE)
+            if (commands.isNotEmpty() || queries.isNotEmpty()) {
+                add(CALLER)
+                add(CLOCK)
+            }
+            add(WAKEABLE)
+        }
+
+        /** The signal reads and subscriptions, delegated to the poll face, which both clients share. */
+        private fun TypeSpec.Builder.delegatedReads(): TypeSpec.Builder = apply {
+            for (m in signals) {
+                addFunction(
+                    FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(signalPayload(m).type))
+                        .addKdoc("Reads signal `%L`, as the runtime resolved it. It does not wait.", m.declared)
+                        .addStatement("return poll.%L()", m.method).build(),
+                )
+            }
+            for (m in events) {
+                addFunction(
+                    FunSpec.builder("subscribe${m.camel}").addKdoc("Starts delivery of event `%L`.", m.declared)
+                        .addStatement("poll.subscribe%L()", m.camel).build(),
+                )
+                addFunction(
+                    FunSpec.builder("unsubscribe${m.camel}").addKdoc("Stops delivery of event `%L`.", m.declared)
+                        .addStatement("poll.unsubscribe%L()", m.camel).build(),
+                )
+            }
+        }
+
+        private fun blockingClient(): TypeSpec {
+            val p = TypeVariableName("P", waitingBounds())
+            val poll = ClassName(pkg, "${name}PollClient")
+            val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}Client")).visibility()
+                .addKdoc(
+                    "The blocking client of interface `%L`: each call waits on this thread for its outcome, at most " +
+                        "[timeout] when it is set, and throws `ClientError` for a failed call. Use it from one thread at a time.",
+                    iface.declared.declared,
+                )
+                .addTypeVariable(p)
+                .primaryConstructor(
+                    FunSpec.constructorBuilder().addParameter("port", p)
+                        .addParameter(ParameterSpec.builder("timeout", TIME_DURATION.copy(nullable = true)).defaultValue("null").build())
+                        .build(),
+                )
+                .addProperty(PropertySpec.builder("port", p, KModifier.PRIVATE).initializer("port").build())
+                .addProperty(
+                    PropertySpec.builder("timeout", TIME_DURATION.copy(nullable = true)).mutable().initializer("timeout")
+                        .addKdoc("The longest a call or [nextEvent] waits, or `null` for no bound.").build(),
+                )
+                .addProperty(PropertySpec.builder("poll", poll.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", poll).build())
+                .delegatedReads()
+            if (events.isNotEmpty()) {
+                builder.addFunction(
+                    FunSpec.builder("nextEvent").returns(self.nestedClass("Event").copy(nullable = true))
+                        .addKdoc("Waits for the next occurrence of any subscribed event of `%L`, or returns `null` at [timeout].", iface.declared.declared)
+                        .addStatement("return %M(deadline(timeout)) { waker ->", BLOCK_ON)
+                        .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
+                        .addStatement("  poll.nextEvent()")
+                        .addStatement("}")
+                        .build(),
+                )
+            }
+            for (m in commands + queries) {
+                val (param, arg) = argument(m)
+                val value = param.name.camel.replaceFirstChar(Char::lowercaseChar)
+                val f = FunSpec.builder(m.method).addParameter(value, arg.type)
+                    .addKdoc("Calls %L `%L` and waits for its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
+                if (m.interaction.hasQuery()) {
+                    f.returns(reply(m).type).addStatement("return %T(port, %L).block(timeout)", callClass(m), value)
+                } else {
+                    f.addStatement("%T(port, %L).block(timeout)", callClass(m), value)
+                }
+                builder.addFunction(f.build())
             }
             return builder.build()
         }
