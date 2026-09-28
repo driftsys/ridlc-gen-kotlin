@@ -126,14 +126,10 @@ internal data class Functions(val pkg: String, val suffix: String) {
  * exactly when it is in Rust.
  */
 internal class Wires(private val model: Model, private val pkg: String) {
+    /** The declaration [ref] names, with the package that declares it: [pkg] when local. */
     fun declarationOf(ref: TypeRef): Pair<String, Declaration> {
-        if (!ref.resolved) refuse("the reference `${ref.reference}` resolves to no declaration")
-        return if (ref.foreign) {
-            val foreign = model.getForeign(ref.index)
-            foreign.`package` to foreign.declaration
-        } else {
-            pkg to model.getDeclarations(ref.index)
-        }
+        val declaration = model.declarationOf(ref)
+        return (if (model.isForeign(ref)) ref.`package` else pkg) to declaration
     }
 
     fun of(type: Type): Wire = when (type.kindCase) {

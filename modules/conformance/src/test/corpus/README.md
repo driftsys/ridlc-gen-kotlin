@@ -2,9 +2,9 @@
 
 One directory per package the conformance tests build with the pinned `ridl`.
 Each is copied unchanged from `driftsys/ridl` at the tag in
-`../../../ridl-release`, except `kt-values`, which is this repository's own, and
-the `ridl.toml` of two single-file fixtures, which the ridl tests compile
-without a manifest.
+`../../../ridl-release`, except `kt-values` and `kt-foreign`, which are this
+repository's own, and the `ridl.toml` of two single-file fixtures, which the
+ridl tests compile without a manifest.
 
 | Directory    | Source at the pinned tag                                             | What it exercises                                                                                                                                                               |
 | ------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -13,6 +13,7 @@ without a manifest.
 | `fb-demo`    | `crates/ridl-backend-rust/tests/fixtures/flatbuffers_roundtrip.ridl` | bytes, a vacuous boolean, an enum set with its own bits, every collection shape, optional composites                                                                            |
 | `veh-cruise` | `crates/ridl-backend-proto/tests/fixtures/cruise.ridl`               | a retired enum value, a retired union arm, a map keyed by an inline string                                                                                                      |
 | `kt-values`  | this repository                                                      | a same-package pattern, a regex constant, a float step from a negative minimum, inline scalar constraints, and `Probe`, an interface whose `require` and `ensure` can both fail |
+| `kt-foreign` | this repository                                                      | another package's types throughout: its sub-package `kt.foreign.parts` declares a union and a struct, reached by a struct, two signals and a command (driftsys/ridl#586)        |
 
 `veh-common` references `ridl.std`, which `ridl build` writes as a package of
 its own, so the plugin is also run on the standard library's patterned strings

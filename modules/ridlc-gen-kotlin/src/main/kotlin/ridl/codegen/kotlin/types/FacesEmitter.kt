@@ -676,7 +676,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val signal = m.interaction.signal
             val (owner, declaration) = wires.declarationOf(payload.ref)
             if (signal.hasDeclaredInit() && declaration.hasScalar() && signal.init.hasValue()) {
-                return inits.named(ClassName(owner, declaration.name.camel), declaration.scalar, signal.init.value, payload.ref.foreign)
+                return inits.named(ClassName(owner, declaration.name.camel), declaration.scalar, signal.init.value, model.isForeign(payload.ref))
             }
             return inits.ofRef(payload.ref)
         }
@@ -716,7 +716,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 comparison.hasParam() && comparison.param == 0 -> "args" to arg
                 else -> refuseClause("no accepted comparison")
             }
-            if (named.ref.foreign) refuseClause("the subject is declared in another package")
+            if (model.isForeign(named.ref)) refuseClause("the subject is declared in another package")
             val (_, declaration) = wires.declarationOf(named.ref)
             if (!declaration.hasScalar()) refuseClause("the subject is not a named integer or float scalar")
             val literal = when (declaration.scalar.class_) {

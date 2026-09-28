@@ -121,12 +121,11 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         if (!ref.resolved) refuse("the reference `${ref.reference}` resolves to no declaration")
         val declaration = declarationOf(ref)
         if (declaration.hasConstant()) refuse("the reference `${ref.reference}` names a constant, not a type")
-        val owner = if (ref.foreign) ref.`package` else pkg
+        val owner = if (model.isForeign(ref)) ref.`package` else pkg
         return ClassName(owner, declaration.name.camel)
     }
 
-    private fun declarationOf(ref: TypeRef): Declaration =
-        if (ref.foreign) model.getForeign(ref.index).declaration else model.getDeclarations(ref.index)
+    private fun declarationOf(ref: TypeRef): Declaration = model.declarationOf(ref)
 
     private fun kotlinType(type: Type): TypeName {
         val base: TypeName = when (type.kindCase) {
@@ -316,14 +315,15 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             }
             Constant.TypedCase.NAMED -> {
                 val ref = constant.named
+                if (!ref.resolved) return null
                 val target = declarationOf(ref)
-                if (!ref.resolved || !target.hasScalar()) return null
+                if (!target.hasScalar()) return null
                 val scalar = target.scalar
                 val type = ref(ref)
                 val (_, literal) = primitiveLiteral(scalarPrimitive(scalar), constant.value) ?: return null
                 val initializer = when {
                     scalar.vacuous -> CodeBlock.of("%T(%L)", type, literal)
-                    ref.foreign -> CodeBlock.of("%T.of(%L)", type, literal)
+                    model.isForeign(ref) -> CodeBlock.of("%T.of(%L)", type, literal)
                     else -> CodeBlock.of("%T.unchecked(%L)", type, literal)
                 }
                 PropertySpec.builder(name, type).initializer(initializer)

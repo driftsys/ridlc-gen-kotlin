@@ -23,7 +23,7 @@ import ridl.codegen.v1.ModelOuterClass.TypeRef
 internal class Inits(private val model: Model, private val pkg: String, private val wires: Wires) {
     fun ofRef(ref: TypeRef): CodeBlock {
         val (owner, declaration) = wires.declarationOf(ref)
-        return ofDeclaration(owner, declaration, ref.foreign)
+        return ofDeclaration(owner, declaration, model.isForeign(ref))
     }
 
     fun ofDeclaration(owner: String, declaration: Declaration, foreign: Boolean): CodeBlock {
@@ -70,7 +70,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
         if (field.hasDeclaredInit() && type.kindCase == Type.KindCase.NAMED && !type.optional) {
             val (owner, declaration) = wires.declarationOf(type.named)
             if (declaration.hasScalar()) {
-                return named(ClassName(owner, declaration.name.camel), declaration.scalar, field.declaredInit, type.named.foreign)
+                return named(ClassName(owner, declaration.name.camel), declaration.scalar, field.declaredInit, model.isForeign(type.named))
             }
         }
         return position(type, field.init)

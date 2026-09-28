@@ -1,0 +1,15 @@
+package kt.foreign.parts
+
+// Declared here and reached from kt.foreign, so every reference below is
+// copied into kt.foreign's model as a foreign declaration's member.
+type Small : integer [0..100] = 0
+
+struct Duo {
+  left  : Small
+  right : Small
+}
+
+union Choice {
+  small : Small
+  duo   : Duo
+}

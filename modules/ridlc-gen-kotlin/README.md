@@ -44,6 +44,14 @@ Tested against ridl `editor-v0.2.2` (`modules/conformance/ridl-release`).
   the fat jar as the class path rather than `java -jar`; the effect is the same,
   and the script still ends in `exec "$JAVACMD" "$@"`.
 - **`wire-encoding`** accepts `flatbuffers` alone until O-K1 is disposed.
+- **Foreignness is read from `TypeRef.package`, not `TypeRef.foreign`**
+  (`Refs.kt`), a workaround for driftsys/ridl#586: the pinned lowering leaves
+  `foreign` false on a reference inside a foreign declaration, such as an
+  imported union's arm, while indexing it into `Model.foreign`. Every reference
+  goes through `Model.declarationOf`, which also refuses an index past its table
+  with a diagnostic naming the reference, where it used to exit 3. Remove the
+  workaround when the pin carries the fix; the `kt-foreign` corpus entry keeps
+  it honest.
 
 ### `Types.kt`
 
