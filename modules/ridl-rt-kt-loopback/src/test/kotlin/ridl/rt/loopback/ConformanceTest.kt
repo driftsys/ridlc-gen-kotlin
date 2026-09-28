@@ -6,6 +6,7 @@ import ridl.rt.conformance.Factory
 import ridl.rt.conformance.coherentSuite
 import ridl.rt.conformance.scannableSuite
 import ridl.rt.conformance.suite
+import ridl.rt.conformance.wakeableSuite
 import ridl.rt.contract.CatalogRef
 import ridl.rt.port.Caller
 import ridl.rt.port.EventSource
@@ -15,13 +16,15 @@ import ridl.rt.sample.Duration
 /**
  * The port contract suite of `ridl-rt-kt-conformance`, run over this runtime:
  * `crates/ridl-loopback/tests/conformance.rs`. Every test the suite has runs
- * here, including those of both signal extensions, which the loopback
+ * here, including those of the three extensions, which the loopback
  * implements. The tests of what only this runtime can express are in
  * `PortsTest`.
  */
 class ConformanceTest {
     /** The loopback as the suite builds it: the aggregate, the additional role handles, and its two test hooks. */
     private object LoopbackFactory : Factory<Loopback> {
+        override val slots: Int = Loopback.SLOTS
+
         override fun runtime(catalog: CatalogRef): Loopback = Loopback(catalog)
 
         override fun source(runtime: Loopback): EventSource = runtime.source()
@@ -43,4 +46,7 @@ class ConformanceTest {
 
     @TestFactory
     fun `the coherent signals extension`(): List<DynamicTest> = coherentSuite(LoopbackFactory)
+
+    @TestFactory
+    fun `the wakeable extension`(): List<DynamicTest> = wakeableSuite(LoopbackFactory)
 }

@@ -71,26 +71,6 @@ class WakeableTest {
     private fun ByteBuffer.written(): ByteArray = ByteArray(position()).also { duplicate().flip().get(it) }
 
     @Test
-    fun `a waiter on an outcome is woken exactly once by its settlement`() {
-        val h = runtime().split()
-        val count = Count()
-        val c = h.caller.command(iface, ord, bytes(1))
-        h.caller.wakeOn(Interest.Outcome(c), count)
-        assertEquals(0, count.wakes, "nothing is known about the call yet")
-
-        val claim = h.handler.nextClaim(out())!!
-        assertEquals(0, count.wakes, "a presented call has no outcome yet")
-
-        h.handler.settle(claim.id, ok())
-        assertEquals(1, count.wakes, "the settlement wakes the waiter")
-        assertEquals(Result.success(Unit), h.caller.ack(c))
-
-        h.caller.command(iface, ord, bytes(2))
-        h.handler.settle(h.handler.nextClaim(out())!!.id, ok())
-        assertEquals(1, count.wakes, "a waiter is woken at most once")
-    }
-
-    @Test
     fun `each settlement wakes only its own calls waiter`() {
         val h = runtime().split()
         val firstCall = h.caller.command(iface, ord, bytes(1))
@@ -122,85 +102,6 @@ class WakeableTest {
     }
 
     @Test
-    fun `a second registration under a key wakes the displaced waker`() {
-        val rt = runtime()
-        val sink = rt.sink()
-        val caller = rt.caller()
-        val handler = rt.handler()
-        val source = rt.source()
-        source.subscribe(iface, listOf(ord))
-
-        // An outcome.
-        val c = caller.command(iface, ord, bytes(1))
-        var first = Count()
-        var second = Count()
-        caller.wakeOn(Interest.Outcome(c), first)
-        caller.wakeOn(Interest.Outcome(c), second)
-        assertEquals(1, first.wakes, "the displaced waker is woken")
-        assertEquals(0, second.wakes)
-        handler.settle(handler.nextClaim(out())!!.id, ok())
-        assertEquals(1, first.wakes, "the displaced waker is not stored")
-        assertEquals(1, second.wakes, "the settlement wakes the stored waker")
-
-        // An event.
-        first = Count()
-        second = Count()
-        source.wakeOn(Interest.Event(iface), first)
-        source.wakeOn(Interest.Event(iface), second)
-        assertEquals(1, first.wakes, "the displaced waker is woken")
-        sink.raise(iface, ord, bytes(1))
-        assertEquals(1, first.wakes, "the displaced waker is not stored")
-        assertEquals(1, second.wakes, "the raise wakes the stored waker")
-
-        // A claim.
-        first = Count()
-        second = Count()
-        handler.wakeOn(Interest.Claim(iface), first)
-        handler.wakeOn(Interest.Claim(iface), second)
-        assertEquals(1, first.wakes, "the displaced waker is woken")
-        caller.command(iface, ord, bytes(2))
-        assertEquals(1, first.wakes, "the displaced waker is not stored")
-        assertEquals(1, second.wakes, "the send wakes the stored waker")
-    }
-
-    @Test
-    fun `a registration of the waker already stored does not wake it`() {
-        val h = runtime().split()
-        val c = h.caller.command(iface, ord, bytes(1))
-        val count = Count()
-        h.caller.wakeOn(Interest.Outcome(c), count)
-        h.caller.wakeOn(Interest.Outcome(c), count)
-        assertEquals(0, count.wakes, "the same task registered twice")
-
-        h.handler.settle(h.handler.nextClaim(out())!!.id, ok())
-        assertEquals(1, count.wakes, "and is still woken by the settlement")
-    }
-
-    @Test
-    fun `the same task registering an event or claim key again wakes nothing`() {
-        val rt = runtime()
-        val sink = rt.sink()
-        val caller = rt.caller()
-        val source = rt.source()
-        val handler = rt.handler()
-        source.subscribe(iface, listOf(ord))
-
-        val event = Count()
-        source.wakeOn(Interest.Event(iface), event)
-        source.wakeOn(Interest.Event(iface), event)
-        assertEquals(0, event.wakes, "`Event`: the same task is refreshed")
-        sink.raise(iface, ord, bytes(1))
-        assertEquals(1, event.wakes, "and the raise wakes it")
-
-        val claim = Count()
-        handler.wakeOn(Interest.Claim(iface), claim)
-        handler.wakeOn(Interest.Claim(iface), claim)
-        assertEquals(0, claim.wakes, "`Claim`: the same task is refreshed")
-        caller.command(iface, ord, bytes(1))
-        assertEquals(1, claim.wakes, "and the send wakes it")
-    }
-
-    @Test
     fun `a raise wakes a subscribed source and not an unsubscribed one`() {
         val rt = runtime()
         val sink = rt.sink()
@@ -227,92 +128,6 @@ class WakeableTest {
     }
 
     @Test
-    fun `a source registered under two interfaces is woken by either`() {
-        val rt = runtime()
-        val sink = rt.sink()
-        val source = rt.source()
-        source.subscribe(iface, listOf(ord))
-        source.subscribe(iface2, listOf(ord))
-        val count = Count()
-
-        for ((turn, changed) in listOf(iface, iface2).withIndex()) {
-            source.wakeOn(Interest.Event(iface), count)
-            source.wakeOn(Interest.Event(iface2), count)
-            assertEquals(turn, count.wakes, "the same task registered twice")
-            sink.raise(changed, ord, bytes(1))
-            assertEquals(turn + 1, count.wakes, "an occurrence of interface $changed wakes it")
-            while (source.next(out()) != null) continue
-        }
-    }
-
-    @Test
-    fun `a handler registered under two interfaces is woken by either`() {
-        val rt = runtime()
-        val caller = rt.caller()
-        val handler = rt.handler()
-        handler.serve(iface, listOf(ord))
-        handler.serve(iface2, listOf(ord))
-        val count = Count()
-
-        for ((turn, changed) in listOf(iface, iface2).withIndex()) {
-            handler.wakeOn(Interest.Claim(iface), count)
-            handler.wakeOn(Interest.Claim(iface2), count)
-            assertEquals(turn, count.wakes, "the same task registered twice")
-            caller.command(changed, ord, bytes(1))
-            assertEquals(turn + 1, count.wakes, "a call on interface $changed wakes it")
-            handler.settle(handler.nextClaim(out())!!.id, ok())
-        }
-    }
-
-    @Test
-    fun `a registration under one interface is woken by a change on another`() {
-        val rt = runtime()
-        val sink = rt.sink()
-        val caller = rt.caller()
-        val source = rt.source()
-        val handler = rt.handler()
-        source.subscribe(iface2, listOf(ord))
-        handler.serve(iface2, listOf(ord))
-
-        val event = Count()
-        source.wakeOn(Interest.Event(iface), event)
-        sink.raise(iface2, ord, bytes(1))
-        assertEquals(1, event.wakes, "an occurrence of interface 2 wakes it")
-
-        val claim = Count()
-        handler.wakeOn(Interest.Claim(iface), claim)
-        caller.command(iface2, ord, bytes(1))
-        assertEquals(1, claim.wakes, "a call on interface 2 wakes it")
-    }
-
-    @Test
-    fun `two tasks under two interfaces of one kind share the one slot`() {
-        val rt = runtime()
-        val sink = rt.sink()
-        val caller = rt.caller()
-        val source = rt.source()
-        val handler = rt.handler()
-        source.subscribe(iface, listOf(ord))
-        handler.serve(iface, listOf(ord))
-
-        var a = Count()
-        var b = Count()
-        source.wakeOn(Interest.Event(iface), a)
-        source.wakeOn(Interest.Event(iface2), b)
-        assertEquals(1 to 0, a.wakes to b.wakes, "B displaces A")
-        sink.raise(iface, ord, bytes(1))
-        assertEquals(1 to 1, a.wakes to b.wakes, "interface 1 wakes B")
-
-        a = Count()
-        b = Count()
-        handler.wakeOn(Interest.Claim(iface), a)
-        handler.wakeOn(Interest.Claim(iface2), b)
-        assertEquals(1 to 0, a.wakes to b.wakes, "B displaces A")
-        caller.command(iface, ord, bytes(1))
-        assertEquals(1 to 1, a.wakes to b.wakes, "interface 1 wakes B")
-    }
-
-    @Test
     fun `a waiting occurrence of another interface wakes an event registration at once`() {
         val rt = runtime()
         val source = rt.source()
@@ -334,29 +149,6 @@ class WakeableTest {
         val count = Count()
         handler.wakeOn(Interest.Claim(iface), count)
         assertEquals(1, count.wakes, "a call on another interface is waiting")
-    }
-
-    @Test
-    fun `an event or claim waiter is cleared when woken`() {
-        val rt = runtime()
-        val sink = rt.sink()
-        val caller = rt.caller()
-        val source = rt.source()
-        val handler = rt.handler()
-        source.subscribe(iface, listOf(ord))
-        handler.serve(iface, listOf(ord))
-
-        val event = Count()
-        source.wakeOn(Interest.Event(iface), event)
-        sink.raise(iface, ord, bytes(1))
-        sink.raise(iface, ord, bytes(2))
-        assertEquals(1, event.wakes, "the first raise cleared the waker")
-
-        val claim = Count()
-        handler.wakeOn(Interest.Claim(iface), claim)
-        caller.command(iface, ord, bytes(1))
-        caller.command(iface, ord, bytes(2))
-        assertEquals(1, claim.wakes, "the first send cleared the waker")
     }
 
     @Test
@@ -395,21 +187,6 @@ class WakeableTest {
         assertNull(otherHandler.nextClaim(out()), "the call another handler holds stays with it")
         keeper.settle(keptClaim.id, ok())
         assertEquals(Result.success(Unit), caller.ack(kept))
-    }
-
-    @Test
-    fun `a waiter is cleared when woken`() {
-        val h = runtime().split()
-        val c = h.caller.command(iface, ord, bytes(1))
-        val first = Count()
-        h.caller.wakeOn(Interest.Outcome(c), first)
-        h.handler.settle(h.handler.nextClaim(out())!!.id, ok())
-        assertEquals(1, first.wakes)
-
-        val second = Count()
-        h.caller.wakeOn(Interest.Outcome(c), second)
-        assertEquals(1, second.wakes, "the outcome is known")
-        assertEquals(1, first.wakes, "the first waker was cleared when woken")
     }
 
     @Test
@@ -467,17 +244,6 @@ class WakeableTest {
         caller.command(iface, ord, bytes(1))
         assertEquals(1, wakers[2].wakes, "the first handler")
         assertEquals(1, wakers[3].wakes, "the second handler")
-    }
-
-    @Test
-    fun `a query wakes the handler that serves it`() {
-        val rt = runtime()
-        val handler = rt.handler()
-        handler.serve(iface, listOf(ord))
-        val count = Count()
-        handler.wakeOn(Interest.Claim(iface), count)
-        rt.caller().query(iface, ord, bytes(1))
-        assertEquals(1, count.wakes, "the query wakes the serving handler")
     }
 
     @Test
@@ -786,56 +552,6 @@ class WakeableTest {
     }
 
     @Test
-    fun `a reclaimed slots old correlation answers none`() {
-        val rt = runtime()
-        val caller = rt.caller()
-        val handler = rt.handler()
-
-        val old = caller.query(iface, ord, bytes(1))
-        handler.settle(handler.nextClaim(out())!!.id, Result.success(bytes(7)))
-        caller.forget(old)
-
-        val new = caller.query(iface, ord, bytes(2))
-        handler.settle(handler.nextClaim(out())!!.id, Result.success(bytes(8, 8)))
-        assertNotEquals(old, new, "the slot is reused under a new correlation")
-
-        assertNull(caller.reply(old, out()), "the old one is gone")
-        assertNull(caller.ack(old))
-        val count = Count()
-        caller.wakeOn(Interest.Outcome(old), count)
-        assertEquals(1, count.wakes, "no outcome is to come under it")
-
-        caller.forget(old)
-        val buf = out()
-        assertEquals(Result.success(2), caller.reply(new, buf), "forgetting the old correlation leaves the new call alone")
-        assertArrayEquals(byteArrayOf(8, 8), buf.written())
-    }
-
-    @Test
-    fun `a slot registration is stored while every slot is taken and woken by a forget`() {
-        val rt = runtime()
-        val caller = rt.caller()
-        val other = rt.caller()
-        val handler = rt.handler()
-        val calls = fill(caller)
-
-        val mine = Count()
-        val theirs = Count()
-        caller.wakeOn(Interest.Slot, mine)
-        other.wakeOn(Interest.Slot, theirs)
-        assertEquals(0 to 0, mine.wakes to theirs.wakes, "no slot is free")
-
-        handler.settle(handler.nextClaim(out())!!.id, ok())
-        assertEquals(0 to 0, mine.wakes to theirs.wakes, "a settlement frees no slot")
-
-        caller.forget(calls[0])
-        assertEquals(1 to 1, mine.wakes to theirs.wakes, "a reclaim wakes every caller's slot waiter, in no order")
-        handler.nextClaim(out())!!
-        caller.forget(calls[1])
-        assertEquals(1 to 1, mine.wakes to theirs.wakes, "a woken waiter is cleared; forgetting a claimed call reclaims nothing")
-    }
-
-    @Test
     fun `a claimed then forgotten call holds its slot until its settlement`() {
         val rt = runtime()
         val caller = rt.caller()
@@ -1087,27 +803,6 @@ class WakeableTest {
     }
 
     @Test
-    fun `a slot registration by the same task is a refresh and by another task displaces`() {
-        val rt = runtime()
-        val caller = rt.caller()
-        val handler = rt.handler()
-        val calls = fill(caller)
-
-        val first = Count()
-        caller.wakeOn(Interest.Slot, first)
-        caller.wakeOn(Interest.Slot, first)
-        assertEquals(0, first.wakes, "a refresh wakes nothing")
-
-        val second = Count()
-        caller.wakeOn(Interest.Slot, second)
-        assertEquals(1, first.wakes, "another task's waker displaces the first")
-
-        handler.settle(handler.nextClaim(out())!!.id, ok())
-        caller.forget(calls[0])
-        assertEquals(1 to 1, first.wakes to second.wakes, "the reclaim wakes the one stored")
-    }
-
-    @Test
     fun `a dropped caller leaves no slot waiter behind`() {
         val rt = runtime()
         val caller = rt.caller()
@@ -1278,17 +973,6 @@ class WakeableTest {
 
     private fun assertReleased(done: LinkedBlockingQueue<Boolean>, path: String) {
         assertTrue(done.poll(5, TimeUnit.SECONDS) == true, "$path: the waker ran with the store's monitor released")
-    }
-
-    @Test
-    fun `a waker is woken after the lock is released`() {
-        val rt = runtime()
-        val (waker, done) = lockProbe(rt)
-        val h = rt.split()
-        val c = h.caller.command(iface, ord, bytes(1))
-        h.caller.wakeOn(Interest.Outcome(c), waker)
-        h.handler.settle(h.handler.nextClaim(out())!!.id, ok())
-        assertReleased(done, "a settlement")
     }
 
     @Test

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.assertThrows
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.error.Contract as ContractError
@@ -19,6 +20,7 @@ import ridl.rt.port.Caller
 import ridl.rt.port.Claim
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
+import ridl.rt.port.Correlation
 import ridl.rt.port.EventSink
 import ridl.rt.port.EventSource
 import ridl.rt.port.Handler
@@ -45,6 +47,8 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`a short buffer leaves the claim for the next call`,
         ::`forget releases a settled correlation`,
         ::`forget before the claim is presented withdraws or leaves the call`,
+        ::`a send with every slot taken is busy for every caller`,
+        ::`a reclaimed slots old correlation answers none`,
         ::`forget between the claim and the settlement leaves the settlement valid`,
         ::`a claim that was never presented cannot be settled`,
         ::`an injected settle failure is not spent on an unknown claim`,
@@ -215,9 +219,9 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
      * happens to a call no provider has claimed yet is the runtime's: one may
      * withdraw it, and one whose transport has already sent the request cannot
      * recall it, so the call is still presented and settled. The test accepts
-     * either result. Either way the caller is not told the outcome, and a
-     * withdrawn call holds no room: the runtime accepts as many further sends
-     * before `SendError.Busy` as a new runtime does.
+     * either result. Either way the caller is not told the outcome, and the
+     * forgotten call gives its slot back: the runtime then accepts exactly
+     * [Factory.slots] sends before `SendError.Busy`.
      */
     public fun `forget before the claim is presented withdraws or leaves the call`() {
         val rt = runtime()
@@ -227,33 +231,80 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
         val buf = out(8)
         val claim = rt.nextClaim(buf)
-        if (claim != null) {
+        val result = if (claim != null) {
             assertArrayEquals(array(1), buf.written())
             rt.settle(claim.id, ok())
+            "held until settled"
         } else {
-            val fresh = runtime()
-            fresh.serve(IFACE, listOf(ORD))
-            assertEquals(sendsUntilBusy(fresh), sendsUntilBusy(rt), "the withdrawn call gave its room back")
+            "withdrawn"
         }
         assertNull(rt.ack(correlation), "the caller asked not to be told")
+        assertEquals(factory.slots, sendsUntilBusy(rt), "the forgotten call, $result, gave its slot back")
     }
 
-    /**
-     * The number of commands [caller] accepts before it throws
-     * `SendError.Busy`, counting at most 1024. A runtime that accepts that
-     * many is not checked further: the count is the same for it with or
-     * without the room a withdrawn call would hold.
-     */
+    /** The number of commands [caller] accepts before it throws `SendError.Busy`, counting at most [Factory.slots] + 1. */
     private fun sendsUntilBusy(caller: Caller): Int {
-        val sendsChecked = 1024
-        for (sent in 0 until sendsChecked) {
+        for (sent in 0..factory.slots) {
             try {
                 caller.command(IFACE, ORD, bytes(2))
             } catch (_: SendError.Busy) {
                 return sent
             }
         }
-        return sendsChecked
+        return factory.slots + 1
+    }
+
+    /**
+     * The call table is the runtime's, shared by every caller on it: with
+     * [Factory.slots] calls held, whichever callers sent them, a send by any
+     * caller is refused with `SendError.Busy`. Reading an outcome does not
+     * free a slot; forgetting a settled call does, and whichever caller sends
+     * next takes it (ADR-0021 decision 15).
+     */
+    public fun `a send with every slot taken is busy for every caller`() {
+        assertTrue(factory.slots > 0, "a runtime holds at least one call")
+        val rt = runtime()
+        val second = factory.caller(rt)
+        rt.serve(IFACE, listOf(ORD))
+
+        // The two callers take turns, so each holds part of the table.
+        val mine = mutableListOf<Correlation>()
+        val theirs = mutableListOf<Correlation>()
+        repeat(factory.slots) { n ->
+            if (n % 2 == 0) mine += rt.command(IFACE, ORD, bytes(1)) else theirs += second.command(IFACE, ORD, bytes(1))
+            rt.settle(rt.claim().id, ok())
+        }
+
+        assertThrows<SendError.Busy> { rt.command(IFACE, ORD, bytes(2)) }
+        assertThrows<SendError.Busy> { rt.query(IFACE, ORD, bytes(2)) }
+        assertThrows<SendError.Busy>("the table is the runtime's, shared by every caller") { second.command(IFACE, ORD, bytes(2)) }
+
+        mine.forEach { assertEquals(Result.success(Unit), rt.ack(it)) }
+        theirs.forEach { assertEquals(Result.success(Unit), second.ack(it)) }
+        assertThrows<SendError.Busy>("reading an outcome frees no slot") { second.command(IFACE, ORD, bytes(2)) }
+
+        rt.forget(mine[0])
+        second.command(IFACE, ORD, bytes(3))
+        assertThrows<SendError.Busy>("and the table is full again") { rt.command(IFACE, ORD, bytes(4)) }
+    }
+
+    /** After its slot is reclaimed and taken by a new call, an old correlation answers `null`, and forgetting it again leaves the new call alone. */
+    public fun `a reclaimed slots old correlation answers none`() {
+        val rt = runtime()
+        rt.serve(IFACE, listOf(ORD))
+        val old = fill(rt)[0]
+        rt.forget(old)
+
+        val new = rt.query(IFACE, ORD, bytes(2))
+        assertNotEquals(old, new, "the slot is taken under a new correlation")
+        rt.settle(rt.claim().id, ok(8, 8))
+
+        assertNull(rt.ack(old), "the old correlation has no outcome")
+        assertNull(rt.reply(old, out(8)), "and does not read the new call's reply")
+        rt.forget(old)
+        val buf = out(8)
+        assertEquals(Result.success(2), rt.reply(new, buf), "forgetting the old correlation again leaves the new call alone")
+        assertArrayEquals(array(8, 8), buf.written())
     }
 
     /** A `forget` between the claim and the settlement does not revoke the provider's settlement, and the caller is not told of it. */

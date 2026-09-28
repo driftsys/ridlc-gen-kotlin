@@ -1,12 +1,13 @@
 // `ridl-rt-kt-conformance`, the port contract tests generic over a runtime:
-// the spelling of `crates/ridl-rt-conformance/src/lib.rs` (story E11.20, the
-// first half, at ridl `main` 83214a1).
+// the spelling of `crates/ridl-rt-conformance/src/lib.rs` (story E11.20, at
+// ridl `main` 44e59fa).
 //
 // Each public test method of the contract classes here is one test of what
 // `ridl.rt.port` states a runtime does behind a port. They are generic over a
 // [Factory], the one thing a runtime writes to run them. A runtime runs the
-// whole suite from its own tests with [suite], and the tests of the signal
-// extensions it implements with [scannableSuite] and [coherentSuite]:
+// whole suite from its own tests with [suite], and the tests of the
+// extensions it implements with [scannableSuite], [coherentSuite] and
+// [wakeableSuite]:
 //
 //     @TestFactory fun ports() = suite(MyFactory)
 //     @TestFactory fun scannable() = scannableSuite(MyFactory)
@@ -16,8 +17,11 @@
 // does with a negative duration, which error the injected fault reports beyond
 // not being `UnknownClaim`); a handler that has served nothing; two event sinks
 // on one event channel; `FixedReader`; anything a runtime reports from a
-// catalog descriptor; the threading model; and a runtime's own API beyond the
-// factory.
+// catalog descriptor; the threading model; a runtime's own API beyond the
+// factory; a wake the contract allows but does not require; which serving
+// handlers a call wakes; what a forget does to a call no handler has claimed,
+// beyond giving its slot back once withdrawn or settled; and the close of a
+// handle.
 package ridl.rt.conformance
 
 import org.junit.jupiter.api.DynamicTest
@@ -28,6 +32,7 @@ import ridl.rt.contract.Ordinal
 import ridl.rt.port.Attached
 import ridl.rt.port.Caller
 import ridl.rt.port.Clock
+import ridl.rt.port.Correlation
 import ridl.rt.port.CoherentSignals
 import ridl.rt.port.EventSink
 import ridl.rt.port.EventSource
@@ -35,6 +40,7 @@ import ridl.rt.port.Handler
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
+import ridl.rt.port.Wakeable
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Timestamp
 import java.nio.ByteBuffer
@@ -96,6 +102,21 @@ public interface Factory<R>
      * injected once: the settlement after the failed one succeeds.
      */
     public fun failNextSettle(runtime: R)
+
+    /**
+     * The number of calls a runtime holds at once: the size of its call
+     * table. It counts the calls sent through the runtime and through every
+     * caller [caller] makes on it, because the table is the runtime's and not
+     * a caller's. A call holds its slot from its send until it is reclaimed by
+     * `Caller.forget`, at once for a settled call and at the settlement for a
+     * call in flight (ADR-0021 decision 15), and a send with every slot held
+     * is refused with `SendError.Busy`. At least 1. `Factory::SLOTS`.
+     *
+     * The tests fill the table by sending this many calls, so a runtime whose
+     * bound is large runs them more slowly, and one with no bound cannot run
+     * them.
+     */
+    public val slots: Int
 }
 
 /**
@@ -111,6 +132,19 @@ public abstract class Contract<R>(protected val factory: Factory<R>)
 
     /** A new runtime attached to [catalog]. */
     protected fun runtime(): R = factory.runtime(catalog)
+
+    /**
+     * Takes every slot of [rt]'s call table: sends [Factory.slots] commands
+     * through [rt] and has [rt] claim and settle each as it is sent, so every
+     * slot holds a settled call nobody has forgotten. Returns the
+     * correlations in send order. [rt] must serve `IFACE`/`ORD` already.
+     */
+    protected fun fill(rt: R): List<Correlation> = List(factory.slots) {
+        val c = rt.command(IFACE, ORD, bytes(1))
+        val claim = checkNotNull(rt.nextClaim(out(8))) { "the call just sent" }
+        rt.settle(claim.id, Result.success(bytes()))
+        c
+    }
 
     /** One dynamic test per entry of [tests], named after the method it runs. */
     internal fun dynamicTests(): List<DynamicTest> = tests.map { test -> DynamicTest.dynamicTest(test.name) { test() } }
@@ -167,3 +201,14 @@ public fun <R> coherentSuite(factory: Factory<R>): List<DynamicTest>
     where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
           R : Handler, R : CoherentSignals =
     CoherentContract(factory).dynamicTests()
+
+/**
+ * The tests of the `Wakeable` extension: `suite!(F; wakeable)`. They need
+ * `Wakeable` on the runtime and on the source, caller and handler [factory]
+ * makes; a handle that is not `Wakeable` fails the test that needs it, naming
+ * the handle, where Rust refuses to compile.
+ */
+public fun <R> wakeableSuite(factory: Factory<R>): List<DynamicTest>
+    where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
+          R : Handler, R : Wakeable =
+    WakeableContract(factory).dynamicTests()

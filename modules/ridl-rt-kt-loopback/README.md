@@ -47,8 +47,9 @@ one keeps its slot until its settlement, and a handler closed while it holds a
 forgotten call withdraws that call rather than returning it. The withdrawal is
 this runtime's behaviour, not a port contract. A returned claim goes back in
 send order, which a reused slot's correlation does not give. `WakeableTest` is
-the "Waking" and "The bounded call table" tests of `ports.rs` at 5ac7082, under
-the same names and in the same order.
+the "Waking" and "The bounded call table" tests of `ports.rs` at 44e59fa, the
+ones only this runtime can express, under the same names and in the same order;
+the 15 that story E11.20 moved into the suite run from `ConformanceTest`.
 
 ## Where the code departs from the Rust loopback
 

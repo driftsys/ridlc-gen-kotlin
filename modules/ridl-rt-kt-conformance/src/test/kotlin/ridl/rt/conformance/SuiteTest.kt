@@ -20,6 +20,8 @@ import kotlin.reflect.full.declaredMemberFunctions
 class SuiteTest {
     /** A factory only to construct the contracts; no test here runs one. */
     private object Unused : Factory<Loopback> {
+        override val slots: Int = Loopback.SLOTS
+
         override fun runtime(catalog: CatalogRef): Loopback = Loopback(catalog)
 
         override fun source(runtime: Loopback): EventSource = runtime.source()
@@ -41,6 +43,7 @@ class SuiteTest {
         CallsContract(Unused),
         ScannableContract(Unused),
         CoherentContract(Unused),
+        WakeableContract(Unused),
     )
 
     @Test
@@ -57,10 +60,11 @@ class SuiteTest {
     }
 
     @Test
-    fun `the three suites hold the 41 tests of the Rust suite`() {
-        assertEquals(35, suite(Unused).size, "the base arm")
+    fun `the four suites hold the 51 tests of the Rust suite`() {
+        assertEquals(37, suite(Unused).size, "the base arm")
         assertEquals(4, scannableSuite(Unused).size, "the scannable arm")
         assertEquals(2, coherentSuite(Unused).size, "the coherent arm")
-        assertTrue(contracts.sumOf { it.tests.size } == 41)
+        assertEquals(8, wakeableSuite(Unused).size, "the wakeable arm")
+        assertTrue(contracts.sumOf { it.tests.size } == 51)
     }
 }
