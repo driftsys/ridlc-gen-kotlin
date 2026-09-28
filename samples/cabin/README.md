@@ -17,9 +17,14 @@ licensed under the root [MIT License](../../LICENSE).
   plugin>` over it into
   `build/generated/ridl`, which is the generated half of the main source set;
   nothing generated is tracked.
-- `src/main/kotlin/ridl/sample/cabin/Main.kt` is the application: one loopback
-  per round trip, a signal, an event, a command and a query, each printing the
-  value it carried.
+- `src/main/kotlin/ridl/sample/cabin/Main.kt` is the application: one loopback,
+  the provider on a thread of its own running `Cabin.serve`, and the consumer's
+  four round trips, a signal, an event, a command and a query, through the
+  blocking `CabinClient`, each printing the value it carried.
+- `src/main/kotlin/ridl/sample/cabin/CoroutineDemo.kt` runs the round trips that
+  wait again through the suspending `CabinAsyncClient`, with `Cabin.serveAsync`
+  as the provider. The sample uses only the public clients and `serve`; the poll
+  face and `dispatch` they are built on are internal.
 
 ```sh
 just demo
