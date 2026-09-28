@@ -64,9 +64,15 @@ a query sent, dispatched and replied — and `dispatch`'s settlement table is
 reached past the client: a failing `require`, a corrupt argument buffer, an
 argument outside its constraints, an unknown ordinal, another interface's
 number, a settlement the handler refuses, a buffer too short. `kt-values`'
-`Probe` adds a failing `ensure`, a float clause and a signal's own init. A wrong
-comparison operator, a wrong settlement or a missing interface check each turns
-it red.
+`Probe`, driven through its blocking and async clients with `serve` and
+`serveAsync`, adds a failing `ensure` returned as
+`ClientError.Call(ContractBroken)`, a float clause and a signal's own init, and
+settles a query by hand with every outcome a provider or a runtime can send: a
+corrupt reply is `Call(Corrupt)`, a reply outside its constraint
+`Call(InvalidValue)`, a provider's failed `require` `Call(PreconditionFailed)`,
+an unknown interaction `Call(UnknownInteraction)`. A wrong comparison operator,
+a wrong settlement, a missing interface check or a reply check always reported
+as `Corrupt` each turns it red.
 
 The test of #7, `ClientsTest`: the clients and `serve` generated for `cabin`,
 over `ridl-rt-kt-loopback`, driven by the probe of `resources/clients/`. The
@@ -77,12 +83,13 @@ an outcome taken or a `cancel` forgets the call once, and a finished call polled
 again throws. The blocking client and `serve` round-trip every kind with the
 provider on its own thread, throw the documented error at the timeout for a sent
 and an unsent call, and `serve` throws `ProviderError.Serve` and
-`ProviderError.Claim`. The async client and `serveAsync` round-trip, a cancelled
-coroutine gives its call's slot back, and a client runs one call at a time. A
-detached event source makes either client's `nextEvent` throw
-`ClientError.Read`, and a provider's own `ReadError` leaves `serve` unchanged.
-Horn, signal-only, keeps its one client, and `kt-values`' `Names` interface,
-whose parameters are named `timeout` and `calls`, compiles. A deadline compared
-with `>=`, a call that does not forget its outcome, a `cancel` that does not
-forget, `block`'s two errors swapped, an async call outside its lock, or a
-coroutine cancellation that does not cancel the call each turns it red.
+`ProviderError.Claim`. The async client and `serveAsync` round-trip, a signal
+read included, a cancelled coroutine gives its call's slot back, and a client
+runs one call at a time. A detached event source makes either client's
+`nextEvent` throw `ClientError.Read`, and a provider's own `ReadError` leaves
+`serve` unchanged. Horn, signal-only, keeps its one client, and `kt-values`'
+`Names` interface, whose parameters are named `timeout` and `calls`, compiles. A
+deadline compared with `>=`, a call that does not forget its outcome, a `cancel`
+that does not forget, `block`'s two errors swapped, an async call outside its
+lock, or a coroutine cancellation that does not cancel the call each turns it
+red.

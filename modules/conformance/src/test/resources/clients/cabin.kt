@@ -223,6 +223,8 @@ private fun async() = runBlocking {
             val handler = rt.handler()
             val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, recorder) }
             val client = CabinAsyncClient(rt)
+            CabinPublisher(rt).apply { temperature(Temperature.of(19)); commit() }
+            expectEqual("an async signal reads", Temperature.of(19), client.temperature().value)
             client.setLevel(Level.of(42))
             expectEqual("a query replies", Average.of(250), client.average(Window.of(10)))
             expectEqual("the command ran", listOf(Level.of(42)), synchronized(recorder) { recorder.levels.toList() })
