@@ -4,6 +4,7 @@
 // `Wakeable` extension of ridl-rt-kt, not a second face.
 package ridl.rt.coroutines
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import ridl.rt.port.Interest
 import ridl.rt.port.Wakeable
@@ -23,14 +24,34 @@ import ridl.rt.task.Waker
  * an outcome that lands between the read and the suspension still wakes it.
  * One waker serves the whole wait, so the port sees one task registering
  * again. Bound the wait with `withTimeout`: nothing here times out, as
- * nothing in a port does.
+ * nothing in a port does. It is [awaitPoll] with a poll that registers
+ * [interest] first.
  */
-public suspend fun <T : Any> await(port: Wakeable, interest: Interest, poll: () -> T?): T {
+public suspend fun <T : Any> await(port: Wakeable, interest: Interest, poll: () -> T?): T =
+    awaitPoll({}) { waker ->
+        port.wakeOn(interest, waker)
+        poll()
+    }
+
+/**
+ * Suspends until [poll] answers a value, and returns it: the suspending twin
+ * of `ridl.rt.task.blockOn`. [poll] is called once at once, then again each
+ * time the waker it was given is woken; one waker serves the whole wait, so a
+ * port sees one task registering again. [poll] registers its own interest
+ * before it reads, as the `Wakeable` contract requires. An exception [poll]
+ * throws ends the wait. When the coroutine is cancelled while waiting,
+ * [cancel] runs once and the cancellation is rethrown.
+ */
+public suspend fun <T : Any> awaitPoll(cancel: () -> Unit, poll: (Waker) -> T?): T {
     val woken = Channel<Unit>(Channel.CONFLATED)
     val waker = Waker { woken.trySend(Unit) }
     while (true) {
-        port.wakeOn(interest, waker)
-        poll()?.let { return it }
-        woken.receive()
+        poll(waker)?.let { return it }
+        try {
+            woken.receive()
+        } catch (e: CancellationException) {
+            cancel()
+            throw e
+        }
     }
 }

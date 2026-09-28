@@ -24,6 +24,11 @@ one each round. `port` is the handle the read goes through: a provider waiting
 on a handler of its own passes that handler, not the aggregate. A wait is
 bounded with `withTimeout`, as nothing in a port times out.
 
+`awaitPoll(cancel, poll)` is the general form: `poll` receives the waker and
+registers its own interest, and `cancel` runs once when the coroutine is
+cancelled while waiting. A generated `<Iface>AsyncClient` runs each call through
+it.
+
 ## Status
 
 Stage K5, keyed by driftsys/ridlc-gen-kotlin#5. `AwaitTest` pins the properties
