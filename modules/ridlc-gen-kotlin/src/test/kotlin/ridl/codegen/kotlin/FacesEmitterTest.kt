@@ -77,4 +77,19 @@ class FacesEmitterTest {
         assertEquals(listOf("kt/demo/Types.kt", "kt/demo/Codec.kt"), response.filesList.map { it.path })
         assertEquals(Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING, response.diagnosticsList.single().severity)
     }
+
+    @Test
+    fun `a member named like a generated client method skips its interface`() {
+        val event = Interaction.newBuilder().setName(Spellings.newBuilder().setDeclared("next_event").setCamel("NextEvent"))
+            .setEvent(
+                ridl.codegen.v1.ModelOuterClass.EventShape.newBuilder()
+                    .setPayload(Payload.newBuilder().setType(TypeRef.newBuilder().setReference("Level")).setFlatbuffersMaxSize(8)),
+            )
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(InteractionSlot.newBuilder().setOrdinal(1).setInteraction(event))
+        val model = Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo")).addInterfaces(iface).build()
+        val emitted = FacesEmitter(model, options).emit()
+        assertNull(emitted.text)
+        assertTrue("collides with the generated `nextEvent`" in emitted.warnings.single(), emitted.warnings.single())
+    }
 }

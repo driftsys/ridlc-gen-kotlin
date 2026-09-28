@@ -32,4 +32,12 @@ class ClientsTest {
             .getMethod("probe").invoke(null) as List<String>
         assertEquals(emptyList<String>(), failures)
     }
+
+    @Test
+    fun `a signal-only interface has one client and no async client or serve`() {
+        val faces = sources().getValue("veh/cabin/Faces.kt")
+        assertTrue("public class HornClient<" in faces, "Horn keeps its public client")
+        assertFalse("HornAsyncClient" in faces, "Horn has no async client")
+        assertFalse("HornPollClient" in faces, "Horn has no poll face")
+    }
 }

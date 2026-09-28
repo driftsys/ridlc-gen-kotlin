@@ -428,9 +428,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         }
 
         fun emit() {
+            val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty()
+            if (waits) {
+                for (m in members) {
+                    if (m.method == "nextEvent" || m.method == "timeout") {
+                        refuse("member `${m.declared}` collides with the generated `${m.method}` (driftsys/ridl#570)")
+                    }
+                }
+            }
             types += descriptor()
             members.forEachIndexed { row, m -> types += interaction(m, row) }
-            val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty()
             val hasCalls = commands.isNotEmpty() || queries.isNotEmpty()
             for (m in commands + queries) types += call(m)
             if (waits) {
