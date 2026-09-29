@@ -29,7 +29,7 @@ bound, a bare `string` or `bytes`, an optional array element or map part.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.2.2` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.4.0` (`modules/conformance/ridl-release`).
 
 ## Where the code departs from docs/design.md
 
@@ -173,11 +173,11 @@ The plugin emits no AIDL: §5's per-interface `I<Iface>.aidl` and
 `I<Iface>Listener.aidl`, the three shared parcelables, and §7's `aidl` tool
 check are not generated or run, and CI installs no Android SDK
 (driftsys/ridlc-gen-kotlin#4). The frame specification §11.2 says so since
-driftsys/ridl#516 (ridl `main` at ddd56fd, after the pinned `editor-v0.2.2`),
-which reverses the lane P decision D-P5: on Android a runtime binds the ports
-over its own binder contract, which may be one generic, versioned AIDL serving
-every catalog; ridl specifies no Binder layout and no transaction code; and the
-Kotlin backend generates no binding. Generated code binds only to the
-`ridl-rt-kt` ports. Stage K3b of §8 is withdrawn, and with it the choice of
-where the control plane's transaction codes go, which both of §5's placements
-left colliding with cabin's calls.
+driftsys/ridl#516 (ridl `main` at ddd56fd, released in `v0.3.0`), which reverses
+the lane P decision D-P5: on Android a runtime binds the ports over its own
+binder contract, which may be one generic, versioned AIDL serving every catalog;
+ridl specifies no Binder layout and no transaction code; and the Kotlin backend
+generates no binding. Generated code binds only to the `ridl-rt-kt` ports. Stage
+K3b of §8 is withdrawn, and with it the choice of where the control plane's
+transaction codes go, which both of §5's placements left colliding with cabin's
+calls.

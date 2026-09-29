@@ -20,13 +20,13 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.2.2`. The tests of stage K2a run: a request the pinned
-`ridl` wrote parses, a request with an unknown key parses, a request nested
-1,000 levels parses in process and through the installed script, a wrong schema
-is one error diagnostic and exit 0, an unknown option is an error diagnostic,
-unreadable input is exit 3, and the parity test compares `ridl build` with
-`--plugin kotlin=<script>` to the script invoked directly, for every package
-each build hands the plugin.
+Pinned to `editor-v0.4.0`, the tag that carries ridl 0.4.0's binaries. The tests
+of stage K2a run: a request the pinned `ridl` wrote parses, a request with an
+unknown key parses, a request nested 1,000 levels parses in process and through
+the installed script, a wrong schema is one error diagnostic and exit 0, an
+unknown option is an error diagnostic, unreadable input is exit 3, and the
+parity test compares `ridl build` with `--plugin kotlin=<script>` to the script
+invoked directly, for every package each build hands the plugin.
 
 The tests of stage K2b: for every corpus package, the generated `Types.kt`
 compiles with `kotlin-compile-testing` against `ridl-rt-kt` with warnings as
