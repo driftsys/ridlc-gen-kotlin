@@ -63,7 +63,10 @@ read, an event raised and received, a command sent, dispatched and acknowledged,
 a query sent, dispatched and replied — and `dispatch`'s settlement table is
 reached past the client: a failing `require`, a corrupt argument buffer, an
 argument outside its constraints, an unknown ordinal, another interface's
-number, a settlement the handler refuses, a buffer too short. `kt-values`'
+number, a settlement the handler refuses, a buffer too short, and, since ridl
+0.4.0, a claim larger than `MAX_BUFFER_SIZE`: settled `Corrupt` with the claim
+behind it served, or ending the pass when that settlement is refused, while a
+`ReadError.Short` from `nextClaim` stays `ProviderError.Claim`. `kt-values`'
 `Probe`, driven through its blocking and async clients with `serve` and
 `serveAsync`, adds a failing `ensure` returned as
 `ClientError.Call(ContractBroken)`, a float clause and a signal's own init, and

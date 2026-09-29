@@ -572,7 +572,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addKdoc(
                     "Serves interface `%L`'s calls on this thread: registers its members with [handler], then settles each " +
                         "claim as it arrives. Returns when [timeout] passes; with no timeout it returns only by throwing " +
-                        "`ProviderError`: `Serve` when [handler] refuses the members, `Claim` when a claim read fails, every " +
+                        "`ProviderError`: `Serve` when [handler] refuses the members, `Claim` when a claim read fails other than on an oversized claim, every " +
                         "claim settled before it staying settled. An exception [provider] throws is thrown unchanged.",
                     iface.declared.declared,
                 )
@@ -1174,10 +1174,19 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("if (until != null && until.hasPassedNow()) return settled")
                 .addStatement("buffer.clear()")
                 // Only the claim read is the handler's failure: a provider's own ReadError passes unchanged.
-                .addStatement(
-                    "val claim = try { handler.nextClaim(buffer) } catch (e: %T) { throw %T.Claim(e) } ?: return settled",
-                    READ_ERROR, PROVIDER_ERROR,
-                )
+                .beginControlFlow("val claim = try")
+                .addStatement("handler.nextClaim(buffer)")
+                .nextControlFlow("catch (e: %T.ShortClaim)", READ_ERROR)
+                // Arguments that do not fit MAX_BUFFER_SIZE are larger than any valid encoding of this
+                // interface's members, so the claim is settled Corrupt unread, whichever member it names. A
+                // refused settlement ends the pass: the runtime keeps that claim the next one (driftsys/ridl#569).
+                .addStatement("if (!settle(handler, e.claim, %T.failure(%T.Corrupt))) return settled", RESULT, TRANSPORT)
+                .addStatement("settled += 1")
+                .addStatement("continue")
+                .nextControlFlow("catch (e: %T)", READ_ERROR)
+                .addStatement("throw %T.Claim(e)", PROVIDER_ERROR)
+                .endControlFlow()
+                .addStatement("if (claim == null) return settled")
                 .addStatement("val args = buffer.duplicate().flip()")
                 .beginControlFlow("val accepted = if (claim.iface != number)")
                 .addStatement("settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)
@@ -1240,9 +1249,14 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "interface or ordinal `UnknownInteraction`, bytes that fail their structure `Transport.Corrupt`, a " +
                         "constraint `InvalidValue`, a failed `require` `PreconditionFailed`, a failed `ensure` " +
                         "`ContractBroken`. A command is settled before its provider method runs, because its " +
-                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A read " +
-                        "failure of the handler is thrown as `ProviderError.Claim`. Past [until], when it is set, it " +
-                        "takes no further claim, so a claim stream that never ends cannot hold it.",
+                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A claim " +
+                        "whose arguments do not fit [MAX_BUFFER_SIZE], reported as `ReadError.ShortClaim`, is larger " +
+                        "than any valid encoding of this interface's members: it is settled `Transport.Corrupt` by its " +
+                        "id without being read, whichever interface or member it names, and when the handler refuses " +
+                        "that settlement the pass ends at once, because the runtime keeps that claim the next one " +
+                        "(driftsys/ridl#569). Any other read failure of the handler is thrown as `ProviderError.Claim`. " +
+                        "Past [until], when it is set, it takes no further claim, so a claim stream that never ends " +
+                        "cannot hold it.",
                     iface.declared.declared,
                 )
                 .addModifiers(KModifier.INTERNAL)

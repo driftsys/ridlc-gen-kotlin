@@ -166,6 +166,12 @@ runs and a query after.
   `unsubscribe<Event>`; the Rust face has neither.
 - **A port error is thrown**, and `dispatch` counts a settlement the handler
   refused with a `SettleError` as not accepted, as the Rust one counts an `Err`.
+- **An oversized claim is settled `Transport.Corrupt`** (#10,
+  driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
+  claim by its id unread, counts an accepted settlement and goes on, and ends
+  the pass when the handler refuses it. The Kotlin `dispatch` has no per-pass
+  budget, which the Rust one has for its poll; `serve(timeout)` is what bounds a
+  pass.
 
 ### No AIDL
 
