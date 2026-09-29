@@ -185,9 +185,15 @@ runs and a query after.
 - **An oversized claim is settled `Transport.Corrupt`** (#10,
   driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
   claim by its id unread, counts an accepted settlement and goes on, and ends
-  the pass when the handler refuses it. The Kotlin `dispatch` has no per-pass
-  budget, which the Rust one has for its poll; `serve(timeout)` is what bounds a
-  pass.
+  the pass when the handler refuses it; that claim counts toward the pass's
+  budget, below.
+- **A pass takes at most 32 claims** (driftsys/ridl#568, ridl 0.4.0's
+  `SERVE_BUDGET`): `dispatch` takes a `budget` of claims taken, accepted or not,
+  and calls `onBudgetSpent` when it stops at it; `serve` and `serveAsync` pass
+  the descriptor's private `SERVE_BUDGET` and wake their own waker there, so
+  `serveAsync` under a claim stream that never ends yields its dispatcher
+  between passes, and is cancellable. `serve(timeout)` still takes no claim past
+  its timeout.
 
 ### No AIDL
 

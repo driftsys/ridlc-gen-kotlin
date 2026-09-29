@@ -245,6 +245,18 @@ fun probe(): List<String> {
         expectEqual("the one behind it served ($refusal)", Result.success(Unit), rt.ack(next))
     }
 
+    // driftsys/ridl#568: dispatch takes at most `budget` claims, and says
+    // when it stopped at that bound.
+    Loopback(Cabin.catalog).let { fresh ->
+        val queued = List(5) { fresh.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(2))) }
+        var spent = 0
+        expectEqual("a pass takes at most its budget", 3, Cabin.dispatch(fresh, provider, buffer, budget = 3) { spent += 1 })
+        expectEqual("and says it stopped at the bound", 1, spent)
+        expectEqual("the next pass takes the rest", 2, Cabin.dispatch(fresh, provider, buffer, budget = 3) { spent += 1 })
+        expectEqual("and finds none left before the bound", 1, spent)
+        expectEqual("every queued command is acknowledged", List(5) { Result.success(Unit) }, queued.map { fresh.ack(it) })
+    }
+
     // ReadError.Short from nextClaim, which an older runtime returned for an
     // oversized claim, is a read failure like any other.
     val older = object : ridl.rt.port.Handler by rt {

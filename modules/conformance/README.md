@@ -100,6 +100,12 @@ outcome, a `cancel` that does not forget, `block`'s two errors swapped, an async
 call outside its lock, or a coroutine cancellation that does not cancel the call
 each turns it red.
 
+Since ridl 0.4.0's serve bound (driftsys/ridl#568), `dispatch` takes at most its
+`budget` of claims and says when it stopped there, and `ClientsTest` runs
+`serveAsync` under a claim stream that never ends on one thread: it settles pass
+after pass, a coroutine beside it runs, and a cancellation stops it. Removing
+the self-wake at the bound, or the yield in `awaitPoll`, turns it red.
+
 The test of #9, in `FacesTest`'s `kt-values` probe: `Clash`, whose members are
 named like the face's fixed and derived operations — signals `next_event`,
 `timeout`, `get_timeout`, `commit`, `invalidate_level` and `touch_level` beside

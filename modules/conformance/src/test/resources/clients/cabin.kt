@@ -338,6 +338,39 @@ private fun bounds() {
         Cabin.serve(endless, Recorder(), 100.milliseconds)
         expect("serve returns at its timeout under a claim stream: ${start.elapsedNow()}", start.elapsedNow() < 1.seconds)
     }
+    // driftsys/ridl#568: under a claim stream that never ends, serveAsync
+    // settles a bounded number of claims per pass and yields between passes,
+    // so a coroutine beside it on one thread runs, and a cancellation stops it.
+    // Run on a thread of its own, so a serve that never yields fails the join
+    // rather than hanging the probe.
+    Loopback(Cabin.catalog).let { rt ->
+        val settled = java.util.concurrent.atomic.AtomicLong()
+        var id = 0L
+        val stream = object : Handler by rt, Wakeable by rt {
+            override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = Unit
+            override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim = ridl.rt.port.Claim(
+                ridl.rt.port.ClaimId(++id), ridl.rt.contract.InterfaceNo(99u), Ordinal(1u),
+                ridl.rt.sample.Envelope(ridl.rt.sample.Timestamp(0), 0u), null, 0,
+            )
+            override fun settle(claim: ridl.rt.port.ClaimId, outcome: Result<ByteBuffer>) {
+                settled.incrementAndGet()
+            }
+        }
+        val ran = java.util.concurrent.atomic.AtomicBoolean(false)
+        val runner = thread(isDaemon = true) {
+            runBlocking {
+                val serving = launch { Cabin.serveAsync(stream, Recorder()) }
+                launch { ran.set(true) }.join()
+                // A pass takes 32 claims; more means serveAsync woke itself for another pass.
+                while (settled.get() <= 32) kotlinx.coroutines.yield()
+                serving.cancelAndJoin()
+            }
+        }
+        runner.join(5_000)
+        expect("serveAsync under an endless claim stream yields its thread and stops when cancelled", !runner.isAlive)
+        expect("a coroutine beside it runs", ran.get())
+        expect("it woke itself for pass after pass: ${settled.get()} claims settled", settled.get() > 32)
+    }
     runBlocking {
         withTimeout(10_000) {
             val port = Counting(Loopback(Cabin.catalog))

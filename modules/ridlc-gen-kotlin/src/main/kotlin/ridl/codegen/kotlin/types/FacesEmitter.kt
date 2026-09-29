@@ -545,6 +545,14 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             if (events.isNotEmpty()) builder.addType(eventType()).addFunction(takeEvent())
             if (commands.isNotEmpty() || queries.isNotEmpty()) {
+                builder.addProperty(
+                    PropertySpec.builder("SERVE_BUDGET", INT, KModifier.PRIVATE, KModifier.CONST).initializer("32")
+                        .addKdoc(
+                            "The most claims one pass of `serve` and `serveAsync` takes (driftsys/ridl#568). A pass that " +
+                                "took this many wakes its own waker, so a coroutine serving a claim stream that never " +
+                                "ends lets its dispatcher run other coroutines between passes.",
+                        ).build(),
+                )
                 builder.addFunction(dispatch()).addFunction(claimServed()).addFunction(servePass()).addFunction(serve())
                     .addFunction(serveAsync())
             }
@@ -559,7 +567,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             )
             .build()
 
-        /** One pass of `serve`: registers for the next claim, then settles every claim waiting. */
+        /** One pass of `serve`: registers for the next claim, then settles the claims waiting, at most [SERVE_BUDGET]. */
         private fun servePass(): FunSpec {
             val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
             return FunSpec.builder("servePass").addModifiers(KModifier.PRIVATE).addTypeVariable(h)
@@ -568,7 +576,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addParameter("waker", WAKER)
                 .returns(NOTHING.copy(nullable = true))
                 .addStatement("handler.wakeOn(%T.Claim(number), waker)", INTEREST)
-                .addStatement("dispatch(handler, provider, buffer, until)")
+                .addStatement("dispatch(handler, provider, buffer, until, SERVE_BUDGET) { waker.wake() }")
                 .addStatement("return null")
                 .build()
         }
@@ -1219,8 +1227,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("return 0")
                 .endControlFlow()
                 .addStatement("var settled = 0")
+                .addStatement("var left = budget")
                 .beginControlFlow("while (true)")
                 .addStatement("if (until != null && until.hasPassedNow()) return settled")
+                .beginControlFlow("if (left == 0)")
+                .addStatement("onBudgetSpent()")
+                .addStatement("return settled")
+                .endControlFlow()
                 .addStatement("buffer.clear()")
                 // Only the claim read is the handler's failure: a provider's own ReadError passes unchanged.
                 .beginControlFlow("val claim = try")
@@ -1230,12 +1243,14 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 // interface's members, so the claim is settled Corrupt unread, whichever member it names. A
                 // refused settlement ends the pass: the runtime keeps that claim the next one (driftsys/ridl#569).
                 .addStatement("if (!settle(handler, e.claim, %T.failure(%T.Corrupt))) return settled", RESULT, TRANSPORT)
+                .addStatement("left -= 1")
                 .addStatement("settled += 1")
                 .addStatement("continue")
                 .nextControlFlow("catch (e: %T)", READ_ERROR)
                 .addStatement("throw %T.Claim(e)", PROVIDER_ERROR)
                 .endControlFlow()
                 .addStatement("if (claim == null) return settled")
+                .addStatement("left -= 1")
                 .addStatement("val args = buffer.duplicate().flip()")
                 .beginControlFlow("val accepted = if (claim.iface != number)")
                 .addStatement("settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)
@@ -1305,12 +1320,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "that settlement the pass ends at once, because the runtime keeps that claim the next one " +
                         "(driftsys/ridl#569). Any other read failure of the handler is thrown as `ProviderError.Claim`. " +
                         "Past [until], when it is set, it takes no further claim, so a claim stream that never ends " +
-                        "cannot hold it.",
+                        "cannot hold it. It takes at most [budget] claims, whether or not their settlement is accepted, " +
+                        "except an oversized claim whose settlement is refused; when it stops at that bound, claims may " +
+                        "still be waiting, and it calls [onBudgetSpent] (driftsys/ridl#568).",
                     iface.declared.declared,
                 )
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("handler", HANDLER).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
                 .addParameter(ParameterSpec.builder("until", VALUE_TIME_MARK.copy(nullable = true)).defaultValue("null").build())
+                .addParameter(ParameterSpec.builder("budget", INT).defaultValue("Int.MAX_VALUE").build())
+                .addParameter(ParameterSpec.builder("onBudgetSpent", LambdaTypeName.get(returnType = UNIT)).defaultValue("{}").build())
                 .returns(INT).addCode(code.build()).build()
         }
     }
