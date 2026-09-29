@@ -265,6 +265,8 @@ class CorrespondenceTest {
         Row("ridl_rt::port::SubscribeError", SubscribeError::class, variants = listOf("Contract", "Detached")),
         Row("ridl_rt::port::ServeError", ServeError::class, variants = listOf("Contract", "NotOwner", "Detached")),
         Row("ridl_rt::port::SettleError", SettleError::class, variants = listOf("UnknownClaim", "TooLarge", "Detached")),
+        // task
+        Row("ridl_rt::task::WakeFlag", ridl.rt.task.WakeFlag::class, members = listOf("take")),
     )
 
     @TestFactory

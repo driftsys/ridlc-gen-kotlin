@@ -1,6 +1,6 @@
-// The waker and the blocking wait: the spelling of `core::task::Waker` and of
-// `ridl_rt::task` (story E11.17), which Rust puts behind the `std` feature and
-// the JVM always has.
+// The waker, the blocking wait and the flag waker: the spelling of
+// `core::task::Waker` and of `ridl_rt::task` (story E11.17, driftsys/ridl#568),
+// which Rust puts behind the `std` feature and the JVM always has.
 //
 // A Rust future is polled with a waker and answers `Pending` or `Ready`; its
 // Kotlin spelling is a function that takes the waker and answers `null` or the
@@ -32,6 +32,30 @@ public fun interface Waker {
  */
 public fun noopWaker(): Waker = object : Waker {
     override fun wake() {}
+}
+
+/**
+ * The read side of a [flagWaker]: whether its waker was woken, from any
+ * thread, since the flag was created or last taken.
+ * `ridl_rt::task::WakeFlag`.
+ */
+public class WakeFlag internal constructor(private val flag: AtomicBoolean) {
+    /** `true` if the waker was woken since the flag was created or last taken; clears the flag. */
+    public fun take(): Boolean = flag.getAndSet(false)
+}
+
+/**
+ * A waker whose wake sets a flag, and the flag: `ridl_rt::task::flag_waker`
+ * (driftsys/ridl#568). The flag starts clear; a wake from any thread sets it,
+ * and [WakeFlag.take] reads and clears it. Nothing is polled by the wake
+ * itself. It is for a frame loop that polls again in the same frame while
+ * the polled face asks for it, up to the loop's own limit of polls per frame,
+ * where a [noopWaker] would leave that work to the next frame. Each call is
+ * a new pair: create it once per loop.
+ */
+public fun flagWaker(): Pair<Waker, WakeFlag> {
+    val flag = AtomicBoolean(false)
+    return Waker { flag.set(true) } to WakeFlag(flag)
 }
 
 /**

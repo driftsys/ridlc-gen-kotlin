@@ -30,7 +30,9 @@ that carries them, and `CorrespondenceTest` rows them from `main`: the keyed
 E11.16, c0fa57c and c2543c2), and `ridl.rt.task`, the spelling of
 `ridl_rt::task` `block_on` and `noop_waker` (story E11.17, 3f2cfb3), with
 `Waker` standing for `core::task::Waker`. `TaskTest` is
-`crates/ridl-rt/tests/task.rs`, case for case.
+`crates/ridl-rt/tests/task.rs`, case for case. ridl 0.4.0 adds `flag_waker` and
+`WakeFlag` (driftsys/ridl#568), spelled `flagWaker`, which returns the waker and
+its `WakeFlag` as a `Pair`, and a `ShortClaim` read error (driftsys/ridl#569).
 
 driftsys/ridlc-gen-kotlin#6 adds the runtime helpers of story E11.19 (ridl
 `main` at 87de8c6): `Freshness.of`, `EventSeqTracker` with `Continuity` and
