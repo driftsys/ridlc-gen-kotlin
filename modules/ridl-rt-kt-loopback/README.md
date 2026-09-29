@@ -34,6 +34,17 @@ that observes it, and `CallerHandle` also carries `Clock`. Closing a handler
 returns the claims it held and had not settled to the waiting calls, in send
 order, and wakes the handlers that serve them (ADR-0021 decision 5).
 
+driftsys/ridlc-gen-kotlin#10 adds `ReadError.ShortClaim` of ridl 0.4.0
+(driftsys/ridl#569, ADR-0021 decision 5 amended 2026-09-28). A call whose
+arguments do not fit `nextClaim`'s buffer is offered rather than taken: its
+claim id is minted on the call's entry and kept for every later presentation,
+the claim is recorded as the handler's, and the call stays among the waiting
+calls. Another handler that serves the member may take it, and the claim moves
+to that handler. `settle` accepts the id unread and takes the call out of the
+waiting calls. A forgotten offered call stays presentable until its settlement,
+or the close of its handler, which withdraws it; the close of a handler that was
+only offered a call neither returns it nor wakes anyone.
+
 The call table is `ridl-rt-kt`'s `correlate.Table`, with `Loopback.SLOTS`
 (sixteen) slots and no byte budget, as story E11.18 moved the Rust loopback onto
 it (ridl `main` at eb41a7a). A send with every slot taken throws
@@ -73,8 +84,8 @@ the 15 that story E11.20 moved into the suite run from `ConformanceTest`.
 - **Buffers.** An input buffer is read from its position to its limit and left
   where it was, as a borrowed slice is; the bytes are copied, so the caller may
   reuse the buffer. An output buffer is written from its position, which is
-  advanced; on `ReadError.Short` nothing is written. `ridl-rt-kt`'s port
-  contract now states both.
+  advanced; on `ReadError.Short` or `ReadError.ShortClaim` nothing is written.
+  `ridl-rt-kt`'s port contract now states both.
 - **`Handler.settle`** takes a Kotlin `Result`; a failure that is not a
   `CallError` is refused with `IllegalArgumentException`.
 - **Wakers run outside the monitor.** As in Rust, a store operation returns the

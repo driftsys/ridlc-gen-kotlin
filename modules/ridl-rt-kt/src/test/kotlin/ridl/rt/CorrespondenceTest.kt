@@ -255,7 +255,7 @@ class CorrespondenceTest {
         ),
         Row("ridl_rt::port::Wakeable", Wakeable::class, members = listOf("wake_on")),
         Row("ridl_rt::port::Interest", Interest::class, variants = listOf("Outcome", "Slot", "Event", "Claim")),
-        Row("ridl_rt::port::ReadError", ReadError::class, variants = listOf("Short", "TooFewSamples", "Contract", "Detached")),
+        Row("ridl_rt::port::ReadError", ReadError::class, variants = listOf("Short", "ShortClaim", "TooFewSamples", "Contract", "Detached")),
         Row("ridl_rt::port::WriteError", WriteError::class, variants = listOf("TooLarge", "NotOwner", "Contract", "Detached")),
         Row(
             "ridl_rt::port::RaiseError", RaiseError::class,

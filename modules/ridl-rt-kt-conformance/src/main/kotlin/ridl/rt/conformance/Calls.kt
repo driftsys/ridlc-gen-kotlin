@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.assertThrows
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.error.Contract as ContractError
+import ridl.rt.error.Transport
 import ridl.rt.port.Attached
 import ridl.rt.port.Caller
 import ridl.rt.port.Claim
@@ -44,12 +45,15 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`a caller sequence number counts that caller calls`,
         ::`a settled outcome reports the contract error the provider settled`,
         ::`a claim is presented once and settled once`,
-        ::`a short buffer leaves the claim for the next call`,
+        ::`an oversized claim is reported with its id and is not consumed`,
+        ::`an unread claim is settled by its id`,
+        ::`the calls behind an oversized claim are presented once it is settled`,
         ::`forget releases a settled correlation`,
         ::`forget before the claim is presented withdraws or leaves the call`,
         ::`a send with every slot taken is busy for every caller`,
         ::`a reclaimed slots old correlation answers none`,
         ::`forget between the claim and the settlement leaves the settlement valid`,
+        ::`forget between the offer and the settlement leaves the settlement valid`,
         ::`a claim that was never presented cannot be settled`,
         ::`an injected settle failure is not spent on an unknown claim`,
         ::`a handler cannot settle another handlers claim`,
@@ -189,17 +193,83 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         }
     }
 
-    /** `ReadError.Short` does not consume the call. */
-    public fun `a short buffer leaves the claim for the next call`() {
+    /**
+     * A buffer shorter than the next call's arguments throws
+     * `ReadError.ShortClaim` with that call's id and the bytes it needs, and
+     * does not consume the call: a later `nextClaim` with at least `needed`
+     * bytes presents the same call under the same id, and its settlement
+     * reaches the caller (driftsys/ridl#569).
+     */
+    public fun `an oversized claim is reported with its id and is not consumed`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        rt.command(IFACE, ORD, bytes(1, 2, 3))
+        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3))
 
-        assertEquals(ReadError.Short(3), assertThrows<ReadError.Short> { rt.nextClaim(out(1)) })
+        val unread = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) }
+        assertEquals(3, unread.needed, "the bytes the arguments need")
+        assertEquals(
+            unread,
+            assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) },
+            "the call is not consumed, and is presented again under the same id",
+        )
 
         val buf = out(8)
-        rt.claim(buf)
+        val claim = rt.claim(buf)
+        assertEquals(unread.claim, claim.id, "the read presents the same claim")
         assertArrayEquals(array(1, 2, 3), buf.written())
+
+        rt.settle(claim.id, ok())
+        assertEquals(Result.success(Unit), rt.ack(correlation))
+    }
+
+    /**
+     * A claim presented through `ShortClaim` is settled by its id with its
+     * arguments never read; the caller sees the outcome, the call leaves the
+     * waiting calls, and a second settlement is unknown (driftsys/ridl#569).
+     */
+    public fun `an unread claim is settled by its id`() {
+        val rt = runtime()
+        rt.serve(IFACE, listOf(ORD))
+        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3))
+
+        val claim = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) }.claim
+        rt.settle(claim, Result.failure(Transport.Corrupt))
+        assertEquals(Result.failure<Unit>(Transport.Corrupt), rt.ack(correlation), "the caller sees the outcome")
+
+        assertNull(rt.nextClaim(out(8)), "the settled call is no longer waiting")
+        assertThrows<SettleError.UnknownClaim>("a claim already settled is unknown to a second settlement") {
+            rt.settle(claim, ok())
+        }
+    }
+
+    /**
+     * An oversized call holds back the calls sent after it until it is
+     * settled: each `nextClaim` with the short buffer reports the same claim,
+     * and the settlement of that claim by its id lets the next call be
+     * presented, under an id of its own (driftsys/ridl#569).
+     */
+    public fun `the calls behind an oversized claim are presented once it is settled`() {
+        val rt = runtime()
+        rt.serve(IFACE, listOf(ORD))
+        val oversized = rt.command(IFACE, ORD, bytes(1, 2, 3))
+        val behind = rt.command(IFACE, ORD, bytes(4))
+
+        val first = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(2)) }.claim
+        assertEquals(
+            ReadError.ShortClaim(first, 3),
+            assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(2)) },
+            "the oversized call stays the next one until it is settled",
+        )
+
+        rt.settle(first, Result.failure(Transport.Corrupt))
+        val buf = out(2)
+        val second = rt.claim(buf)
+        assertNotEquals(first, second.id, "a claim id names one call")
+        assertArrayEquals(array(4), buf.written())
+
+        rt.settle(second.id, ok())
+        assertEquals(Result.failure<Unit>(Transport.Corrupt), rt.ack(oversized))
+        assertEquals(Result.success(Unit), rt.ack(behind))
     }
 
     /** After `forget`, a settled outcome is no longer retrievable. */
@@ -317,6 +387,24 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
         rt.settle(claim.id, ok(7))
         assertNull(rt.reply(correlation, out(8)))
+    }
+
+    /**
+     * A `forget` between the offer of a claim through `ShortClaim` and its
+     * settlement does not revoke the settlement either: the offered claim is
+     * the provider's, and settling it by the id `ShortClaim` carried frees the
+     * slot (driftsys/ridl#569).
+     */
+    public fun `forget between the offer and the settlement leaves the settlement valid`() {
+        val rt = runtime()
+        rt.serve(IFACE, listOf(ORD))
+        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3))
+        val claim = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) }.claim
+        rt.forget(correlation)
+
+        rt.settle(claim, ok())
+        assertNull(rt.ack(correlation), "nothing is readable for a forgotten call")
+        assertEquals(factory.slots, sendsUntilBusy(rt), "the settlement freed the slot")
     }
 
     /**

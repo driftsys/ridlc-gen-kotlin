@@ -13,9 +13,12 @@ import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
 import ridl.rt.error.Transport
+import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
+import ridl.rt.port.ReadError
 import ridl.rt.port.SendError
+import ridl.rt.port.SettleError
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Timestamp
 import ridl.rt.task.Waker
@@ -306,6 +309,125 @@ class WakeableTest {
         second.settle(then.id, ok())
         assertEquals(Result.success(Unit), caller.ack(c))
         assertEquals(Result.success(Unit), caller.ack(later))
+    }
+
+    /** The number of commands [caller] accepts before it throws `SendError.Busy`, counting at most one more than `Loopback.SLOTS`. */
+    private fun sendsUntilBusy(caller: ridl.rt.port.Caller): Int {
+        for (sent in 0..Loopback.SLOTS) {
+            try {
+                caller.command(iface, ord, bytes(9))
+            } catch (_: SendError.Busy) {
+                return sent
+            }
+        }
+        return Loopback.SLOTS + 1
+    }
+
+    /** Offers [handler] the next waiting call through a buffer too short for it, and returns the id `ShortClaim` carried. */
+    private fun offer(handler: ridl.rt.port.Handler): ClaimId =
+        assertThrows<ReadError.ShortClaim>("a buffer shorter than the arguments reports ShortClaim") {
+            handler.nextClaim(ByteBuffer.allocate(1))
+        }.claim
+
+    /**
+     * driftsys/ridl#569: a call offered through `ShortClaim` whose caller then
+     * forgets it stays among the waiting calls, so the provider's retry with a
+     * larger buffer presents it under the same id, and its settlement frees
+     * the slot as for a forgotten taken claim.
+     */
+    @Test
+    fun `a forgotten offered call is presented again under the same id and its settlement frees the slot`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val handler = rt.handler()
+        handler.serve(iface, listOf(ord))
+        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        val claim = offer(handler)
+        caller.forget(c)
+
+        val buf = out()
+        val retry = checkNotNull(handler.nextClaim(buf)) { "a forgotten offered call stays presentable" }
+        assertEquals(claim, retry.id, "under the id ShortClaim carried")
+        assertArrayEquals(byteArrayOf(1, 2, 3), buf.written())
+        handler.settle(retry.id, ok())
+        assertEquals(Loopback.SLOTS, sendsUntilBusy(caller), "the settlement freed the slot")
+    }
+
+    /**
+     * driftsys/ridl#569: a closed handler's offered claim never left the
+     * waiting calls, so it is not re-inserted and no serving handler is woken
+     * for it; another handler that serves the member takes it exactly once,
+     * under the same id, and its settlement reaches the caller.
+     */
+    @Test
+    fun `a dropped handlers offered claim is taken once by another handler under the same id`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val first = rt.handler()
+        val second = rt.handler()
+        first.serve(iface, listOf(ord))
+        second.serve(iface, listOf(ord))
+        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        val claim = offer(first)
+        // Registered while the offered call is already waiting, so the
+        // registration is woken at once; the count is read before the close
+        // and compared after.
+        val count = Count()
+        second.wakeOn(Interest.Claim(iface), count)
+        val before = count.wakes
+
+        first.close()
+        assertEquals(before, count.wakes, "the close wakes no handler for an offered claim: the call never left the waiting calls")
+        val taken = checkNotNull(second.nextClaim(out())) { "the offered call is still waiting" }
+        assertEquals(claim, taken.id, "the id stays on the call")
+        assertNull(second.nextClaim(out()), "the call is presented once, not re-inserted")
+        second.settle(taken.id, ok())
+        assertEquals(Result.success(Unit), caller.ack(c), "the settlement reaches the caller")
+    }
+
+    /**
+     * driftsys/ridl#569: an offered call whose caller forgot it is withdrawn
+     * when its handler is closed, as a forgotten taken claim is: no handler is
+     * presented it, and its slot is reclaimed.
+     */
+    @Test
+    fun `a forgotten offered call is withdrawn when its handler drops`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val first = rt.handler()
+        val second = rt.handler()
+        first.serve(iface, listOf(ord))
+        second.serve(iface, listOf(ord))
+        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        offer(first)
+        caller.forget(c)
+
+        first.close()
+        assertNull(second.nextClaim(out()), "a forgotten offered call is withdrawn at the close")
+        assertEquals(Loopback.SLOTS, sendsUntilBusy(caller), "and its slot is reclaimed")
+    }
+
+    /**
+     * driftsys/ridl#569: another handler that serves the member may take a
+     * call offered to the first, under the same id; the claim moves with the
+     * take, so the first handler's settlement of that id is unknown.
+     */
+    @Test
+    fun `an offered call taken by another handler moves the claim to it`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val first = rt.handler()
+        val second = rt.handler()
+        first.serve(iface, listOf(ord))
+        second.serve(iface, listOf(ord))
+        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        val claim = offer(first)
+
+        val taken = checkNotNull(second.nextClaim(out())) { "an offered call can be taken by another serving handler" }
+        assertEquals(claim, taken.id)
+        second.settle(taken.id, ok())
+        assertThrows<SettleError.UnknownClaim>("the claim moved to the taker") { first.settle(claim, ok()) }
+        assertEquals(Result.success(Unit), caller.ack(c))
     }
 
     @Test
