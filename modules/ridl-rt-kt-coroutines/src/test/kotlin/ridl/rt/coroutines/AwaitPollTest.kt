@@ -49,4 +49,29 @@ class AwaitPollTest {
         assertThrows<IllegalStateException> { runBlocking { awaitPoll<Int>({ cancels.incrementAndGet() }) { error("boom") } } }
         assertEquals(0, cancels.get())
     }
+
+    /**
+     * driftsys/ridl#568: a poll that wakes itself on every call, as a
+     * bounded serve pass does, still lets the dispatcher run another
+     * coroutine and is cancellable, on a single thread. Run on a thread of its
+     * own, so a poll that never yields fails the join rather than hanging.
+     */
+    @Test
+    fun `a poll that wakes itself yields its thread and can be cancelled`() {
+        val ran = AtomicInteger()
+        val polls = AtomicInteger()
+        val runner = Thread {
+            runBlocking {
+                val waiting = async(start = CoroutineStart.UNDISPATCHED) {
+                    awaitPoll<Int>({}) { waker -> polls.incrementAndGet(); waker.wake(); null }
+                }
+                async { ran.incrementAndGet() }.await()
+                waiting.cancelAndJoin()
+            }
+        }.apply { isDaemon = true; start() }
+        runner.join(5_000)
+        assertTrue(!runner.isAlive, "the self-waking poll held the thread")
+        assertEquals(1, ran.get(), "the other coroutine ran")
+        assertTrue(polls.get() >= 1)
+    }
 }

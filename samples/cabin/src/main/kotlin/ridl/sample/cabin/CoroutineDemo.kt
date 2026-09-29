@@ -19,6 +19,8 @@ import veh.cabin.Health
 import veh.cabin.Level
 import veh.cabin.Warning
 import veh.cabin.Window
+import veh.cabin.nextEvent
+import veh.cabin.subscribeWarning
 
 /** The three round trips a consumer waits on, one line each. */
 fun coroutineDemo(): List<String> = runBlocking {

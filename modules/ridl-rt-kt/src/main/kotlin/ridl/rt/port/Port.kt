@@ -161,7 +161,13 @@ public interface Handler : Attached {
 
     /**
      * Copies the next call's arguments into [out] from its position. `null`
-     * when no call is waiting. [ReadError.Short] does not consume the call.
+     * when no call is waiting. When [out] has fewer bytes remaining than the
+     * next call's arguments, throws [ReadError.ShortClaim] with that call's
+     * [ClaimId] and the bytes it needs, and does not consume the call: a
+     * later `nextClaim` with at least `needed` bytes presents the same call
+     * under the same id. The id is assigned when the call is first presented,
+     * through `ShortClaim` or through a returned [Claim], and is unique in its
+     * channel. `nextClaim` never throws [ReadError.Short] (driftsys/ridl#569).
      */
     public fun nextClaim(out: ByteBuffer): Claim?
 
@@ -169,6 +175,12 @@ public interface Handler : Attached {
      * Settles a claim with the reply bytes (empty for a command) or, as a
      * failure carrying a [ridl.rt.error.CallError], the outcome the caller
      * sees. A settled outcome is a value, not a throw.
+     *
+     * A claim presented through [ReadError.ShortClaim] is settled the same
+     * way, with any outcome, although its arguments were never read: `settle`
+     * does not distinguish a read claim from an unread one. The settlement
+     * takes the call out of the waiting calls, so a later [nextClaim] does
+     * not present it.
      */
     public fun settle(claim: ClaimId, outcome: Result<ByteBuffer>)
 }
@@ -312,6 +324,20 @@ public sealed interface Interest {
 public sealed class ReadError(message: String) : RidlError(message) {
     /** The output buffer is too short. Nothing was consumed. */
     public data class Short(public val needed: Int) : ReadError("the read needs $needed bytes")
+
+    /**
+     * The output buffer is too short for the next claim's arguments
+     * ([Handler.nextClaim] alone). Nothing was consumed: the claim stays the
+     * next one, and a later `nextClaim` with at least [needed] bytes presents
+     * it under the same [claim]. The id is reported so that a provider can
+     * settle the claim without reading its arguments; the generated `serve`
+     * settles it `CallError.Transport(Transport.Corrupt)`, because arguments
+     * that do not fit the serving interface's `MAX_BUFFER_SIZE` are not a
+     * well-formed encoding of any of its members (ADR-0021 decision 5,
+     * amended 2026-09-28).
+     */
+    public data class ShortClaim(public val claim: ClaimId, public val needed: Int) :
+        ReadError("claim ${claim.value} needs $needed bytes")
 
     /** `samples` has fewer entries than `ords`. Nothing was consumed. */
     public data class TooFewSamples(public val needed: Int) : ReadError("the read needs $needed samples")

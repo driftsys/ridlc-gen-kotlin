@@ -1,6 +1,7 @@
 package ridl.rt.task
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -16,8 +17,9 @@ import kotlin.time.TimeSource
 import kotlin.time.toJavaDuration
 
 /**
- * `blockOn` and `noopWaker`, the Kotlin spelling of `ridl_rt::task` (story
- * E11.17): the cases of `crates/ridl-rt/tests/task.rs`. A wait parks the
+ * `blockOn`, `noopWaker` and `flagWaker`, the Kotlin spelling of
+ * `ridl_rt::task` (story E11.17, driftsys/ridl#568): the cases of
+ * `crates/ridl-rt/tests/task.rs`. A wait parks the
  * thread between polls, so a lost wake parks it forever; every wait with no
  * deadline runs under a timeout that turns that into a failure.
  */
@@ -176,6 +178,49 @@ class TaskTest {
             waker.join()
         }
         assertTrue(polls.get() <= 3, "only the first poll and the deadline's: ${polls.get()}")
+    }
+
+    @Test
+    fun `a flag waker sets its flag on each wake and take clears it`() {
+        val (waker, woken) = flagWaker()
+        assertFalse(woken.take(), "the flag starts clear")
+
+        waker.wake()
+        assertTrue(woken.take(), "a wake sets the flag")
+        assertFalse(woken.take(), "take clears the flag")
+
+        waker.wake()
+        waker.wake()
+        assertTrue(woken.take(), "two wakes set it once")
+        assertFalse(woken.take())
+
+        Thread { waker.wake() }.apply { start() }.join()
+        assertTrue(woken.take(), "a wake from another thread sets the flag")
+        assertFalse(woken.take())
+
+        val (other, otherWoken) = flagWaker()
+        other.wake()
+        assertFalse(woken.take(), "each call gives its own flag")
+        assertTrue(otherWoken.take())
+    }
+
+    @Test
+    fun `a frame loop over a flag waker polls again while the future wakes itself`() {
+        // A poll that wakes itself on each of its first three calls and answers
+        // on the fourth. Under a flag waker one frame polls it four times.
+        val polls = AtomicInteger()
+        val poll: (Waker) -> Unit? = { w -> if (polls.getAndIncrement() < 3) { w.wake(); null } else Unit }
+        val (waker, woken) = flagWaker()
+        var ready = false
+        for (i in 0 until 8) {
+            if (poll(waker) != null) {
+                ready = true
+                break
+            }
+            if (!woken.take()) break
+        }
+        assertTrue(ready, "the frame polled until the future stopped waking itself")
+        assertEquals(4, polls.get())
     }
 
     // JVM only: Rust drops a waker with its task, while a port may keep the

@@ -173,11 +173,11 @@ just test   # writes modules/conformance/build/spike/<package>-codec-corpus.txt
 
 `ridl build` takes a package directory, so run it from inside the package. In
 `gen.py`'s `Cargo.toml`, the `ridl-rt` version must match the release's (`0.2`
-for `editor-v0.2.2`, `0.3` for `v0.3.0`), or the path patch does not apply.
-Before driftsys/ridl#581, the Rust face `kt-values` emits does not compile: its
-`Names` interface has a parameter named `claim`, which the Rust `dispatch`
-shadows. The codec does not depend on the interfaces, so delete `Names` from a
-copy of `probe.ridl` and emit from that copy.
+for `editor-v0.2.2`, `0.3` for `v0.3.0`, `0.4` for `editor-v0.4.0`), or the path
+patch does not apply. Before driftsys/ridl#581, the Rust face `kt-values` emits
+does not compile: its `Names` interface has a parameter named `claim`, which the
+Rust `dispatch` shadows. The codec does not depend on the interfaces, so delete
+`Names` from a copy of `probe.ridl` and emit from that copy.
 
 `gen.py`:
 

@@ -27,7 +27,11 @@ bounded with `withTimeout`, as nothing in a port times out.
 `awaitPoll(cancel, poll)` is the general form: `poll` receives the waker and
 registers its own interest, and `cancel` runs once when the coroutine is
 cancelled while waiting. A generated `<Iface>AsyncClient` runs each call through
-it.
+it. A wake that lands during a poll makes the next round yield once before it
+polls again: a poll that wakes itself, as the generated `serveAsync` does after
+a pass of 32 claims (driftsys/ridl#568), then never holds its dispatcher, and
+the yield is where a cancellation is seen. `AwaitPollTest` pins it on one
+thread.
 
 ## Status
 

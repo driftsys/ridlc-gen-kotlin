@@ -117,8 +117,14 @@ internal class Store {
         fun serves(key: Key): Boolean = served.isEmpty() || key in served
     }
 
-    /** A presented claim: the call it presented, and the handler holding it. */
-    private class ClaimOwner(val call: Correlation, val handler: Int)
+    /**
+     * A presented claim: the call it presented, the handler holding it, and
+     * whether the handler took it. A taken call has left the waiting calls;
+     * an offered one is still among them, because `nextClaim` offered it
+     * through `ReadError.ShortClaim` and has not copied its arguments
+     * (driftsys/ridl#569).
+     */
+    private class ClaimOwner(val call: Correlation, val handler: Int, val taken: Boolean)
 
     /**
      * What the loopback keeps for one sent call, by its slot in the call
@@ -153,6 +159,15 @@ internal class Store {
          * handler's claim is withdrawn rather than returned by this one.
          */
         var forgotten: Boolean = false
+
+        /**
+         * The claim id minted when the call was first presented, through
+         * `ReadError.ShortClaim` or through a returned claim, and reused by
+         * every later presentation of the same call, so a provider that
+         * received `ShortClaim` reads or settles the call under the id it was
+         * given. `null` until then.
+         */
+        var claim: Long? = null
     }
 
     private var now = Timestamp(0)
@@ -179,7 +194,9 @@ internal class Store {
     /**
      * The calls presented and not yet settled, by a claim identity minted by
      * [nextClaim]: a `ClaimId` is never a call that was never presented,
-     * never one already settled, and never one another handler holds.
+     * never one already settled, and never one another handler holds. A
+     * call offered through `ReadError.ShortClaim` is here and still among
+     * the waiting calls; a taken call is here alone.
      */
     private val claims = TreeMap<Long, ClaimOwner>()
     private var nextClaimId = 0L
@@ -428,6 +445,12 @@ internal class Store {
      *   so without this its slot would be lost for the life of the runtime.
      *   This is this runtime's behaviour, not a port contract: a transport
      *   that has already sent a request cannot recall it.
+     * - **Waiting, offered to a handler through `ReadError.ShortClaim`**: it
+     *   is a handler's claim although it is still waiting, so it is marked
+     *   forgotten as a claimed call is, and it stays among the waiting calls,
+     *   so the provider's retry with a larger buffer still presents it under
+     *   the same id. Its settlement by the handler that holds it, or that
+     *   handler's close, reclaims the slot (driftsys/ridl#569).
      *
      * Either way the correlation answers `null` from `ack` and `reply`
      * afterwards. A waiter on the outcome of a call in flight is woken, and a
@@ -435,7 +458,7 @@ internal class Store {
      * no handler's `Claim` waiter, because it adds no call to claim.
      */
     fun forget(c: Correlation, wake: MutableList<Waker>) {
-        if (pending.remove(c)) return withdraw(c, wake)
+        if (!offered(c) && pending.remove(c)) return withdraw(c, wake)
         when (val forgotten = table.forget(c)) {
             Forgotten.Reclaimed -> reclaimed(c, wake)
             is Forgotten.Marked -> {
@@ -507,11 +530,15 @@ internal class Store {
     fun openHandler(): Int = nextHandlerId++.also { handlers[it] = HandlerState() }
 
     /**
-     * Removes a closed handler. Every claim it held and had not settled
-     * returns to the waiting calls, in its place by send order, so another
-     * handler that serves the member can take it, and every handler that
-     * serves the member has its `Claim` waker returned. A claim whose call
-     * the caller forgot is withdrawn instead, as [forget] withdraws a waiting
+     * Removes a closed handler. Every claim it had taken and not settled
+     * returns to the waiting calls, in its place by send order and under the
+     * id it was first presented with, so another handler that serves the
+     * member can take it, and every handler that serves the member has its
+     * `Claim` waker returned. A claim it had only been offered, through
+     * `ReadError.ShortClaim`, never left the waiting calls, so it is neither
+     * re-inserted nor woken for; its id stays on the entry for the next
+     * presentation (driftsys/ridl#569). A claim whose call the caller forgot
+     * is withdrawn instead, taken or offered, as [forget] withdraws a waiting
      * call: its slot is reclaimed now, no handler is presented it again, and
      * no `Claim` waker is woken for it. The handler's own state goes first, so
      * the return never wakes its own waker. The loopback enforces no deadline
@@ -524,9 +551,13 @@ internal class Store {
             val owner = claims.remove(claim)!!
             val entry = entry(owner.call)
             if (entry.forgotten) {
+                // A forgotten offered call is still among the waiting calls;
+                // `withdraw` expects a call that is not.
+                if (!owner.taken) pending.remove(owner.call)
                 withdraw(owner.call, wake)
                 continue
             }
+            if (!owner.taken) continue
             val at = pending.indexOfFirst { entry(it).sent > entry.sent }.let { if (it < 0) pending.size else it }
             pending.add(at, owner.call)
             wakeHandlersServing(entry.key, wake)
@@ -577,15 +608,28 @@ internal class Store {
     /**
      * Presents the next waiting call this handler serves: every waiting call
      * when it has served nothing.
+     *
+     * A call whose arguments do not fit [out] is offered rather than taken
+     * (driftsys/ridl#569): the id is minted, the claim is recorded as this
+     * handler's, the call stays among the waiting calls, and `nextClaim`
+     * throws `ReadError.ShortClaim`. A later `nextClaim`, by this handler or
+     * by another that serves the member, presents the same call under the
+     * same id, because the id lives on the call's entry; a take by another
+     * handler moves the claim to that handler. [settle] accepts the id
+     * whether or not the call was read.
      */
     fun nextClaim(handler: Int, out: ByteBuffer): Claim? {
         val state = handlers[handler] ?: return null
         val c = pending.firstOrNull { state.serves(entry(it).key) } ?: return null
         val entry = entry(c)
-        copyInto(entry.args, out)
-        val claimId = nextClaimId++
+        val claimId = entry.claim ?: nextClaimId++.also { entry.claim = it }
+        if (out.remaining() < entry.args.size) {
+            claims[claimId] = ClaimOwner(c, handler, taken = false)
+            throw ReadError.ShortClaim(ClaimId(claimId), entry.args.size)
+        }
+        out.put(entry.args)
         pending.remove(c)
-        claims[claimId] = ClaimOwner(c, handler)
+        claims[claimId] = ClaimOwner(c, handler, taken = true)
         // No response bound: a bound is a member's timing, and the loopback
         // has no member table to read one from.
         return Claim(ClaimId(claimId), entry.key.iface, entry.key.ord, entry.envelope, null, entry.args.size)
@@ -607,6 +651,9 @@ internal class Store {
             throw SettleError.TooLarge(0)
         }
         claims.remove(claim.value)
+        // An offered call is still among the waiting calls: its settlement
+        // takes it out, so no handler is presented it afterwards.
+        if (!owner.taken) pending.remove(owner.call)
         when (val settled = table.settle(owner.call, outcome.map { })) {
             is Settled.Recorded -> {
                 outcome.onSuccess { entry(owner.call).reply = it }
@@ -622,6 +669,13 @@ internal class Store {
     fun failNextSettle() {
         failNextSettle = true
     }
+
+    /**
+     * Whether a handler holds a claim on [c] that it has not taken: the call
+     * was offered through `ReadError.ShortClaim`.
+     */
+    private fun offered(c: Correlation): Boolean =
+        calls[Table.slot(c)]?.claim?.let { claims[it] }?.let { !it.taken } ?: false
 
     private companion object {
         /**

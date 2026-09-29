@@ -42,6 +42,18 @@ call and woken once by the settlement`.
 `SuiteTest` is the Rust crate's own test that every test function is run: a
 public test method its contract's `tests` list does not name turns it red.
 
+driftsys/ridlc-gen-kotlin#10, over ridl 0.4.0 (driftsys/ridl#569):
+`ReadError.ShortClaim` replaces
+`a short buffer leaves the claim for the next call` with the four cases of
+`calls.rs` — `an oversized claim is reported with its id and is not
+consumed`,
+`an unread claim is settled by its id`,
+`the calls behind an
+oversized claim are presented once it is settled` and
+`forget between the offer
+and the settlement leaves the settlement valid` —
+which makes 54 tests.
+
 The case of a forget before any claim accepts either a call still presented and
 settled or a withdrawn one, and checks that the runtime then accepts exactly
 `slots` further sends, so the forgotten call gave its slot back.

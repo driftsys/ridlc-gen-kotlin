@@ -37,6 +37,10 @@ import veh.cabin.Warning
 import veh.cabin.WarningCodec
 import veh.cabin.Window
 import veh.cabin.WindowCodec
+import veh.cabin.commit
+import veh.cabin.invalidateTemperature
+import veh.cabin.nextEvent
+import veh.cabin.subscribeWarning
 import java.nio.ByteBuffer
 
 private val failures = mutableListOf<String>()
@@ -200,6 +204,70 @@ fun probe(): List<String> {
     expectEqual("a short buffer settles nothing", 0, Cabin.dispatch(rt, provider, ByteBuffer.allocate(1)))
     expectEqual("and the claim waits for the next dispatch", 1, Cabin.dispatch(rt, provider, buffer))
     expectEqual("which acknowledges it", Result.success(Unit), client.setLevelAck(waiting))
+
+    // driftsys/ridl#569: a claim whose arguments exceed MAX_BUFFER_SIZE comes
+    // back as ReadError.ShortClaim. dispatch settles it Corrupt unread, counts
+    // it, and serves the claim behind it; only a raw Caller can send one.
+    val oversized = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1))
+    val behind = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(3)))
+    val served = provider.levels.size
+    expectEqual("an oversized claim and the one behind it are both settled", 2, Cabin.dispatch(rt, provider, buffer))
+    expectEqual("the oversized claim is settled Corrupt", Result.failure<Unit>(Transport.Corrupt), rt.ack(oversized))
+    expectEqual("the claim behind it is served", Result.success(Unit), rt.ack(behind))
+    expectEqual("the provider is called for the valid claim only", listOf(Level.of(3)), provider.levels.drop(served))
+
+    // A refused settlement of an oversized claim, with any SettleError, ends
+    // the pass at once: the runtime keeps that claim the next one.
+    for (refusal in listOf(ridl.rt.port.SettleError.UnknownClaim, ridl.rt.port.SettleError.TooLarge(0))) {
+        val big = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1))
+        val next = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(4)))
+        var reads = 0
+        var settles = 0
+        val refusing = object : ridl.rt.port.Handler by rt {
+            override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = try {
+                rt.nextClaim(out)
+            } finally {
+                reads += 1
+            }
+
+            override fun settle(claim: ridl.rt.port.ClaimId, outcome: Result<ByteBuffer>) {
+                settles += 1
+                throw refusal
+            }
+        }
+        expectEqual("a refused oversized settlement is not counted ($refusal)", 0, Cabin.dispatch(refusing, provider, buffer))
+        expectEqual("its settlement is attempted once ($refusal)", 1, settles)
+        expectEqual("it is presented once, and nothing past it ($refusal)", 1, reads)
+        expectEqual("it stays unsettled ($refusal)", null, rt.ack(big))
+        expectEqual("and the claim behind it waits ($refusal)", null, rt.ack(next))
+        expectEqual("a later pass settles both ($refusal)", 2, Cabin.dispatch(rt, provider, buffer))
+        expectEqual("the oversized one Corrupt ($refusal)", Result.failure<Unit>(Transport.Corrupt), rt.ack(big))
+        expectEqual("the one behind it served ($refusal)", Result.success(Unit), rt.ack(next))
+    }
+
+    // driftsys/ridl#568: dispatch takes at most `budget` claims, and says
+    // when it stopped at that bound.
+    Loopback(Cabin.catalog).let { fresh ->
+        val queued = List(5) { fresh.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(2))) }
+        var spent = 0
+        expectEqual("a pass takes at most its budget", 3, Cabin.dispatch(fresh, provider, buffer, budget = 3) { spent += 1 })
+        expectEqual("and says it stopped at the bound", 1, spent)
+        expectEqual("the next pass takes the rest", 2, Cabin.dispatch(fresh, provider, buffer, budget = 3) { spent += 1 })
+        expectEqual("and finds none left before the bound", 1, spent)
+        expectEqual("every queued command is acknowledged", List(5) { Result.success(Unit) }, queued.map { fresh.ack(it) })
+    }
+
+    // ReadError.Short from nextClaim, which an older runtime returned for an
+    // oversized claim, is a read failure like any other.
+    val older = object : ridl.rt.port.Handler by rt {
+        override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Short(Cabin.MAX_BUFFER_SIZE + 1)
+    }
+    try {
+        Cabin.dispatch(older, provider, buffer)
+        failures += "a Short from nextClaim reaches dispatch's caller"
+    } catch (e: ridl.rt.error.ProviderError.Claim) {
+        expectEqual("a Short from nextClaim is ProviderError.Claim", ReadError.Short(Cabin.MAX_BUFFER_SIZE + 1), e.error)
+    }
 
     // Horn: a second interface on the same runtime, a signal only.
     HornPublisher(rt).let { it.active(Health.WARN); it.commit() }

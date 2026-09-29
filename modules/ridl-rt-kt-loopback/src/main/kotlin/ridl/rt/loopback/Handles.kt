@@ -276,9 +276,10 @@ public class CallerHandle internal constructor(
  * throws [SettleError.UnknownClaim].
  *
  * [close] does what the Rust handle's drop does: it removes the handler, its
- * served set and its waker from the store, and returns every claim it held
- * and had not settled to the waiting calls, where another handler that serves
- * the member takes it (ADR-0021 decision 5).
+ * served set and its waker from the store, and returns every claim it had
+ * taken and not settled to the waiting calls, where another handler that
+ * serves the member takes it (ADR-0021 decision 5). A claim it was only
+ * offered, through `ReadError.ShortClaim`, never left the waiting calls.
  */
 public class HandlerHandle internal constructor(
     private val store: Store,

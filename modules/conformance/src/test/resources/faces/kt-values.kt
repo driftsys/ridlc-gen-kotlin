@@ -14,6 +14,11 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kt.values.Clash
+import kt.values.ClashAsyncClient
+import kt.values.ClashClient
+import kt.values.ClashProvider
+import kt.values.ClashPublisher
 import kt.values.Even
 import kt.values.EvenCodec
 import kt.values.Mode
@@ -24,6 +29,16 @@ import kt.values.ProbeClient
 import kt.values.ProbeOffset
 import kt.values.ProbeProvider
 import kt.values.ProbePublisher
+import kt.values.commit
+import kt.values.invalidateLevel
+import kt.values.nextEvent
+import kt.values.subscribeMoved
+import kt.values.timeout
+import kt.values.touchLevel
+// The fixed and derived operations a Clash member shadows, reached by alias (#9).
+import kt.values.nextEvent as fixedNextEvent
+import kt.values.subscribePing as fixedSubscribePing
+import kt.values.unsubscribePing as fixedUnsubscribePing
 import ridl.rt.error.CallError
 import ridl.rt.error.ClientError
 import ridl.rt.error.Contract
@@ -32,6 +47,7 @@ import ridl.rt.loopback.Loopback
 import ridl.rt.payload.Rule
 import ridl.rt.payload.Violation
 import ridl.rt.port.SendError
+import ridl.rt.sample.Cause
 import ridl.rt.sample.Provenance
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -79,6 +95,8 @@ private fun failedWith(label: String, expected: CallError, block: () -> Unit) {
 fun probe(): List<String> {
     blocking()
     async()
+    clash()
+    clashAsync()
     return failures
 }
 
@@ -175,5 +193,94 @@ private fun async() = runBlocking {
                 expectEqual(label, expected, (error as? ClientError.Call)?.error)
             }
         }
+    }
+}
+
+private class Clashing : ClashProvider {
+    val timeouts = mutableListOf<Even>()
+
+    override fun setTimeout(to: Even) {
+        synchronized(this) { timeouts += to }
+    }
+
+    override fun new(of: Even): Even = Even.of(-of.value)
+}
+
+/**
+ * #9, driftsys/ridl#580: Clash's members are named like the face's fixed and
+ * derived operations. Each keeps its plain call on the class, and the
+ * operation it is named like, an extension, stays reachable: by its own name
+ * when no member takes it, through an aliased import when one does.
+ */
+private fun clash() {
+    val rt = Loopback(Clash.catalog)
+    val publisher = ClashPublisher(rt)
+    publisher.nextEvent(Even.of(2))
+    publisher.timeout(Even.of(3))
+    publisher.getTimeout(Even.of(4))
+    publisher.commit(Even.of(5))
+    publisher.level(Even.of(6))
+    publisher.invalidateLevel(Even.of(7))
+    publisher.touchLevel(Even.of(8))
+    publisher.subscribePing(Even.of(9))
+    publisher.unsubscribePing(Even.of(10))
+    publisher.commit()
+
+    val client = ClashClient(rt)
+    expectEqual("a signal named next_event keeps nextEvent()", Even.of(2), client.nextEvent().value)
+    expectEqual("a signal named timeout keeps timeout()", Even.of(3), client.timeout().value)
+    expectEqual("a signal named get_timeout keeps getTimeout()", Even.of(4), client.getTimeout().value)
+    expectEqual("a signal named commit keeps commit()", Even.of(5), client.commit().value)
+    expectEqual("a signal named invalidate_level keeps invalidateLevel()", Even.of(7), client.invalidateLevel().value)
+    expectEqual("a signal named touch_level keeps touchLevel()", Even.of(8), client.touchLevel().value)
+    expectEqual("a signal named subscribe_ping keeps subscribePing()", Even.of(9), client.subscribePing().value)
+    expectEqual("a signal named unsubscribe_ping keeps unsubscribePing()", Even.of(10), client.unsubscribePing().value)
+
+    // Beside them, the fixed and derived operations.
+    expectEqual("the timeout extension is the client's bound", null, client.timeout)
+    client.timeout = 5.seconds
+    expectEqual("and is written through", 5.seconds, client.timeout)
+    publisher.invalidateLevel()
+    publisher.touchLevel()
+    publisher.commit()
+    expectEqual("invalidateLevel() beside a signal named invalidate_level invalidates level", Provenance.Invalid(Cause.Declared), client.level().provenance)
+    expectEqual("and leaves that signal alone", Provenance.Live, client.invalidateLevel().provenance)
+    client.fixedSubscribePing()
+    ClashPublisher(rt).ping(Mode.RUN)
+    expectEqual(
+        "the nextEvent a signal shadows is reached through its alias",
+        Result.success(Mode.RUN),
+        (client.fixedNextEvent() as? Clash.Event.Ping)?.occurrence?.payload,
+    )
+    client.fixedUnsubscribePing()
+    ClashPublisher(rt).ping(Mode.RUN)
+    client.timeout = 50.milliseconds
+    expectEqual("the unsubscribe a signal shadows is reached through its alias", null, client.fixedNextEvent())
+
+    val provider = Clashing()
+    val running = AtomicBoolean(true)
+    val serving = thread { while (running.get()) Clash.serve(rt.handler(), provider, 100.milliseconds) }
+    client.timeout = 5.seconds
+    client.setTimeout(Even.of(1))
+    expectEqual("a command named set_timeout is served", listOf(Even.of(1)), synchronized(provider) { provider.timeouts.toList() })
+    expectEqual("a query named new is served", Even.of(-4), client.new(Even.of(4)))
+    running.set(false)
+    serving.join()
+}
+
+/** The async client of Clash: its `nextEvent()` is the signal's, and the suspending one is reached through its alias. */
+private fun clashAsync() = runBlocking {
+    withTimeout(10_000) {
+        val rt = Loopback(Clash.catalog)
+        ClashPublisher(rt).let { it.nextEvent(Even.of(-2)); it.commit() }
+        val client = ClashAsyncClient(rt)
+        expectEqual("an async client's signal named next_event keeps nextEvent()", Even.of(-2), client.nextEvent().value)
+        client.fixedSubscribePing()
+        ClashPublisher(rt).ping(Mode.RUN)
+        expectEqual(
+            "the suspending nextEvent a signal shadows is reached through its alias",
+            Result.success(Mode.RUN),
+            (client.fixedNextEvent() as? Clash.Event.Ping)?.occurrence?.payload,
+        )
     }
 }

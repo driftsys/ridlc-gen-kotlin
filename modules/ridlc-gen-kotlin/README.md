@@ -29,7 +29,7 @@ bound, a bare `string` or `bytes`, an optional array element or map part.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.2.2` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.4.0` (`modules/conformance/ridl-release`).
 
 ## Where the code departs from docs/design.md
 
@@ -140,13 +140,29 @@ runs and a query after.
   its descriptors and publisher, and no async client, poll face or `serve`.
   `serve(timeout)` takes no claim past its timeout, and the async client's
   `nextEvent` takes occurrences one at a time.
-- **An interface whose member names collide with the clients'** — a member
-  spelled `nextEvent` or `timeout` in an interface that waits — is skipped with
-  a warning until driftsys/ridl#570 is decided. So is an interface whose
-  generated types would take a name already taken: two of its own (members `set`
-  and `set_call` both give `<Iface>SetCall`), a declaration's or its codec's, or
-  another interface's. A parameter's name never shadows the generated code's
-  own.
+- **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
+  ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
+  `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking
+  client's `timeout`, and the publisher's `commit`, `invalidate<Signal>` and
+  `touch<Signal>` are top-level extension functions, and `timeout` an extension
+  property, in the package's `Faces.kt`; the classes hold the member methods
+  alone. A consumer in another package imports them, one import per name, or
+  `<package>.*`, where the Rust face has one `prelude` per interface; a Kotlin
+  import is by name across the package's interfaces, so there is no counterpart
+  of a prelude that brings only its own interface's traits. A member named like
+  one of them keeps the plain call, because a Kotlin member wins over an
+  extension, and the operation is reached through an aliased import,
+  `import
+  <package>.nextEvent as fixedNextEvent`, where Rust calls the trait
+  by path. Kotlin has no receiver-order exception like Rust's `with_timeout`:
+  the member always wins, and a property never meets a function of its name.
+  `Bind` has no counterpart: a constructor cannot collide with a member. Nothing
+  is renamed or refused, and the corpus interface `Clash` compiles and runs each
+  case.
+- **An interface whose generated types would take a name already taken** is
+  skipped with a warning: two of its own (members `set` and `set_call` both give
+  `<Iface>SetCall`), a declaration's or its codec's, or another interface's. A
+  parameter's name never shadows the generated code's own.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a
@@ -166,6 +182,18 @@ runs and a query after.
   `unsubscribe<Event>`; the Rust face has neither.
 - **A port error is thrown**, and `dispatch` counts a settlement the handler
   refused with a `SettleError` as not accepted, as the Rust one counts an `Err`.
+- **An oversized claim is settled `Transport.Corrupt`** (#10,
+  driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
+  claim by its id unread, counts an accepted settlement and goes on, and ends
+  the pass when the handler refuses it; that claim counts toward the pass's
+  budget, below.
+- **A pass takes at most 32 claims** (driftsys/ridl#568, ridl 0.4.0's
+  `SERVE_BUDGET`): `dispatch` takes a `budget` of claims taken, accepted or not,
+  and calls `onBudgetSpent` when it stops at it; `serve` and `serveAsync` pass
+  the descriptor's private `SERVE_BUDGET` and wake their own waker there, so
+  `serveAsync` under a claim stream that never ends yields its dispatcher
+  between passes, and is cancellable. `serve(timeout)` still takes no claim past
+  its timeout.
 
 ### No AIDL
 
@@ -173,11 +201,11 @@ The plugin emits no AIDL: §5's per-interface `I<Iface>.aidl` and
 `I<Iface>Listener.aidl`, the three shared parcelables, and §7's `aidl` tool
 check are not generated or run, and CI installs no Android SDK
 (driftsys/ridlc-gen-kotlin#4). The frame specification §11.2 says so since
-driftsys/ridl#516 (ridl `main` at ddd56fd, after the pinned `editor-v0.2.2`),
-which reverses the lane P decision D-P5: on Android a runtime binds the ports
-over its own binder contract, which may be one generic, versioned AIDL serving
-every catalog; ridl specifies no Binder layout and no transaction code; and the
-Kotlin backend generates no binding. Generated code binds only to the
-`ridl-rt-kt` ports. Stage K3b of §8 is withdrawn, and with it the choice of
-where the control plane's transaction codes go, which both of §5's placements
-left colliding with cabin's calls.
+driftsys/ridl#516 (ridl `main` at ddd56fd, released in `v0.3.0`), which reverses
+the lane P decision D-P5: on Android a runtime binds the ports over its own
+binder contract, which may be one generic, versioned AIDL serving every catalog;
+ridl specifies no Binder layout and no transaction code; and the Kotlin backend
+generates no binding. Generated code binds only to the `ridl-rt-kt` ports. Stage
+K3b of §8 is withdrawn, and with it the choice of where the control plane's
+transaction codes go, which both of §5's placements left colliding with cabin's
+calls.

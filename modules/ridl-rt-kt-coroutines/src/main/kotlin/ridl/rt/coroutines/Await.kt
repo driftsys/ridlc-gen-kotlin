@@ -6,6 +6,7 @@ package ridl.rt.coroutines
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.yield
 import ridl.rt.port.Interest
 import ridl.rt.port.Wakeable
 import ridl.rt.task.Waker
@@ -38,8 +39,10 @@ public suspend fun <T : Any> await(port: Wakeable, interest: Interest, poll: () 
  * of `ridl.rt.task.blockOn`. [poll] is called once at once, then again each
  * time the waker it was given is woken; one waker serves the whole wait, so a
  * port sees one task registering again. [poll] registers its own interest
- * before it reads, as the `Wakeable` contract requires. An exception [poll]
- * throws ends the wait. When the coroutine is cancelled while waiting,
+ * before it reads, as the `Wakeable` contract requires. A wake that lands
+ * during a poll yields the coroutine once before the next poll, so a poll that
+ * wakes itself, as `serveAsync` does after a bounded pass, never holds its
+ * dispatcher. An exception [poll] throws ends the wait. When the coroutine is cancelled while waiting,
  * [cancel] runs once and the cancellation is rethrown.
  */
 public suspend fun <T : Any> awaitPoll(cancel: () -> Unit, poll: (Waker) -> T?): T {
@@ -48,7 +51,10 @@ public suspend fun <T : Any> awaitPoll(cancel: () -> Unit, poll: (Waker) -> T?):
     while (true) {
         poll(waker)?.let { return it }
         try {
-            woken.receive()
+            // A wake during the poll, such as a poll that stopped at a bound
+            // and woke itself, yields once rather than polling again at once:
+            // the dispatcher's other coroutines run, and cancellation is seen.
+            if (woken.tryReceive().isSuccess) yield() else woken.receive()
         } catch (e: CancellationException) {
             cancel()
             throw e

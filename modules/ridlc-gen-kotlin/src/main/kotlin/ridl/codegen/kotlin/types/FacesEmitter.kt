@@ -1,6 +1,7 @@
 package ridl.codegen.kotlin.types
 
 import com.squareup.kotlinpoet.ANY
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
@@ -139,14 +140,17 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             // A service's inline shape has no declared name to spell, as in the Rust face.
             if (!iface.hasDeclared()) continue
             val types = mutableListOf<TypeSpec>()
+            val extensions = Extensions()
             try {
-                Face(iface, types).emit()
+                Face(iface, types, extensions).emit()
             } catch (refusal: Refusal) {
                 warnings += "$PLUGIN: interface `${model.name.dotted}.${iface.declared.declared}` has no generated " +
                     "face: ${refusal.message}"
                 continue
             }
             types.forEach(file::addType)
+            extensions.functions.forEach(file::addFunction)
+            extensions.properties.forEach(file::addProperty)
             faced += 1
         }
         if (faced == 0) return EmittedFaces(path, null, emptyList(), warnings)
@@ -379,6 +383,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             .build()
     }
 
+    /** The top-level extensions one face adds to the file: its fixed and derived operations. */
+    private class Extensions {
+        val functions = mutableListOf<FunSpec>()
+        val properties = mutableListOf<PropertySpec>()
+    }
+
     /** One interaction the face carries, with the names and types the emitter needs for it. */
     private class Member(
         val ordinal: Int,
@@ -402,7 +412,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         }
     }
 
-    private inner class Face(private val iface: Interface, private val types: MutableList<TypeSpec>) {
+    private inner class Face(
+        private val iface: Interface,
+        private val types: MutableList<TypeSpec>,
+        private val extensions: Extensions,
+    ) {
         private val name = iface.declared.camel
         private val self = ClassName(pkg, name)
         private val internal = iface.visibility == Visibility.VISIBILITY_INTERNAL
@@ -442,13 +456,6 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
         fun emit() {
             val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty()
-            if (waits) {
-                for (m in members) {
-                    if (m.method == "nextEvent" || m.method == "timeout") {
-                        refuse("member `${m.declared}` collides with the generated `${m.method}` (driftsys/ridl#570)")
-                    }
-                }
-            }
             types += descriptor()
             members.forEachIndexed { row, m -> types += interaction(m, row) }
             val hasCalls = commands.isNotEmpty() || queries.isNotEmpty()
@@ -536,8 +543,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .build(),
                 )
             }
-            if (events.isNotEmpty()) builder.addType(eventType())
+            if (events.isNotEmpty()) builder.addType(eventType()).addFunction(takeEvent())
             if (commands.isNotEmpty() || queries.isNotEmpty()) {
+                builder.addProperty(
+                    PropertySpec.builder("SERVE_BUDGET", INT, KModifier.PRIVATE, KModifier.CONST).initializer("32")
+                        .addKdoc(
+                            "The most claims one pass of `serve` and `serveAsync` takes (driftsys/ridl#568). A pass that " +
+                                "took this many wakes its own waker, so a coroutine serving a claim stream that never " +
+                                "ends lets its dispatcher run other coroutines between passes.",
+                        ).build(),
+                )
                 builder.addFunction(dispatch()).addFunction(claimServed()).addFunction(servePass()).addFunction(serve())
                     .addFunction(serveAsync())
             }
@@ -552,7 +567,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             )
             .build()
 
-        /** One pass of `serve`: registers for the next claim, then settles every claim waiting. */
+        /** One pass of `serve`: registers for the next claim, then settles the claims waiting, at most [SERVE_BUDGET]. */
         private fun servePass(): FunSpec {
             val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
             return FunSpec.builder("servePass").addModifiers(KModifier.PRIVATE).addTypeVariable(h)
@@ -561,7 +576,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addParameter("waker", WAKER)
                 .returns(NOTHING.copy(nullable = true))
                 .addStatement("handler.wakeOn(%T.Claim(number), waker)", INTEREST)
-                .addStatement("dispatch(handler, provider, buffer, until)")
+                .addStatement("dispatch(handler, provider, buffer, until, SERVE_BUDGET) { waker.wake() }")
                 .addStatement("return null")
                 .build()
         }
@@ -572,7 +587,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addKdoc(
                     "Serves interface `%L`'s calls on this thread: registers its members with [handler], then settles each " +
                         "claim as it arrives. Returns when [timeout] passes; with no timeout it returns only by throwing " +
-                        "`ProviderError`: `Serve` when [handler] refuses the members, `Claim` when a claim read fails, every " +
+                        "`ProviderError`: `Serve` when [handler] refuses the members, `Claim` when a claim read fails other than on an oversized claim, every " +
                         "claim settled before it staying settled. An exception [provider] throws is thrown unchanged.",
                     iface.declared.declared,
                 )
@@ -800,7 +815,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
-                .addProperty(PropertySpec.builder("port", p, KModifier.PRIVATE).initializer("port").build())
+                .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
             for (m in signals) {
                 val payload = signalPayload(m)
                 builder.addFunction(
@@ -830,17 +845,18 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .build(),
                 )
             }
-            for (m in events) {
-                builder.addFunction(
-                    FunSpec.builder("subscribe${m.camel}").addKdoc("Starts delivery of event `%L`.", m.declared)
-                        .addStatement("port.subscribe(%L, listOf(%L))", number(), ordinal(m)).build(),
-                )
-                builder.addFunction(
-                    FunSpec.builder("unsubscribe${m.camel}").addKdoc("Stops delivery of event `%L`.", m.declared)
-                        .addStatement("port.unsubscribe(%L, listOf(%L))", number(), ordinal(m)).build(),
-                )
+            if (events.isNotEmpty()) {
+                val receiver = Receiver(className, bounds, pollFace || internal)
+                subscriptions(receiver)
+                extensions.functions += receiver.extension("nextEvent").returns(self.nestedClass("Event").copy(nullable = true))
+                    .addKdoc(
+                        "Takes the next occurrence of any subscribed event of `%L`, or `null` when none is waiting. An " +
+                            "occurrence of another interface, or of an ordinal this one does not declare, throws " +
+                            "`ReadError.Contract(Contract.UnknownInteraction)`: the port has already consumed it.",
+                        iface.declared.declared,
+                    )
+                    .addStatement("return %T.takeEvent(port)", self).build()
             }
-            if (events.isNotEmpty()) builder.addFunction(nextEvent())
             for (m in commands + queries) builder.addFunction(send(m))
             for (m in commands) {
                 builder.addFunction(
@@ -896,7 +912,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             add(WAKEABLE)
         }
 
-        /** The signal reads and subscriptions, delegated to the poll face, which both clients share. */
+        /** The signal reads, delegated to the poll face, which both clients share. */
         private fun TypeSpec.Builder.delegatedReads(): TypeSpec.Builder = apply {
             for (m in signals) {
                 addFunction(
@@ -905,15 +921,47 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .addStatement("return poll.%L()", m.method).build(),
                 )
             }
+        }
+
+        /**
+         * The class a fixed or derived operation extends (#9, driftsys/ridl#580):
+         * a client or the publisher, with the bounds of its type parameter.
+         * The class holds the member methods alone, and a member wins over an
+         * extension of the same name, so a ridl member named like a fixed or
+         * derived operation keeps the plain call; the operation stays
+         * reachable through an aliased import.
+         */
+        private inner class Receiver(val type: ClassName, val bounds: List<TypeName>, val internalOnly: Boolean) {
+            private val variable = TypeVariableName(if (type.simpleName.endsWith("Publisher")) "W" else "P", bounds)
+
+            /** The member methods that take no argument: the signal reads of a client, none on a publisher. */
+            private val zeroArgMembers: Set<String> =
+                if (type.simpleName.endsWith("Publisher")) emptySet() else signals.map { it.method }.toSet()
+
+            fun extension(name: String): FunSpec.Builder = FunSpec.builder(name).addTypeVariable(variable)
+                .receiver(type.parameterizedBy(variable))
+                .apply { if (internalOnly) addModifiers(KModifier.INTERNAL) }
+                .apply {
+                    // Kotlin 2.2 does not warn on a generic receiver, as every one here is; the annotation keeps a
+                    // compiler that does from failing a build with warnings as errors.
+                    if (name in zeroArgMembers) {
+                        addAnnotation(AnnotationSpec.builder(Suppress::class).addMember("%S", "EXTENSION_SHADOWED_BY_MEMBER").build())
+                    }
+                }
+
+            fun extensionProperty(name: String, propertyType: TypeName): PropertySpec.Builder =
+                PropertySpec.builder(name, propertyType).mutable().addTypeVariable(variable)
+                    .receiver(type.parameterizedBy(variable))
+                    .apply { if (internalOnly) addModifiers(KModifier.INTERNAL) }
+        }
+
+        /** `subscribe<Event>` and `unsubscribe<Event>` of every event, as extensions of [receiver]'s client. */
+        private fun subscriptions(receiver: Receiver) {
             for (m in events) {
-                addFunction(
-                    FunSpec.builder("subscribe${m.camel}").addKdoc("Starts delivery of event `%L`.", m.declared)
-                        .addStatement("poll.subscribe%L()", m.camel).build(),
-                )
-                addFunction(
-                    FunSpec.builder("unsubscribe${m.camel}").addKdoc("Stops delivery of event `%L`.", m.declared)
-                        .addStatement("poll.unsubscribe%L()", m.camel).build(),
-                )
+                extensions.functions += receiver.extension("subscribe${m.camel}").addKdoc("Starts delivery of event `%L`.", m.declared)
+                    .addStatement("port.subscribe(%L, listOf(%L))", number(), ordinal(m)).build()
+                extensions.functions += receiver.extension("unsubscribe${m.camel}").addKdoc("Stops delivery of event `%L`.", m.declared)
+                    .addStatement("port.unsubscribe(%L, listOf(%L))", number(), ordinal(m)).build()
             }
         }
 
@@ -923,7 +971,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}Client")).visibility()
                 .addKdoc(
                     "The blocking client of interface `%L`: each call waits on this thread for its outcome, at most " +
-                        "[timeout] when it is set, and throws `ClientError` for a failed call. Use it from one thread at a time.",
+                        "its `timeout` when it is set, and throws `ClientError` for a failed call. Use it from one thread at " +
+                        "a time. `timeout`, `nextEvent` and the subscriptions are extensions (#9).",
                     iface.declared.declared,
                 )
                 .addTypeVariable(p)
@@ -932,23 +981,28 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .addParameter(ParameterSpec.builder("timeout", TIME_DURATION.copy(nullable = true)).defaultValue("null").build())
                         .build(),
                 )
-                .addProperty(PropertySpec.builder("port", p, KModifier.PRIVATE).initializer("port").build())
+                .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
                 .addProperty(
-                    PropertySpec.builder("timeout", TIME_DURATION.copy(nullable = true)).mutable().initializer("timeout")
-                        .addKdoc("The longest a call or [nextEvent] waits, or `null` for no bound.").build(),
+                    PropertySpec.builder("timeoutBound", TIME_DURATION.copy(nullable = true), KModifier.INTERNAL).mutable()
+                        .initializer("timeout").addKdoc("What the `timeout` extension reads and writes.").build(),
                 )
                 .addProperty(PropertySpec.builder("poll", poll.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", poll).build())
                 .delegatedReads()
+            val receiver = Receiver(ClassName(pkg, "${name}Client"), waitingBounds(), internal)
+            extensions.properties += receiver.extensionProperty("timeout", TIME_DURATION.copy(nullable = true))
+                .addKdoc("The longest a call or `nextEvent` of this client waits, or `null` for no bound.")
+                .getter(FunSpec.getterBuilder().addStatement("return timeoutBound").build())
+                .setter(FunSpec.setterBuilder().addParameter("value", TIME_DURATION.copy(nullable = true)).addStatement("timeoutBound = value").build())
+                .build()
             if (events.isNotEmpty()) {
-                builder.addFunction(
-                    FunSpec.builder("nextEvent").returns(self.nestedClass("Event").copy(nullable = true))
-                        .addKdoc("Waits for the next occurrence of any subscribed event of `%L`, or returns `null` at [timeout].", iface.declared.declared)
-                        .addStatement("return %M(deadline(timeout)) { waker ->", BLOCK_ON)
-                        .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
-                        .addStatement("  try { poll.nextEvent() } catch (e: %T) { throw %T.Read(e) }", READ_ERROR, CLIENT_ERROR)
-                        .addStatement("}")
-                        .build(),
-                )
+                subscriptions(receiver)
+                extensions.functions += receiver.extension("nextEvent").returns(self.nestedClass("Event").copy(nullable = true))
+                    .addKdoc("Waits for the next occurrence of any subscribed event of `%L`, or returns `null` at the client's `timeout`.", iface.declared.declared)
+                    .addStatement("return %M(deadline(timeoutBound)) { waker ->", BLOCK_ON)
+                    .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
+                    .addStatement("  try { %T.takeEvent(port) } catch (e: %T) { throw %T.Read(e) }", self, READ_ERROR, CLIENT_ERROR)
+                    .addStatement("}")
+                    .build()
             }
             for (m in commands + queries) {
                 val (param, arg) = argument(m)
@@ -956,9 +1010,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val f = FunSpec.builder(m.method).addParameter(value, arg.type)
                     .addKdoc("Calls %L `%L` and waits for its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
                 if (m.interaction.hasQuery()) {
-                    f.returns(reply(m).type).addStatement("return %T(this.port, %L).block(this.timeout)", callClass(m), value)
+                    f.returns(reply(m).type).addStatement("return %T(this.port, %L).block(this.timeoutBound)", callClass(m), value)
                 } else {
-                    f.addStatement("%T(this.port, %L).block(this.timeout)", callClass(m), value)
+                    f.addStatement("%T(this.port, %L).block(this.timeoutBound)", callClass(m), value)
                 }
                 builder.addFunction(f.build())
             }
@@ -972,12 +1026,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addKdoc(
                     "The suspending client of interface `%L`: each call suspends until its outcome and throws `ClientError` " +
                         "for a failed one; a cancelled call is forgotten. Calls run one at a time: a second concurrent call " +
-                        "waits for the first, so use a second client over a second caller handle for concurrency.",
+                        "waits for the first, so use a second client over a second caller handle for concurrency. " +
+                        "`nextEvent` and the subscriptions are extensions (#9).",
                     iface.declared.declared,
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
-                .addProperty(PropertySpec.builder("port", p, KModifier.PRIVATE).initializer("port").build())
+                .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
                 .addProperty(PropertySpec.builder("poll", poll.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", poll).build())
                 .delegatedReads()
             if (commands.isNotEmpty() || queries.isNotEmpty()) {
@@ -985,22 +1040,20 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             if (events.isNotEmpty()) {
                 // The port keeps one event waker per handle: two waits at once would displace and wake each other forever.
-                builder.addProperty(PropertySpec.builder("events", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
-            }
-            if (events.isNotEmpty()) {
-                builder.addFunction(
-                    FunSpec.builder("nextEvent").addModifiers(KModifier.SUSPEND).returns(self.nestedClass("Event"))
-                        .addKdoc(
-                            "Suspends until the next occurrence of any subscribed event of `%L`. Concurrent calls take " +
-                                "occurrences one at a time.",
-                            iface.declared.declared,
-                        )
-                        .addStatement("return this.events.%M { %M({}) { waker ->", WITH_LOCK, AWAIT_POLL)
-                        .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
-                        .addStatement("  try { poll.nextEvent() } catch (e: %T) { throw %T.Read(e) }", READ_ERROR, CLIENT_ERROR)
-                        .addStatement("} }")
-                        .build(),
-                )
+                builder.addProperty(PropertySpec.builder("events", MUTEX, KModifier.INTERNAL).initializer("%T()", MUTEX).build())
+                val receiver = Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal)
+                subscriptions(receiver)
+                extensions.functions += receiver.extension("nextEvent").addModifiers(KModifier.SUSPEND).returns(self.nestedClass("Event"))
+                    .addKdoc(
+                        "Suspends until the next occurrence of any subscribed event of `%L`. Concurrent calls take " +
+                            "occurrences one at a time.",
+                        iface.declared.declared,
+                    )
+                    .addStatement("return events.%M { %M({}) { waker ->", WITH_LOCK, AWAIT_POLL)
+                    .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
+                    .addStatement("  try { %T.takeEvent(port) } catch (e: %T) { throw %T.Read(e) }", self, READ_ERROR, CLIENT_ERROR)
+                    .addStatement("} }")
+                    .build()
             }
             for (m in commands + queries) {
                 val (param, arg) = argument(m)
@@ -1035,7 +1088,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             return builder.build()
         }
 
-        private fun nextEvent(): FunSpec {
+        /** The poll of the next occurrence every client's `nextEvent` makes, on the descriptor, where no member can shadow it. */
+        private fun takeEvent(): FunSpec {
             val event = self.nestedClass("Event")
             val code = CodeBlock.builder()
                 .addStatement("val buf = %T.allocate(%T.EVENT_SOURCE_BUFFER_SIZE)", BYTE_BUFFER, self)
@@ -1052,10 +1106,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 )
             }
             code.addStatement("else -> throw %T.Contract(%T.UnknownInteraction)", READ_ERROR, CONTRACT).endControlFlow()
-            return FunSpec.builder("nextEvent").returns(event.copy(nullable = true))
+            return FunSpec.builder("takeEvent").addModifiers(KModifier.INTERNAL).addParameter("port", EVENT_SOURCE)
+                .returns(event.copy(nullable = true))
                 .addKdoc(
-                    "Takes the next occurrence of any subscribed event of `%L`, or `null` when none is waiting. An " +
-                        "occurrence of another interface, or of an ordinal this one does not declare, throws " +
+                    "Takes the next occurrence of any subscribed event of `%L` from [port], or `null` when none is " +
+                        "waiting. An occurrence of another interface, or of an ordinal this one does not declare, throws " +
                         "`ReadError.Contract(Contract.UnknownInteraction)`: the port has already consumed it.",
                     iface.declared.declared,
                 )
@@ -1091,10 +1146,15 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             val w = TypeVariableName("W", bounds)
             val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}Publisher")).visibility()
-                .addKdoc("The provider face of interface `%L`'s signals and events.", iface.declared.declared)
+                .addKdoc(
+                    "The provider face of interface `%L`'s signals and events. `commit` and each signal's `invalidate` " +
+                        "and `touch` are extensions (#9).",
+                    iface.declared.declared,
+                )
                 .addTypeVariable(w)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", w).build())
-                .addProperty(PropertySpec.builder("port", w, KModifier.PRIVATE).initializer("port").build())
+                .addProperty(PropertySpec.builder("port", w, KModifier.INTERNAL).initializer("port").build())
+            val receiver = Receiver(ClassName(pkg, "${name}Publisher"), bounds, internal)
             for (m in signals) {
                 val payload = signalPayload(m)
                 builder.addFunction(
@@ -1102,16 +1162,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .addKdoc("Stages a new value for signal `%L`, published by `commit`.", m.declared)
                         .addStatement("port.set(%L, %L, encoded(%T, value))", number(), ordinal(m), payload.codec).build(),
                 )
-                builder.addFunction(
-                    FunSpec.builder("invalidate${m.camel}")
-                        .addKdoc("Stages the invalid state for signal `%L`, with `Cause.Declared`, published by `commit`.", m.declared)
-                        .addStatement("port.invalidate(%L, %L)", number(), ordinal(m)).build(),
-                )
-                builder.addFunction(
-                    FunSpec.builder("touch${m.camel}")
-                        .addKdoc("Stages a re-affirmation of signal `%L`'s current value, published by `commit`.", m.declared)
-                        .addStatement("port.touch(%L, %L)", number(), ordinal(m)).build(),
-                )
+                extensions.functions += receiver.extension("invalidate${m.camel}")
+                    .addKdoc("Stages the invalid state for signal `%L`, with `Cause.Declared`, published by `commit`.", m.declared)
+                    .addStatement("port.invalidate(%L, %L)", number(), ordinal(m)).build()
+                extensions.functions += receiver.extension("touch${m.camel}")
+                    .addKdoc("Stages a re-affirmation of signal `%L`'s current value, published by `commit`.", m.declared)
+                    .addStatement("port.touch(%L, %L)", number(), ordinal(m)).build()
             }
             for (m in events) {
                 builder.addFunction(
@@ -1121,7 +1177,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 )
             }
             if (signals.isNotEmpty()) {
-                builder.addFunction(FunSpec.builder("commit").addKdoc("Publishes every staged signal change.").addStatement("port.commit()").build())
+                extensions.functions += receiver.extension("commit").addKdoc("Publishes every staged signal change.")
+                    .addStatement("port.commit()").build()
             }
             return builder.build()
         }
@@ -1170,14 +1227,30 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("return 0")
                 .endControlFlow()
                 .addStatement("var settled = 0")
+                .addStatement("var left = budget")
                 .beginControlFlow("while (true)")
                 .addStatement("if (until != null && until.hasPassedNow()) return settled")
+                .beginControlFlow("if (left == 0)")
+                .addStatement("onBudgetSpent()")
+                .addStatement("return settled")
+                .endControlFlow()
                 .addStatement("buffer.clear()")
                 // Only the claim read is the handler's failure: a provider's own ReadError passes unchanged.
-                .addStatement(
-                    "val claim = try { handler.nextClaim(buffer) } catch (e: %T) { throw %T.Claim(e) } ?: return settled",
-                    READ_ERROR, PROVIDER_ERROR,
-                )
+                .beginControlFlow("val claim = try")
+                .addStatement("handler.nextClaim(buffer)")
+                .nextControlFlow("catch (e: %T.ShortClaim)", READ_ERROR)
+                // Arguments that do not fit MAX_BUFFER_SIZE are larger than any valid encoding of this
+                // interface's members, so the claim is settled Corrupt unread, whichever member it names. A
+                // refused settlement ends the pass: the runtime keeps that claim the next one (driftsys/ridl#569).
+                .addStatement("if (!settle(handler, e.claim, %T.failure(%T.Corrupt))) return settled", RESULT, TRANSPORT)
+                .addStatement("left -= 1")
+                .addStatement("settled += 1")
+                .addStatement("continue")
+                .nextControlFlow("catch (e: %T)", READ_ERROR)
+                .addStatement("throw %T.Claim(e)", PROVIDER_ERROR)
+                .endControlFlow()
+                .addStatement("if (claim == null) return settled")
+                .addStatement("left -= 1")
                 .addStatement("val args = buffer.duplicate().flip()")
                 .beginControlFlow("val accepted = if (claim.iface != number)")
                 .addStatement("settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)
@@ -1240,14 +1313,23 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "interface or ordinal `UnknownInteraction`, bytes that fail their structure `Transport.Corrupt`, a " +
                         "constraint `InvalidValue`, a failed `require` `PreconditionFailed`, a failed `ensure` " +
                         "`ContractBroken`. A command is settled before its provider method runs, because its " +
-                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A read " +
-                        "failure of the handler is thrown as `ProviderError.Claim`. Past [until], when it is set, it " +
-                        "takes no further claim, so a claim stream that never ends cannot hold it.",
+                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A claim " +
+                        "whose arguments do not fit [MAX_BUFFER_SIZE], reported as `ReadError.ShortClaim`, is larger " +
+                        "than any valid encoding of this interface's members: it is settled `Transport.Corrupt` by its " +
+                        "id without being read, whichever interface or member it names, and when the handler refuses " +
+                        "that settlement the pass ends at once, because the runtime keeps that claim the next one " +
+                        "(driftsys/ridl#569). Any other read failure of the handler is thrown as `ProviderError.Claim`. " +
+                        "Past [until], when it is set, it takes no further claim, so a claim stream that never ends " +
+                        "cannot hold it. It takes at most [budget] claims, whether or not their settlement is accepted, " +
+                        "except an oversized claim whose settlement is refused; when it stops at that bound, claims may " +
+                        "still be waiting, and it calls [onBudgetSpent] (driftsys/ridl#568).",
                     iface.declared.declared,
                 )
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("handler", HANDLER).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
                 .addParameter(ParameterSpec.builder("until", VALUE_TIME_MARK.copy(nullable = true)).defaultValue("null").build())
+                .addParameter(ParameterSpec.builder("budget", INT).defaultValue("Int.MAX_VALUE").build())
+                .addParameter(ParameterSpec.builder("onBudgetSpent", LambdaTypeName.get(returnType = UNIT)).defaultValue("{}").build())
                 .returns(INT).addCode(code.build()).build()
         }
     }

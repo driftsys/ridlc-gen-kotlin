@@ -20,13 +20,13 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.2.2`. The tests of stage K2a run: a request the pinned
-`ridl` wrote parses, a request with an unknown key parses, a request nested
-1,000 levels parses in process and through the installed script, a wrong schema
-is one error diagnostic and exit 0, an unknown option is an error diagnostic,
-unreadable input is exit 3, and the parity test compares `ridl build` with
-`--plugin kotlin=<script>` to the script invoked directly, for every package
-each build hands the plugin.
+Pinned to `editor-v0.4.0`, the tag that carries ridl 0.4.0's binaries. The tests
+of stage K2a run: a request the pinned `ridl` wrote parses, a request with an
+unknown key parses, a request nested 1,000 levels parses in process and through
+the installed script, a wrong schema is one error diagnostic and exit 0, an
+unknown option is an error diagnostic, unreadable input is exit 3, and the
+parity test compares `ridl build` with `--plugin kotlin=<script>` to the script
+invoked directly, for every package each build hands the plugin.
 
 The tests of stage K2b: for every corpus package, the generated `Types.kt`
 compiles with `kotlin-compile-testing` against `ridl-rt-kt` with warnings as
@@ -63,7 +63,10 @@ read, an event raised and received, a command sent, dispatched and acknowledged,
 a query sent, dispatched and replied — and `dispatch`'s settlement table is
 reached past the client: a failing `require`, a corrupt argument buffer, an
 argument outside its constraints, an unknown ordinal, another interface's
-number, a settlement the handler refuses, a buffer too short. `kt-values`'
+number, a settlement the handler refuses, a buffer too short, and, since ridl
+0.4.0, a claim larger than `MAX_BUFFER_SIZE`: settled `Corrupt` with the claim
+behind it served, or ending the pass when that settlement is refused, while a
+`ReadError.Short` from `nextClaim` stays `ProviderError.Claim`. `kt-values`'
 `Probe`, driven through its blocking and async clients with `serve` and
 `serveAsync`, adds a failing `ensure` returned as
 `ClientError.Call(ContractBroken)`, a float clause and a signal's own init, and
@@ -96,3 +99,20 @@ compiles. A deadline compared with `>=`, a call that does not forget its
 outcome, a `cancel` that does not forget, `block`'s two errors swapped, an async
 call outside its lock, or a coroutine cancellation that does not cancel the call
 each turns it red.
+
+Since ridl 0.4.0's serve bound (driftsys/ridl#568), `dispatch` takes at most its
+`budget` of claims and says when it stopped there, and `ClientsTest` runs
+`serveAsync` under a claim stream that never ends on one thread: it settles pass
+after pass, a coroutine beside it runs, and a cancellation stops it. Removing
+the self-wake at the bound, or the yield in `awaitPoll`, turns it red.
+
+The test of #9, in `FacesTest`'s `kt-values` probe: `Clash`, whose members are
+named like the face's fixed and derived operations — signals `next_event`,
+`timeout`, `get_timeout`, `commit`, `invalidate_level` and `touch_level` beside
+a signal `level`, `subscribe_ping` and `unsubscribe_ping` beside an event
+`ping`, a command `set_timeout` and a query `new` — the cases of the Rust
+`face_compile.rs`, compiles with warnings as errors, and runs: each member keeps
+its plain call on both clients and the publisher, and each operation stays
+reachable, the shadowed `nextEvent`, `subscribePing` and `unsubscribePing`
+through an aliased import. The probe imports the extensions of `Probe` and
+`Clash` under one name, the Kotlin counterpart of a consumer of two preludes.
