@@ -140,13 +140,29 @@ runs and a query after.
   its descriptors and publisher, and no async client, poll face or `serve`.
   `serve(timeout)` takes no claim past its timeout, and the async client's
   `nextEvent` takes occurrences one at a time.
-- **An interface whose member names collide with the clients'** — a member
-  spelled `nextEvent` or `timeout` in an interface that waits — is skipped with
-  a warning until driftsys/ridl#570 is decided. So is an interface whose
-  generated types would take a name already taken: two of its own (members `set`
-  and `set_call` both give `<Iface>SetCall`), a declaration's or its codec's, or
-  another interface's. A parameter's name never shadows the generated code's
-  own.
+- **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
+  ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
+  `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking
+  client's `timeout`, and the publisher's `commit`, `invalidate<Signal>` and
+  `touch<Signal>` are top-level extension functions, and `timeout` an extension
+  property, in the package's `Faces.kt`; the classes hold the member methods
+  alone. A consumer in another package imports them, one import per name, or
+  `<package>.*`, where the Rust face has one `prelude` per interface; a Kotlin
+  import is by name across the package's interfaces, so there is no counterpart
+  of a prelude that brings only its own interface's traits. A member named like
+  one of them keeps the plain call, because a Kotlin member wins over an
+  extension, and the operation is reached through an aliased import,
+  `import
+  <package>.nextEvent as fixedNextEvent`, where Rust calls the trait
+  by path. Kotlin has no receiver-order exception like Rust's `with_timeout`:
+  the member always wins, and a property never meets a function of its name.
+  `Bind` has no counterpart: a constructor cannot collide with a member. Nothing
+  is renamed or refused, and the corpus interface `Clash` compiles and runs each
+  case.
+- **An interface whose generated types would take a name already taken** is
+  skipped with a warning: two of its own (members `set` and `set_call` both give
+  `<Iface>SetCall`), a declaration's or its codec's, or another interface's. A
+  parameter's name never shadows the generated code's own.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a

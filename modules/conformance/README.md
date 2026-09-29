@@ -99,3 +99,14 @@ compiles. A deadline compared with `>=`, a call that does not forget its
 outcome, a `cancel` that does not forget, `block`'s two errors swapped, an async
 call outside its lock, or a coroutine cancellation that does not cancel the call
 each turns it red.
+
+The test of #9, in `FacesTest`'s `kt-values` probe: `Clash`, whose members are
+named like the face's fixed and derived operations — signals `next_event`,
+`timeout`, `get_timeout`, `commit`, `invalidate_level` and `touch_level` beside
+a signal `level`, `subscribe_ping` and `unsubscribe_ping` beside an event
+`ping`, a command `set_timeout` and a query `new` — the cases of the Rust
+`face_compile.rs`, compiles with warnings as errors, and runs: each member keeps
+its plain call on both clients and the publisher, and each operation stays
+reachable, the shadowed `nextEvent`, `subscribePing` and `unsubscribePing`
+through an aliased import. The probe imports the extensions of `Probe` and
+`Clash` under one name, the Kotlin counterpart of a consumer of two preludes.

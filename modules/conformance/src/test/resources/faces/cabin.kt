@@ -37,6 +37,10 @@ import veh.cabin.Warning
 import veh.cabin.WarningCodec
 import veh.cabin.Window
 import veh.cabin.WindowCodec
+import veh.cabin.commit
+import veh.cabin.invalidateTemperature
+import veh.cabin.nextEvent
+import veh.cabin.subscribeWarning
 import java.nio.ByteBuffer
 
 private val failures = mutableListOf<String>()

@@ -30,3 +30,21 @@ interface Names {
   query   grab(claim: Even): Even @[..200ms]
   query   echo(reply: Even): Even @[..200ms]
 }
+
+// Members named like the face's fixed and derived operations (#9,
+// driftsys/ridl#580): each keeps its plain call, and the operation it is named
+// like stays reachable.
+interface Clash {
+  signal  next_event          : Even @10ms
+  signal  timeout             : Even @10ms
+  signal  get_timeout         : Even @10ms
+  signal  commit              : Even @10ms
+  signal  level               : Even @10ms
+  signal  invalidate_level    : Even @10ms
+  signal  touch_level         : Even @10ms
+  signal  subscribe_ping      : Even @10ms
+  signal  unsubscribe_ping    : Even @10ms
+  event   ping                : Mode @[100ms..1s]
+  command set_timeout(to: Even) @[..50ms]
+  query   new(of: Even): Even @[..200ms]
+}

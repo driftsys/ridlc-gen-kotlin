@@ -12,6 +12,8 @@ import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.CommandShape
 import ridl.codegen.v1.ModelOuterClass.ContractKind
 import ridl.codegen.v1.ModelOuterClass.DottedName
+import ridl.codegen.v1.ModelOuterClass.EventShape
+import ridl.codegen.v1.ModelOuterClass.Init
 import ridl.codegen.v1.ModelOuterClass.Interaction
 import ridl.codegen.v1.ModelOuterClass.InteractionSlot
 import ridl.codegen.v1.ModelOuterClass.Interface
@@ -21,6 +23,7 @@ import ridl.codegen.v1.ModelOuterClass.Param
 import ridl.codegen.v1.ModelOuterClass.Payload
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import ridl.codegen.v1.ModelOuterClass.SignalShape
 import ridl.codegen.v1.ModelOuterClass.Spellings
 import ridl.codegen.v1.ModelOuterClass.Type
 import ridl.codegen.v1.ModelOuterClass.TypeRef
@@ -78,21 +81,6 @@ class FacesEmitterTest {
         assertEquals(Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING, response.diagnosticsList.single().severity)
     }
 
-    @Test
-    fun `a member named like a generated client method skips its interface`() {
-        val event = Interaction.newBuilder().setName(Spellings.newBuilder().setDeclared("next_event").setCamel("NextEvent"))
-            .setEvent(
-                ridl.codegen.v1.ModelOuterClass.EventShape.newBuilder()
-                    .setPayload(Payload.newBuilder().setType(TypeRef.newBuilder().setReference("Level")).setFlatbuffersMaxSize(8)),
-            )
-        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
-            .addSlots(InteractionSlot.newBuilder().setOrdinal(1).setInteraction(event))
-        val model = Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo")).addInterfaces(iface).build()
-        val emitted = FacesEmitter(model, options).emit()
-        assertNull(emitted.text)
-        assertTrue("collides with the generated `nextEvent`" in emitted.warnings.single(), emitted.warnings.single())
-    }
-
     private val level = TypeRef.newBuilder().setReference("Level").setResolved(true).setIndex(0).setKind(DeclKind.DECL_KIND_SCALAR)
 
     private fun scalar(name: String) = Declaration.newBuilder().setName(spelled(name)).setScalar(
@@ -129,5 +117,37 @@ class FacesEmitterTest {
         val emitted = faces("Level", "InteractionCall", iface = iface)
         assertNull(emitted.text)
         assertTrue("`InteractionCall` collides with a declaration" in emitted.warnings.single(), emitted.warnings.single())
+    }
+
+    /** A signal, or an event, named [declared] and [camel], over one `Level`. */
+    private fun slot(ordinal: Int, declared: String, camel: String, signal: Boolean) = InteractionSlot.newBuilder().setOrdinal(ordinal)
+        .setInteraction(
+            Interaction.newBuilder().setName(Spellings.newBuilder().setDeclared(declared).setCamel(camel)).apply {
+                val payload = Payload.newBuilder().setType(level).setFlatbuffersMaxSize(8)
+                if (signal) setSignal(SignalShape.newBuilder().setPayload(payload)) else setEvent(EventShape.newBuilder().setPayload(payload))
+            },
+        )
+
+    @Test
+    fun `a member named like a fixed or derived operation keeps its interface and shadows the extension`() {
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(slot(1, "next_event", "NextEvent", signal = true))
+            .addSlots(slot(2, "subscribe_warning", "SubscribeWarning", signal = true))
+            .addSlots(slot(3, "warning", "Warning", signal = false))
+            .addSlots(command(4, "set_timeout", "SetTimeout"))
+        val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
+        val emitted = FacesEmitter(
+            Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo")).addDeclarations(level).addInterfaces(iface).build(),
+            options,
+        ).emit()
+        assertEquals(emptyList<String>(), emitted.warnings)
+        val text = checkNotNull(emitted.text)
+        assertTrue("public fun nextEvent(): Sample<Level>" in text, "the signal keeps its member")
+        val shadowed = "@Suppress(\"EXTENSION_SHADOWED_BY_MEMBER\")\npublic fun <P> DriveClient<P>.nextEvent(): Drive.Event?"
+        assertTrue(shadowed in text, "the fixed operation is an extension the member shadows")
+        assertTrue("@Suppress(\"EXTENSION_SHADOWED_BY_MEMBER\")\npublic fun <P> DriveClient<P>.subscribeWarning()" in text)
+        assertTrue("\npublic fun <P> DriveClient<P>.unsubscribeWarning()" in text, "an extension no member shadows is not suppressed")
+        assertTrue("public fun setTimeout(level: Level)" in text, "a command keeps its member")
+        assertTrue("public var <P> DriveClient<P>.timeout:" in text, "the timeout is an extension property")
     }
 }
