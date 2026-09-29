@@ -1,0 +1,17 @@
+package kt.foreign
+
+import kt.foreign.parts.Choice
+import kt.foreign.parts.Small
+
+// A package whose types are all another package's: the arms of an imported
+// union reach this model only through Model.foreign.
+struct Holder {
+  choice : Choice
+  count  : Small
+}
+
+interface Pick {
+  signal  pick   : Choice @100ms
+  signal  holder : Holder @100ms
+  command set(choice: Choice) @[..50ms]
+}

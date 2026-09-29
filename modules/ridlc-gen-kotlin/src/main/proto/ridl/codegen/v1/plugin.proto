@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+// The backend contract: `generate(CodegenRequest) -> CodegenResponse`
+// (ADR-0020 decisions 9 and 10).
+//
+// One request per package. The in-process host builds it and hands it to a
+// backend compiled into `ridlc`; the process host writes it, as canonical
+// protobuf JSON, to the standard input of `ridlc-gen-<language>` and reads
+// the response, in the same encoding, from its standard output. The plugin
+// never touches the filesystem: `ridlc` writes every file the response
+// carries (ADR-0020 decision 9; the lane P driver's D-P3).
+//
+// The request carries the lowered model and the backend options, never the
+// raw IR (the lane P driver's D-P2). A backend that still needs a fact the
+// model does not state is a gap in the model, fixed in the model.
+//
+// Versioning is the IR specification's §7: `schema` and `toolchain` are the
+// first two fields, so a reader meets them before anything it might not
+// understand. A breaking change to this file is `ridl.codegen.v2`, never an
+// edit here (IR specification §6 and §7).
+//
+// Field numbering scheme, as `model.proto` has it: envelope and data fields
+// start at 1; `oneof` members start at 10.
+package ridl.codegen.v1;
+
+import "ridl/codegen/v1/model.proto";
+
+// What a backend is asked to generate: one package's lowered model, the
+// options the backend was given, and the name the package's artifacts are
+// based on.
+message CodegenRequest {
+  // The schema package this request is encoded from: "ridl.codegen.v1". A
+  // consumer refuses a value it does not know, with a diagnostic naming
+  // both values (IR specification §7).
+  string schema = 1;
+  // The `ridlc` version that wrote the request, for example "0.2.0".
+  // Informational: a consumer does not refuse on it.
+  string toolchain = 2;
+  // The lowered model of the one package to generate for, byte for byte
+  // what `ridl build --emit codegen-model` writes for that package.
+  Model model = 3;
+  // The backend options, sorted by key, each key once. Which keys a backend
+  // reads, and what it does with a key it does not know, is the backend's
+  // own contract; the reference plugin refuses an unknown key.
+  repeated BackendOption options = 4;
+  // The base name `ridlc` gives this package's artifacts: the package name
+  // in package and workspace mode, the input file's stem in single-file mode
+  // (`docs/book/cli-reference.md`, `ridl build`). The in-tree backends name
+  // their one file `<artifact_base>.<extension>`; a backend that lays its
+  // output out another way, one file per declaration for example, is free
+  // to ignore it.
+  string artifact_base = 5;
+}
+
+// One backend option, as the host gives it. No flag sets one yet: the
+// in-process host passes each in-tree backend none, and a plugin run from
+// the command line receives an empty list.
+message BackendOption {
+  string key = 1;
+  string value = 2;
+}
+
+// What a backend generated: the files, and the diagnostics it draws.
+//
+// A response with an error-severity diagnostic is a backend that failed:
+// `ridlc` writes none of its files, reports the diagnostic, and exits 1, as
+// it does for an in-process backend that returns an error today.
+message CodegenResponse {
+  repeated GeneratedFile files = 1;
+  repeated Diagnostic diagnostics = 2;
+}
+
+// One generated file.
+message GeneratedFile {
+  // Where `ridlc` writes it, relative to the output directory: `/`-separated
+  // path components, none empty, none `.` or `..`, no leading `/`, no drive
+  // letter and no NUL. `ridlc` refuses a response whose path breaks any of
+  // these, naming the plugin.
+  string path = 1;
+  // The content. Canonical protobuf JSON renders `bytes` as base64, so a
+  // text file — every file the in-tree backends emit is UTF-8 text — is
+  // carried as `text`, readable in the response as it is in the file, and
+  // `binary` is reserved for a file that is not text.
+  oneof content {
+    string text = 10;
+    bytes binary = 11;
+  }
+}
+
+// A diagnostic a backend draws. A backend has no source span: the model it
+// reads carries none, so a diagnostic is a message and a severity, and
+// `ridlc` reports it as a detached diagnostic naming the backend.
+message Diagnostic {
+  DiagnosticSeverity severity = 1;
+  string message = 2;
+}
+
+enum DiagnosticSeverity {
+  // Reported as an error: a backend that leaves the severity unset has
+  // failed, not warned.
+  DIAGNOSTIC_SEVERITY_UNSPECIFIED = 0;
+  DIAGNOSTIC_SEVERITY_ERROR = 1;
+  DIAGNOSTIC_SEVERITY_WARNING = 2;
+  DIAGNOSTIC_SEVERITY_INFO = 3;
+}

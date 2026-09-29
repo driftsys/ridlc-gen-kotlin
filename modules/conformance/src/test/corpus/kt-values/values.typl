@@ -1,0 +1,38 @@
+// The Kotlin plugin's own corpus package: what no package of the ridl
+// repository declares and the value objects of docs/design.md §4 must check.
+// A same-package pattern inline and through a regex constant, a float step
+// from a negative minimum, a negative integer range, bytes with a positive minimum, and
+// inline constrained scalars inside collections.
+package kt.values
+
+const SERIAL_PATTERN = /^[0-9]+$/
+
+type Even   : integer [-10..10]
+type Code   : string [2..8 match /^[A-Z]+$/]
+type Serial : string [4 match SERIAL_PATTERN]
+type Offset : float [-5.0..5.0 step 0.25]
+type Key    : bytes [2..4]
+type Text   : string [0..3]
+type Flag   : boolean
+
+const LIMIT : Even    = 4
+const RATE  : float   = 0.5
+const ON    : boolean = true
+const COUNT : integer = 3
+
+enum Mode {
+  IDLE = 0
+  RUN  = 1
+}
+
+struct Bundle {
+  codes : [Code; 1..3]
+  tags  : [Text : Even; 0..2]
+  exact : [Even; 2]
+  maybe : Offset?
+  level : float [0.0..9.0 step 1.5]
+  pad   : bytes [2]
+  word  : string [1..2]
+  steps : [integer [0..4]; 0..2]
+  mode  : Mode
+}

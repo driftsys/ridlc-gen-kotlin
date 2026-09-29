@@ -1,0 +1,870 @@
+syntax = "proto3";
+
+// The lowered codegen model — one package, resolved, with every fact the
+// four in-tree backends re-derive from `ridl.ir.v2` today computed once.
+//
+// The model is what a codegen plugin reads (ADR-0020 decisions 8 and 9): the
+// request of the plugin protocol carries a `Model`, never the raw IR, so a
+// plugin resolves no reference, applies no name transform, and re-derives no
+// typl rule. The design note is
+// `docs/wip/2026-09-22-codegen-model-design.md`; its §3 is this file message
+// by message, its §4 the decisions, and its §7 the list of what a printer
+// computes for itself rather than reads here.
+//
+// This schema imports nothing from `ridl.ir.v2`. It restates the enums it
+// needs, with the IR's values where the IR has them, so that the two schemas
+// version independently (design note D-14).
+//
+// Encoding: canonical protobuf JSON, the dialect ADR-0014 decision 14 fixes
+// for the IR, through the same pbjson-generated impls and the same reader
+// guards (`ridl_ir::codegen::to_json_pretty`, `from_json`). The nesting bound
+// a reader must provision is 264 JSON levels and 261 message levels below the
+// root (design note §6.2).
+//
+// Field numbering scheme, as `ir.proto` has it: envelope and data fields
+// start at 1; `oneof` members start at 10.
+package ridl.codegen.v1;
+
+// ---------------------------------------------------------------------
+// The root and the scope
+// ---------------------------------------------------------------------
+
+// One package, lowered over a stated scope (design note D-1). Every repeated
+// field below is in an order this file names, and `declarations`,
+// `interfaces` and `services` are positionally aligned with the IR they were
+// lowered from: `declarations[i]` is `Package.decls[i]`.
+message Model {
+  // The package name (`Package.name`).
+  DottedName name = 1;
+  // What the lowering was handed.
+  Scope scope = 2;
+  // `Package.decls`, same order, same count.
+  repeated Declaration declarations = 3;
+  // Every tuple type reached, in discovery order.
+  repeated InducedTuple tuples = 4;
+  // `Package::shapes()` order: the declared interfaces, then the inline
+  // shapes of the services.
+  repeated Interface interfaces = 5;
+  // `Package.services`, same order.
+  repeated Service services = 6;
+  Catalog catalog = 7;
+  FlatBuffersProjection flatbuffers = 8;
+  // The foreign declarations this package reaches, in the order the lowering
+  // reaches them.
+  repeated ForeignDeclaration foreign = 9;
+  // Two paths spelled one induced name with different shapes. Carried as a
+  // fact rather than raised as an error: each printer refuses it with its own
+  // message (design note D-1).
+  repeated TupleCollision tuple_collisions = 10;
+}
+
+// The packages the lowering was handed. The output depends on it, so it is
+// part of the model: a reference into a package that was not given is a
+// different fact from a reference that names nothing.
+message Scope {
+  // The package lowered.
+  string package = 1;
+  // The other packages handed in, in the order given.
+  repeated string others = 2;
+}
+
+// One declaration of another package that this package reaches, transitively,
+// through a type reference, a union arm, a constant's type, an enum set's
+// backing enum or an interaction payload.
+message ForeignDeclaration {
+  string package = 1;
+  // The same message a local declaration is.
+  Declaration declaration = 2;
+}
+
+// Two different tuples spelling one induced name.
+message TupleCollision {
+  string name = 1;
+  repeated string first_fields = 2;
+  repeated string second_fields = 3;
+}
+
+// ---------------------------------------------------------------------
+// Names
+// ---------------------------------------------------------------------
+
+// One identifier the source declared, in every namespace a target can need.
+// Named after the transform and not after a language: the target set is open
+// (design note D-2).
+message Spellings {
+  // As the IR carries it.
+  string declared = 1;
+  // `ridl_ir::name::snake_case` (ADR-0016 decision 1).
+  string snake = 2;
+  // `ridl_ir::name::camel_case` (ADR-0016, 2026-09-20 amendment).
+  string camel = 3;
+  // `snake`, upper-cased — what the wire backends call
+  // `screaming_snake_case`.
+  string screaming = 4;
+}
+
+// A package name or a service name.
+message DottedName {
+  // "veh.adas.cruise".
+  string dotted = 1;
+  // ["veh", "adas", "cruise"].
+  repeated string segments = 2;
+  // "VehAdasCruise" — the wire backends' `type_name`, which ADR-0016 does not
+  // pin. `camel_case` splits on underscores and gives "Veh.adas.cruise" over
+  // a dotted name, so this is its own rule.
+  string joined_camel = 3;
+  // "veh_adas_cruise" — the TypeScript import alias.
+  string underscored = 4;
+}
+
+// The name of a type no source declared. The Rust backend and the two wire
+// backends disagree on it, so both rules are carried (design note D-2, §9
+// item 3).
+message InducedName {
+  // camel_case(parent) + camel_case(field), nested by camel_case(field), with
+  // `Element`, `Key`, `Value` at a collection position.
+  string rust = 1;
+  // owner + type_name(field), nested by `Field<N>`, with `Element`, `Key`,
+  // `Value` — proto3 and FlatBuffers agree.
+  string wire = 2;
+}
+
+// ---------------------------------------------------------------------
+// Declarations
+// ---------------------------------------------------------------------
+
+// One top-level declaration of the package.
+message Declaration {
+  Spellings name = 1;
+  // Resolved: PUBLIC or INTERNAL, never unspecified.
+  Visibility visibility = 2;
+  bool is_error = 3;
+  string doc = 4;
+  repeated string labels = 5;
+  // Present-and-empty is still a deprecation (typl §14.2).
+  optional string deprecated = 6;
+  // Absent on a constant.
+  Closure closure = 7;
+  // Absent on a constant.
+  Init init = 8;
+  oneof kind {
+    Scalar scalar = 10;
+    Constant constant = 11;
+    Struct struct = 12;
+    Enum enum = 13;
+    EnumSet enum_set = 14;
+    Union union = 15;
+  }
+}
+
+// A named scalar, and the shape of an inline one.
+message Scalar {
+  // `backing_scalar`'s total classification: a unit backing is float, an
+  // absent backing is float, an unspecified primitive backing is bytes.
+  ScalarClass class = 1;
+  // The canonical UCUM expression when the backing is a unit.
+  optional string unit = 2;
+  Constraint constraint = 3;
+  // `ridl_ir::v2::constraint_is_vacuous`.
+  bool vacuous = 4;
+  // Unset on an inline scalar: the enclosing field's is authoritative.
+  optional string declared_init = 5;
+  // As the IR derives it; unset for a boolean, string or bytes backing.
+  oneof width {
+    IntWidth int_width = 10;
+    FloatWidth float_width = 11;
+  }
+}
+
+// The flat constraint table; every bound is canonical decimal text.
+message Constraint {
+  optional string min = 1;
+  optional string max = 2;
+  optional string step = 3;
+  optional uint64 len_min = 4;
+  optional uint64 len_max = 5;
+  // The regex body, `/…/` stripped.
+  optional string pattern = 6;
+  // The canonical reference to the regex constant.
+  optional string pattern_const = 7;
+}
+
+// A named compile-time constant, with its declared type resolved.
+message Constant {
+  // Canonical text; empty for a regex constant.
+  string value = 1;
+  oneof typed {
+    // A named scalar; its class is on the referenced declaration.
+    TypeRef named = 10;
+    // The keyword as written.
+    PrimitiveType primitive = 11;
+    // A regex constant, delimiters stripped.
+    string regex_body = 12;
+    // The declared type the scope did not resolve.
+    string unresolved = 13;
+  }
+}
+
+message Struct {
+  // `StructDef.members`, same order: a field or a tombstone.
+  repeated Slot slots = 1;
+  // Read by the Rust backend's `emit_struct` today (design note §9 item 1).
+  bool fixed_layout = 2;
+}
+
+// One slot of a struct body (typl §7.4).
+message Slot {
+  uint32 ordinal = 1;
+  oneof occupant {
+    Field field = 10;
+    Retired retired = 11;
+  }
+}
+
+// A tombstone.
+message Retired {
+  // `reserved legacyChecksum`.
+  Spellings name = 1;
+  // `reserved 3` in an enum body.
+  optional int64 value = 2;
+}
+
+message Field {
+  Spellings name = 1;
+  // Absent when the IR carries none.
+  Type type = 2;
+  optional string declared_init = 3;
+  Init init = 4;
+  string doc = 5;
+  repeated string labels = 6;
+  optional string deprecated = 7;
+}
+
+message Enum {
+  // Declaration order.
+  repeated EnumValue values = 1;
+  repeated Retired retired = 2;
+  // Index into `values` of the member whose value is 0.
+  optional uint32 zero_member = 3;
+  // Index: the zero member, else the lowest value (typl §5.8).
+  optional uint32 init_member = 4;
+}
+
+message EnumValue {
+  Spellings name = 1;
+  int64 value = 2;
+  string doc = 3;
+}
+
+message EnumSet {
+  TypeRef backing_enum = 1;
+  repeated EnumValue bits = 2;
+  IntWidth width = 3;
+  // OR of `1 << bit` over the bits in 0..=63.
+  int64 declared_mask = 4;
+}
+
+message Union {
+  // Declaration order.
+  repeated Arm arms = 1;
+  repeated Retired retired = 2;
+  bool is_result = 3;
+}
+
+message Arm {
+  Spellings name = 1;
+  uint32 ordinal = 2;
+  TypeRef type = 3;
+  string doc = 4;
+  // `projection::union_arm_discriminant`: the ordinal.
+  uint32 discriminant = 5;
+  // Index into `FlatBuffersProjection.tables` when the arm is boxed
+  // (ADR-0019 decision 2).
+  optional uint32 flatbuffers_box = 6;
+}
+
+// ---------------------------------------------------------------------
+// Type positions, references and induced tuples
+// ---------------------------------------------------------------------
+
+// One type position: a field, a tuple field, a parameter, an element.
+message Type {
+  bool optional = 1;
+  oneof kind {
+    TypeRef named = 10;
+    PrimitiveType primitive = 11;
+    // An inline constrained scalar.
+    Scalar inline = 12;
+    // Lifted: see `InducedTuple`.
+    TupleRef tuple = 13;
+    ArrayType array = 14;
+    MapType map = 15;
+    StreamType stream = 16;
+  }
+}
+
+// A resolved reference — flat, so it costs one nesting level.
+message TypeRef {
+  // The canonical IR string: a bare `Name` or `pkg.Name`.
+  string reference = 1;
+  // False: no package in scope declares it, or it names a constant.
+  bool resolved = 2;
+  // The declaring package, when resolved.
+  string package = 3;
+  // `package` is not `Scope.package`.
+  bool foreign = 4;
+  // Into `Model.declarations` when local, into `Model.foreign` when foreign.
+  uint32 index = 5;
+  DeclKind kind = 6;
+}
+
+message TupleRef {
+  // Into `Model.tuples`.
+  uint32 index = 1;
+}
+
+message ArrayType {
+  Type element = 1;
+  uint64 min = 2;
+  uint64 max = 3;
+}
+
+message MapType {
+  Type key = 1;
+  Type value = 2;
+  uint64 min = 3;
+  uint64 max = 4;
+  // Index into `FlatBuffersProjection.tables`.
+  optional uint32 flatbuffers_entry_table = 5;
+}
+
+message StreamType {
+  oneof element {
+    TypeRef named = 10;
+    PrimitiveType primitive = 11;
+  }
+}
+
+// A tuple, lifted out of the type graph: every backend that emits one gives
+// it a name, and the collision rule is applied once, here (design note D-3).
+message InducedTuple {
+  // Both fields empty when no backend has a rule for this origin.
+  InducedName name = 1;
+  // typl §11: always named; `Init` computed per field.
+  repeated Field fields = 2;
+  // Of the declaration or interface that induced it.
+  Visibility visibility = 3;
+  Closure closure = 4;
+  // Derivable exactly when every field is.
+  Init init = 5;
+  // Index into `FlatBuffersProjection.tables`.
+  optional uint32 flatbuffers_table = 6;
+  oneof origin {
+    // Reached from a struct field, through arrays, maps and tuples.
+    TuplePath declaration = 10;
+    // A parameter, a reply or a fixed payload of an interaction.
+    InteractionPath interaction = 11;
+  }
+}
+
+message TuplePath {
+  // Index into `Model.declarations`.
+  uint32 declaration = 1;
+  // Field names and the positional words: ["span", "hi"], ["items",
+  // "Element"].
+  repeated string segments = 2;
+}
+
+message InteractionPath {
+  // Index into `Model.interfaces`.
+  uint32 interface = 1;
+  // Index into `Interface.slots`.
+  uint32 slot = 2;
+  // ["reply"], ["param", "window"], ["payload"], then as `TuplePath`.
+  repeated string segments = 3;
+}
+
+// ---------------------------------------------------------------------
+// Inits and closures
+// ---------------------------------------------------------------------
+
+// The resolved init of one position (typl §5.8), applied transitively over
+// the scope (design note D-5).
+message Init {
+  bool derivable = 1;
+  // The canonical scalar init text, where the position is scalar-valued.
+  optional string value = 2;
+  InitSource source = 3;
+  // The IR's own one-level `InitValue.derivable`, before the transitive rule
+  // of typl §5.8 is applied over the scope. It is the fact a printer reads at
+  // a position the scope does not resolve, and `derivable` is not that fact:
+  // `derivable` is the resolved answer for the whole position. False where
+  // the IR carries no `InitValue` at all — a tuple field, a collection
+  // element, a constant.
+  bool one_level = 4;
+}
+
+// What a declaration transitively contains, stated as facts rather than as
+// one target's trait list (design note D-5).
+message Closure {
+  // A float or unit backing anywhere in the closure.
+  bool reaches_float = 1;
+  // A string or bytes backing.
+  bool reaches_text_or_bytes = 2;
+  // An array or a map.
+  bool reaches_collection = 3;
+  // A reference into another package, resolved or not.
+  bool reaches_foreign = 4;
+  // A reference no package in scope declares, or one to a constant.
+  bool reaches_unresolved = 5;
+  // The declaration reaches itself.
+  bool reaches_cycle = 6;
+  // A position no backend can type.
+  bool reaches_stream_or_unspecified = 7;
+}
+
+// ---------------------------------------------------------------------
+// Interfaces, interactions, timing, clauses, and the catalog
+// ---------------------------------------------------------------------
+
+message Interface {
+  // `Interface.number` from `interfaces.lock`; 0 before the lock.
+  uint32 number = 1;
+  bool provisional = 2;
+  // `InterfaceShape::visibility()`: the service's for an inline shape.
+  Visibility visibility = 3;
+  string doc = 4;
+  repeated string labels = 5;
+  optional string deprecated = 6;
+  // `Interface.interactions`, same order.
+  repeated InteractionSlot slots = 7;
+  // Index into `Model.services`.
+  optional uint32 inline_of_service = 8;
+  oneof identity {
+    // An `interface` declaration.
+    Spellings declared = 10;
+    // A service's inline shape: the service's dotted name.
+    DottedName service = 11;
+  }
+}
+
+message InteractionSlot {
+  // ridl §11: one sequence, tombstones counted.
+  uint32 ordinal = 1;
+  oneof occupant {
+    Interaction interaction = 10;
+    Retired retired = 11;
+  }
+}
+
+message Interaction {
+  Spellings name = 1;
+  // The values `ridl_rt::contract::Kind` holds.
+  Kind kind = 2;
+  // Index among the live interactions: the `MEMBERS` row.
+  uint32 row = 3;
+  string doc = 4;
+  repeated string labels = 5;
+  optional string deprecated = 6;
+  // Absent for a fixed, and for a call with no declared bound.
+  Timing timing = 7;
+  oneof shape {
+    SignalShape signal = 10;
+    EventShape event = 11;
+    CommandShape command = 12;
+    QueryShape query = 13;
+    FixedShape fixed = 14;
+  }
+}
+
+// One thing that crosses, as a named type.
+message Payload {
+  TypeRef type = 1;
+  // `projection::flatbuffers::max_size` over the scope; absent when none. A
+  // `uint32` because the projection refuses any bound above `MAX_ENCODABLE`,
+  // which is `u32::MAX`.
+  optional uint32 flatbuffers_max_size = 2;
+}
+
+message SignalShape {
+  Payload payload = 1;
+  // The `= value` override (ridl §4.4).
+  optional string declared_init = 2;
+  // The resolved channel init (RIDL-109).
+  Init init = 3;
+}
+
+message EventShape {
+  Payload payload = 1;
+}
+
+message CommandShape {
+  repeated Param params = 1;
+  // Present when the call declares exactly one named parameter.
+  Payload request = 2;
+  // require only (RIDL-302).
+  repeated Clause clauses = 3;
+}
+
+message QueryShape {
+  repeated Param params = 1;
+  // As for a command.
+  Payload request = 2;
+  // As declared.
+  Reply reply = 3;
+  // Present when the reply is one named type.
+  Payload reply_payload = 4;
+  repeated Clause clauses = 5;
+}
+
+message FixedShape {
+  // Named type or array (ridl §8).
+  Type payload = 1;
+  // Present when the payload is a named type.
+  Payload named = 2;
+}
+
+message Param {
+  Spellings name = 1;
+  Type type = 2;
+}
+
+message Reply {
+  oneof kind {
+    Type value = 10;
+    Fallible fallible = 11;
+  }
+}
+
+message Fallible {
+  TypeRef ok = 1;
+  TypeRef err = 2;
+}
+
+// As the IR resolves it; bounds are exact-decimal microsecond strings.
+message Timing {
+  TimingMode mode = 1;
+  optional string min_us = 2;
+  optional string max_us = 3;
+  bool default_applied = 4;
+}
+
+message Clause {
+  ContractKind kind = 1;
+  // The canonical text, as the IR carries it.
+  string source = 2;
+  repeated string signal_refs = 3;
+  repeated string param_refs = 4;
+  bool uses_result = 5;
+  string observer_id = 6;
+  oneof translation {
+    // The one form the narrow translator accepts.
+    Comparison comparison = 10;
+    // The translator's reason, verbatim.
+    string refused = 11;
+  }
+}
+
+message Comparison {
+  ComparisonOp op = 1;
+  // As written.
+  string literal = 2;
+  // INTEGER or FLOAT: the subject's class, which the literal matched.
+  ScalarClass literal_class = 3;
+  oneof subject {
+    // Index into the interaction's params.
+    uint32 param = 10;
+    // `result`, on a query's ensure clause.
+    bool result = 11;
+  }
+}
+
+message Service {
+  DottedName name = 1;
+  Visibility visibility = 2;
+  string doc = 3;
+  repeated string labels = 4;
+  optional string deprecated = 5;
+  // The named form, source order.
+  repeated string interface_refs = 6;
+  // Index into `Model.interfaces`, the inline form.
+  optional uint32 inline_shape = 7;
+}
+
+message Catalog {
+  // `CatalogRef.name`.
+  string package = 1;
+  // 32 bytes; all zero until E16.2 (driftsys/ridl#378).
+  bytes hash = 2;
+  // `Package.retired`, number order.
+  repeated RetiredInterface retired = 3;
+}
+
+message RetiredInterface {
+  string name = 1;
+  uint32 number = 2;
+}
+
+// ---------------------------------------------------------------------
+// The FlatBuffers projection
+// ---------------------------------------------------------------------
+
+message FlatBuffersProjection {
+  // One per declaration `root_table` names, in declaration order.
+  repeated FbRoot roots = 1;
+  // Every table the projection induces for this package.
+  repeated FbTable tables = 2;
+}
+
+message FbRoot {
+  // Index into `Model.declarations`.
+  uint32 declaration = 1;
+  // `projection::root_table`.
+  FbRootKind root = 2;
+  oneof bound {
+    // `projection::max_size` over the scope.
+    uint32 max_size = 10;
+    FbUnbounded unbounded = 11;
+  }
+}
+
+// `unbounded_member`'s attribution, computed as the Rust backend computes it
+// today — over the package alone (design note §9 item 7).
+message FbUnbounded {
+  FbUnboundedCause cause = 1;
+  // MEMBER, UNTYPED: the member named.
+  optional string member = 2;
+  // LAYOUT: the projection's own message.
+  optional string layout_message = 3;
+  // EXEMPT: what the withheld note lists.
+  repeated string unjudgeable_members = 4;
+}
+
+message FbTable {
+  // The `.fbs` table name.
+  string name = 1;
+  // `projection::TableLayout.slots`, same order.
+  repeated FbSlot slots = 2;
+  // `TableLayout::vtable_slots`.
+  uint32 vtable_slots = 3;
+  oneof source {
+    // Its own table: the declaration's name.
+    uint32 struct_declaration = 10;
+    // `<Name>`, the wrapper table of a union declaration.
+    uint32 union_wrapper = 11;
+    // `<Union><Arm>Box` (ADR-0019 decision 2).
+    ArmBox arm_box = 12;
+    // `<Name>Box` (ADR-0019 decision 8).
+    uint32 root_box = 13;
+    // Index into `Model.tuples`: `InducedName.wire`.
+    uint32 tuple = 14;
+    // `<path>Entry`.
+    MapEntry map_entry = 15;
+  }
+}
+
+message ArmBox {
+  uint32 declaration = 1;
+  uint32 arm = 2;
+}
+
+message MapEntry {
+  // The path that reached the map, as the induced name spells it.
+  repeated string path = 1;
+}
+
+message FbSlot {
+  // `FieldSlot.id`: the typl ordinal minus one, or the fixed ids.
+  uint32 id = 1;
+  // What the slot holds on the wire.
+  FbWire wire = 2;
+  // `projection::enum_field_needs_null_default` on an enum-typed slot.
+  bool needs_null_default = 3;
+  // `SlotSource`.
+  oneof source {
+    // Index into the owner's slots (a live field).
+    uint32 field = 10;
+    uint32 retired_ordinal = 11;
+    uint32 tuple_position = 12;
+    bool key = 13;
+    bool value = 14;
+    bool wrapped = 15;
+  }
+}
+
+message FbWire {
+  oneof kind {
+    FbScalar scalar = 10;
+    // An out-of-line string.
+    bool text = 11;
+    // An out-of-line `[ubyte]`.
+    bool bytes = 12;
+    // Index into `tables`: a nested table or a tuple's.
+    uint32 table = 13;
+    // Index into `tables`.
+    uint32 union_wrapper = 14;
+    FbVector vector = 15;
+    FbMap map = 16;
+    // An enum-typed slot. Beyond the design note's list: a FlatBuffers enum
+    // reference is spelled with the enum's own name, not with the keyword of
+    // the scalar it is stored at, so the two emitters agree on a name here
+    // and a scalar alone cannot state it.
+    FbEnum enum = 17;
+  }
+}
+
+// An enum at one slot: the enum it names, and the width it is stored at.
+message FbEnum {
+  TypeRef type = 1;
+  // Always 8: every typl enum is emitted at one underlying width, `long`, so
+  // that a later value can never widen it under an otherwise compatible edit.
+  uint32 width_bytes = 2;
+}
+
+message FbScalar {
+  FbScalarType type = 1;
+  // 1, 2, 4 or 8.
+  uint32 width_bytes = 2;
+}
+
+message FbVector {
+  FbWire element = 1;
+  uint64 min = 2;
+  uint64 max = 3;
+}
+
+message FbMap {
+  // Index into `tables`.
+  uint32 entry_table = 1;
+  uint64 min = 2;
+  uint64 max = 3;
+}
+
+// ---------------------------------------------------------------------
+// The enums this schema restates rather than imports
+// ---------------------------------------------------------------------
+
+// The `_UNSPECIFIED` zero member is proto3's rule, not a value the lowering
+// writes: every enum field in a lowered model holds a named value, and a
+// reader that meets a zero is reading a model a later schema wrote.
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  VISIBILITY_PUBLIC = 1;
+  VISIBILITY_INTERNAL = 2;
+}
+
+enum PrimitiveType {
+  PRIMITIVE_TYPE_UNSPECIFIED = 0;
+  PRIMITIVE_TYPE_BOOLEAN = 1;
+  PRIMITIVE_TYPE_INTEGER = 2;
+  PRIMITIVE_TYPE_FLOAT = 3;
+  PRIMITIVE_TYPE_STRING = 4;
+  PRIMITIVE_TYPE_BYTES = 5;
+}
+
+enum IntWidth {
+  INT_WIDTH_UNSPECIFIED = 0;
+  INT_WIDTH_U8 = 1;
+  INT_WIDTH_I8 = 2;
+  INT_WIDTH_U16 = 3;
+  INT_WIDTH_I16 = 4;
+  INT_WIDTH_U32 = 5;
+  INT_WIDTH_I32 = 6;
+  INT_WIDTH_U64 = 7;
+  INT_WIDTH_I64 = 8;
+}
+
+enum FloatWidth {
+  FLOAT_WIDTH_UNSPECIFIED = 0;
+  FLOAT_WIDTH_F32 = 1;
+  FLOAT_WIDTH_F64 = 2;
+}
+
+enum TimingMode {
+  TIMING_MODE_UNSPECIFIED = 0;
+  TIMING_MODE_STRICT_PERIODIC = 1;
+  TIMING_MODE_RANGE = 2;
+}
+
+enum ContractKind {
+  CONTRACT_KIND_UNSPECIFIED = 0;
+  CONTRACT_KIND_REQUIRE = 1;
+  CONTRACT_KIND_ENSURE = 2;
+}
+
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  KIND_SIGNAL = 1;
+  KIND_EVENT = 2;
+  KIND_COMMAND = 3;
+  KIND_QUERY = 4;
+  KIND_FIXED = 5;
+}
+
+enum ScalarClass {
+  SCALAR_CLASS_UNSPECIFIED = 0;
+  SCALAR_CLASS_FLOAT = 1;
+  SCALAR_CLASS_INTEGER = 2;
+  SCALAR_CLASS_BOOLEAN = 3;
+  SCALAR_CLASS_STRING = 4;
+  SCALAR_CLASS_BYTES = 5;
+}
+
+enum DeclKind {
+  DECL_KIND_UNSPECIFIED = 0;
+  DECL_KIND_SCALAR = 1;
+  DECL_KIND_CONSTANT = 2;
+  DECL_KIND_STRUCT = 3;
+  DECL_KIND_ENUM = 4;
+  DECL_KIND_ENUM_SET = 5;
+  DECL_KIND_UNION = 6;
+}
+
+enum InitSource {
+  INIT_SOURCE_UNSPECIFIED = 0;
+  INIT_SOURCE_DECLARED = 1;
+  INIT_SOURCE_DERIVED = 2;
+  INIT_SOURCE_NONE = 3;
+}
+
+enum ComparisonOp {
+  COMPARISON_OP_UNSPECIFIED = 0;
+  COMPARISON_OP_LT = 1;
+  COMPARISON_OP_LE = 2;
+  COMPARISON_OP_GT = 3;
+  COMPARISON_OP_GE = 4;
+  COMPARISON_OP_EQ = 5;
+  COMPARISON_OP_NE = 6;
+}
+
+enum FbRootKind {
+  FB_ROOT_KIND_UNSPECIFIED = 0;
+  FB_ROOT_KIND_OWN = 1;
+  FB_ROOT_KIND_UNION_WRAPPER = 2;
+  FB_ROOT_KIND_BOX = 3;
+}
+
+enum FbUnboundedCause {
+  FB_UNBOUNDED_CAUSE_UNSPECIFIED = 0;
+  FB_UNBOUNDED_CAUSE_MEMBER = 1;
+  FB_UNBOUNDED_CAUSE_UNTYPED = 2;
+  FB_UNBOUNDED_CAUSE_LAYOUT = 3;
+  FB_UNBOUNDED_CAUSE_AGGREGATE = 4;
+  FB_UNBOUNDED_CAUSE_EXEMPT = 5;
+}
+
+enum FbScalarType {
+  FB_SCALAR_TYPE_UNSPECIFIED = 0;
+  FB_SCALAR_TYPE_BOOL = 1;
+  FB_SCALAR_TYPE_BYTE = 2;
+  FB_SCALAR_TYPE_UBYTE = 3;
+  FB_SCALAR_TYPE_SHORT = 4;
+  FB_SCALAR_TYPE_USHORT = 5;
+  FB_SCALAR_TYPE_INT = 6;
+  FB_SCALAR_TYPE_UINT = 7;
+  FB_SCALAR_TYPE_LONG = 8;
+  FB_SCALAR_TYPE_ULONG = 9;
+  FB_SCALAR_TYPE_FLOAT = 10;
+  FB_SCALAR_TYPE_DOUBLE = 11;
+}

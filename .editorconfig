@@ -8,3 +8,11 @@ insert_final_newline = true
 [*.md]
 indent_style = space
 indent_size = 2
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+[*.bat]
+end_of_line = crlf

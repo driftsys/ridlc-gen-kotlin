@@ -4,3 +4,5 @@
 .gradle/
 build/
 out/
+.kotlin/
+.gradle-home/

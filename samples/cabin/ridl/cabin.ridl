@@ -1,0 +1,58 @@
+// The worked example the end-to-end proof compiles and runs: one package
+// carrying one of every interaction kind that has a payload, plus a second,
+// smaller interface.
+//
+// `crates/ridlc/tests/cabin_example.rs` builds this package with
+// `ridl build --emit rust`, compiles the emitted crate and a consumer program
+// against it with plain `rustc`, runs the program, and asserts the four round
+// trips. It is the proof that what the CLI writes is a crate an application
+// outside this workspace can link and run, which is what story E11.14 makes
+// true (driftsys/ridl#444).
+package veh.cabin
+
+/// Cabin air temperature, in degrees.
+type Temperature : integer [-40..85]
+
+/// A percentage of full scale.
+type Level : integer [0..100]
+
+/// An averaging window, in milliseconds.
+type Window : integer [0..100000]
+
+/// The average a query replies with. Its range is wider than `Level`'s,
+/// so a reply is not constrained to the scale the command takes.
+type Average : integer [0..1000]
+
+/// The health of a cabin subsystem.
+enum Health {
+  OK   = 0
+  WARN = 1
+  FAIL = 2
+}
+
+/// Raised when a subsystem leaves `OK`.
+struct Warning {
+  code   : Level
+  health : Health
+}
+
+/// The cabin's own interface: a signal, an event, a command and a query, so
+/// the proof covers every interaction kind that carries a payload.
+interface Cabin {
+  signal  temperature : Temperature @10ms
+  event   warning     : Warning @[100ms..1s]
+  command setLevel(level: Level) @[..50ms] [
+    require level < 100
+  ]
+  query   average(window: Window): Average @[..200ms] [
+    require window > 0
+    ensure  result >= 0
+  ]
+}
+
+/// A second interface with a signal and nothing else, so the emitted crate
+/// holds more than one interface module and the per-interface buffer bound is
+/// visibly computed per interface rather than fixed.
+interface Horn {
+  signal active : Health @10ms
+}

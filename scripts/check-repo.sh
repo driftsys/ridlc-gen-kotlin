@@ -10,6 +10,7 @@ required_readmes=(
   "modules/ridl-rt-kt/README.md"
   "modules/ridl-rt-kt-loopback/README.md"
   "modules/ridl-rt-kt-coroutines/README.md"
+  "modules/ridl-rt-kt-conformance/README.md"
   "modules/conformance/README.md"
   "samples/cabin/README.md"
   "shared/README.md"
@@ -17,6 +18,7 @@ required_readmes=(
 
 required_root_files=(
   ".editorconfig"
+  ".gitattributes"
   ".gitignore"
   ".git-std.toml"
   "AGENTS.md"
@@ -24,6 +26,13 @@ required_root_files=(
   "LICENSE"
   "README.md"
   "justfile"
+  "settings.gradle.kts"
+  "gradlew"
+  "gradlew.bat"
+  "gradle/wrapper/gradle-wrapper.jar"
+  "gradle/wrapper/gradle-wrapper.properties"
+  "gradle/libs.versions.toml"
+  "modules/conformance/ridl-release"
 )
 
 for relative_path in "${required_root_files[@]}" "${required_readmes[@]}"; do
@@ -33,15 +42,19 @@ for relative_path in "${required_root_files[@]}" "${required_readmes[@]}"; do
   fi
 done
 
+# Kotlin and Gradle sources are tracked; build outputs, generated sources,
+# binaries other than the Gradle wrapper jar, and the toolchains of other
+# languages are not (docs/design.md §6, D-K9: no ridl source is vendored).
 while IFS= read -r -d '' tracked_path; do
   case "$tracked_path" in
-    *.kt|*.kts|*.java|*.rs|\
-    Cargo.toml|*/Cargo.toml|\
-    build.gradle*|*/build.gradle*|settings.gradle*|*/settings.gradle*|\
+    gradle/wrapper/gradle-wrapper.jar)
+      ;;
+    *.rs|\
+    Cargo.toml|*/Cargo.toml|Cargo.lock|*/Cargo.lock|\
     pom.xml|*/pom.xml|\
-    gradlew|*/gradlew|gradlew.bat|*/gradlew.bat|\
     mvnw|*/mvnw|mvnw.cmd|*/mvnw.cmd|\
-    .gradle/*|*/.gradle/*|\
+    */gradlew|*/gradlew.bat|*/settings.gradle.kts|*/settings.gradle|\
+    .gradle/*|*/.gradle/*|.kotlin/*|*/.kotlin/*|\
     build/*|*/build/*|out/*|*/out/*|target/*|*/target/*|\
     generated/*|*/generated/*|generated-sources/*|*/generated-sources/*|\
     gen/*|*/gen/*|dist/*|*/dist/*|\
@@ -65,4 +78,10 @@ for relative_path in "${required_readmes[@]}"; do
   printf 'checked README: %s\n' "$relative_path"
 done
 
-printf 'scaffold check passed\n'
+release="$(tr -d '[:space:]' < "$root_dir/modules/conformance/ridl-release")"
+if [[ ! "$release" =~ ^editor-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'modules/conformance/ridl-release is not a ridl release tag: %s\n' "$release" >&2
+  exit 1
+fi
+
+printf 'repository check passed\n'

@@ -1,0 +1,86 @@
+package veh.common
+
+// ---------- Units and scalars ----------
+
+/// Vehicle speed over ground
+type Speed       : km/h [0.0..MAX_SPEED step 0.5]
+
+/// Coolant / ambient temperature
+type Temperature : Cel  [-40.0..125.0 step 0.1]
+
+/// Engine crankshaft speed
+type RPM         : /min [0.0..8000.0 step 10.0]
+
+/// Normalised ratio
+type Ratio       : %    [0.0..100.0 step 0.1]
+
+type Counter : integer [0..65535]
+type Gain    : float   [0.0..1.0 step 0.01]
+
+// ---------- Constants ----------
+
+const MAX_SPEED      : Speed   = 250.0
+const SPEED_LIMIT_EU : Speed   = 130.0
+const MAX_GEAR       : integer = 6
+const IDLE_RPM       : RPM     = 800.0
+
+// ---------- Enums ----------
+
+enum GearPosition {
+  PARK    = 0
+  DRIVE   = 1
+  REVERSE = 2
+  NEUTRAL = 3
+}
+
+enum Warning {
+  LOW_FUEL     = 0
+  CHECK_ENGINE = 1
+  DOOR_OPEN    = 2
+  SEATBELT     = 3
+}
+
+enumset WarningFlags : Warning
+
+// ---------- Composites ----------
+
+struct SpeedLimitPayload {
+  limit  : Speed
+  actual : Speed
+}
+
+struct DriverProfile {
+  name     : Name              // ridl.std
+  speed    : Speed
+  override : Speed?            // optional
+  gears    : integer [0..MAX_GEAR] = 6
+}
+
+struct SensorBounds {
+  range    : (min: Speed, max: Speed)
+  readings : [Speed; 8]
+  labels   : [Label; 1..16]
+  meta     : [Label : Name; 0..32]
+}
+
+union SensorResult {           // result union — §10.2: one success arm, one error arm
+  ok  : SensorReading
+  err : SensorFault
+}
+
+struct SensorReading {
+  value     : Speed
+  timestamp : Timestamp        // ridl.std
+}
+
+error struct SensorFault {     // failure vocabulary — §10.1
+  code    : Counter
+  message : Message            // ridl.std
+}
+
+// package-private helper — not visible to importers, omitted from
+// cross-package codegen artifacts
+internal struct RawWheelFrame {
+  ticks : Counter
+  frame : bytes [8]
+}

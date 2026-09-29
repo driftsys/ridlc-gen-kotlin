@@ -1,0 +1,91 @@
+// The FlatBuffers codec round-trip fixture (E11.7 stage K5, plan Task 4,
+// docs/archive/2026-09-20-flatbuffers-codec-design.md).
+//
+// One declaration per shape the codec has to carry, so that a round trip over
+// `Report` exercises all of them at once: a constrained named scalar over each
+// numeric backing, a vacuous one (D-6 and Epic 10 Task 4 give those two
+// different constructors), a string, a bytes, an enum, an enum set, a nested
+// struct, a union with a table arm and a boxed non-table arm (ADR-0019
+// decisions 1 and 2), an induced tuple, a fixed array, a bounded array, a map,
+// a vector of strings, of tables, of unions and of tuples, an optional scalar
+// and an optional composite, and a reserved tombstone.
+//
+// `Outcome` and `Inner` are root tables in their own right, so the same file
+// also carries a union as a payload and a struct as a payload.
+//
+// Kept self-contained, with no cross-package import: the compile path this
+// fixture is read through (`ridlc::compile`) wraps one file as a single-file
+// synthetic package, and a cross-package reference is a shape this backend
+// withholds a codec for rather than one it encodes.
+
+package fb.demo
+
+// ---------- Named scalars ----------
+
+/// A speed, narrow enough that the projection picks a sub-64-bit width.
+type Speed : integer [0..300]
+
+/// A count.
+type Count : integer [0..200]
+
+/// A ratio.
+type Ratio : float [0.0..1.0 step 0.01]
+
+/// A label.
+type Label : string [0..16]
+
+/// A small blob.
+type Blob : bytes [0..8]
+
+/// A boolean scalar: its constraint checks nothing, so its constructor is the
+/// infallible `new` (Epic 10 Task 4).
+type Engaged : boolean
+
+// ---------- Enum and enum set ----------
+
+enum Health {
+  OK   = 0
+  WARN = 1
+  FAIL = 2
+}
+
+enumset WarningFlags {
+  LOW  = 0
+  HIGH = 1
+}
+
+// ---------- Composites ----------
+
+struct Inner {
+  speed : Speed
+  label : Label
+}
+
+union Outcome {
+  ok  : Inner
+  bad : Health
+}
+
+struct Report {
+  id       : Count
+  name     : Label
+  blob     : Blob
+  ratio    : Ratio
+  engaged  : Engaged
+  health   : Health
+  flags    : WarningFlags
+  inner    : Inner
+  outcome  : Outcome
+  range    : (min: Speed, max: Speed)
+  readings : [Speed; 3]
+  faults   : [Health; 0..4]
+  meta     : [Label : Count; 0..3]
+  names    : [Label; 0..3]
+  inners   : [Inner; 0..2]
+  outcomes : [Outcome; 0..2]
+  points   : [(x: Speed, y: Speed); 0..2]
+  reserved legacyChecksum
+  pair     : (lo: Speed, inner: Inner)?
+  note     : Label?
+  spare    : Speed?
+}

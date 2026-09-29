@@ -1,0 +1,74 @@
+// The cruise-control fixture (E9.8 task 7,
+// docs/archive/2026-08-08-proto3-projection-design.md
+// §3.1). A single-file package declaring one of every construct the design's
+// projection table maps, so each row has a living example against which the
+// emitted proto3 schema is snapshotted and compiled with protox.
+//
+// Kept self-contained (no cross-package import, no `ridl.std` reference) —
+// the compile path this fixture is read through (`ridlc::compile`) wraps one
+// file as a single-file synthetic package, so a cross-package reference would
+// need the other package's own IR to resolve (`generate_with`), which this
+// fixture has no reason to exercise on its own.
+
+package veh.cruise
+
+// ---------- Named scalars ----------
+
+/// Vehicle speed over ground.
+type Speed   : km/h    [0.0..250.0 step 0.5]
+
+/// A tolerance band, in percent of the setpoint.
+type Percent : integer [0..100]
+
+/// A signed trim adjustment, in percent.
+type Delta   : integer [-100..100]
+
+// ---------- Enum ----------
+
+enum EngageState {
+  OFF    = 0
+  ARMED  = 1
+  ACTIVE = 2
+  reserved 3
+}
+
+// ---------- Enum set ----------
+
+enumset Warnings {
+  LOW_FUEL  = 0
+  DOOR_AJAR = 1
+}
+
+// ---------- Struct ----------
+
+struct Setpoint {
+  desired   : Speed
+  tolerance : Percent?
+  trim      : Delta
+  reserved 4
+}
+
+struct Telemetry {
+  history : [Speed; 8]
+  byId    : [string [0..16] : Speed; 0..8]
+  bounds  : (min: Speed, max: Speed)
+  active  : Warnings
+}
+
+// ---------- Union ----------
+
+union Command {
+  engage    : Setpoint
+  disengage : Percent
+  reserved override
+}
+
+// ---------- Interface ----------
+
+interface CruiseControl {
+  signal  currentSpeed : Speed @10ms
+  signal  mode         : EngageState @10ms
+  event   warning      : Warnings @[100ms..1s]
+  command setTarget(desired: Speed) @[10ms..50ms]
+  reserved legacyMode
+}

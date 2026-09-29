@@ -1,0 +1,80 @@
+# The repository gate (docs/design.md §6, stage K0): the JVM job runs every
+# check the Gradle `check` task holds, beside the root formatting and
+# repository checks; commit-lint lints the PR's own commits.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JUST_VERSION: 1.38.0
+
+jobs:
+  jvm:
+    name: jvm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: install just
+        run: |
+          set -o pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" just
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: install prim
+        run: |
+          set -o pipefail
+          curl -fsSL https://raw.githubusercontent.com/driftsys/prim/main/install.sh | bash \
+            || cargo install --git https://github.com/driftsys/prim --locked
+          command -v prim
+        env:
+          PRIM_INSTALL_DIR: /usr/local/bin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: just build
+
+  commit-lint:
+    name: commit-lint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # The default pull_request checkout is a synthetic merge commit,
+          # which can never pass a conventional-commit lint.
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: install just
+        run: |
+          set -o pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" just
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: install git-std
+        run: |
+          set -o pipefail
+          curl -fsSL https://raw.githubusercontent.com/driftsys/git-std/main/install.sh | bash \
+            || cargo install --git https://github.com/driftsys/git-std git-std --locked
+          command -v git-std
+        env:
+          GIT_STD_INSTALL_DIR: /usr/local/bin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: just lint-commits ${{ github.base_ref }}
