@@ -2,11 +2,10 @@
 
 **Status:** design note, for Sebastien's disposition. Written 2026-09-23, after
 lane P merged (driftsys/ridl#496, commit 7fc417e). It is the design of the first
-external codegen plugin, which lives outside this repository at
-[`driftsys/ridlc-gen-kotlin`](https://github.com/driftsys/ridlc-gen-kotlin); the
-record of it in the toolchain repository is
-`docs/wip/2026-09-23-kotlin-plugin-design.md` on driftsys/ridl, and this file is
-the same text; every link below points at that repository on GitHub.
+external codegen plugin, the product of this repository. This file is its only
+record; the toolchain repository,
+[driftsys/ridl](https://github.com/driftsys/ridl), keeps no copy, and every link
+below points at that repository on GitHub.
 
 The note answers four questions in order: how the plugin is launched (§2), what
 the Kotlin runtime library is (§3), what the generated value objects are and how

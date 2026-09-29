@@ -18,10 +18,10 @@ modules and the `samples/cabin` demonstration:
 ## Design
 
 The design of the plugin, the runtime contract, the value objects, the codec and
-the face is [`docs/design.md`](docs/design.md). It is the same text as
-`docs/wip/2026-09-23-kotlin-plugin-design.md` in
-[driftsys/ridl](https://github.com/driftsys/ridl), the toolchain repository
-whose records it rests on; a change to one is made to both.
+the face is [`docs/design.md`](docs/design.md). It is the only record of that
+design; it rests on the records of
+[driftsys/ridl](https://github.com/driftsys/ridl), the toolchain repository,
+which keeps no copy of it.
 
 ## Scaffold status
 
