@@ -266,6 +266,15 @@ methods on the clients, publisher and provider are spelled from the member's
 of them first. The two interfaces of X-14a, `HTTPServer` and `HttpServer`, are
 two classes in Kotlin, and build.
 
+**A type named like its child package** (X-18, driftsys/ridl#416, #17) needs no
+change. The JVM refuses a package that holds a class and a subpackage of one
+name (JLS §7.1), and the Rust crate met the same clash as E0573. Package `veh`'s
+`type common` is the class `veh.Common`, though: `camel_case` upper-cases a
+class's first letter, and a package segment is lower case (MANI-006), so the
+class and the package `veh.common` never share a name, not even on a
+case-insensitive file system, where they are `veh/Common.class` and the
+directory `veh/common`.
+
 ### No AIDL
 
 The plugin emits no AIDL: §5's per-interface `I<Iface>.aidl` and

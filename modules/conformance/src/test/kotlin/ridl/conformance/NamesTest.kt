@@ -381,4 +381,39 @@ class NamesTest {
         "`CabinProvider` is generated twice in package `probe.provider`: for the descriptor of member `provider` of " +
             "interface `Cabin`, and for the provider of interface `Cabin`",
     )
+
+    /**
+     * X-18, driftsys/ridl#416 (#17): package `veh` declares a type named like
+     * its child package `veh.common`. The JVM refuses a package holding a
+     * class and a subpackage of one name (JLS §7.1), but the class is
+     * `veh.Common`: `camel_case` upper-cases a class's first letter, and a
+     * package segment is lower case (MANI-006), so the two never meet, even
+     * on a case-insensitive file system, where `veh/Common.class` and the
+     * directory `veh/common` are still two names.
+     */
+    @Test
+    fun `X-18 a type named like its child package builds and is reachable from it`() {
+        val root = work.resolve("src-veh").createDirectories()
+        root.resolve("ridl.toml").writeText("[package]\nname = \"veh\"\nversion = \"1.0.0\"\n")
+        root.resolve("veh.ridl").writeText("package veh\n\ntype common : integer [0..100]\n")
+        root.resolve("common").createDirectories().resolve("common.ridl")
+            .writeText("package veh.common\n\nimport veh.common as Common\n\nstruct Uses { c : Common }\n")
+        val responses = Harness.capturedRequests(root, "veh", work, "--emit", "codegen-model")
+            .mapValues { (_, request) -> Generator.generate(Wire.readRequest(request)) }
+        assertEquals(listOf("veh", "veh.common"), responses.keys.toList())
+        val sources = responses.values.flatMap { response ->
+            assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+            response.filesList.map { it.path to it.text }
+        }.toMap()
+        val consumer = """
+            package veh.consumer
+
+            object Consumer {
+                @JvmStatic
+                fun probe(): Long = veh.common.Uses(veh.Common.of(5)).c.value
+            }
+        """.trimIndent()
+        val loader = compiles(sources + ("veh/consumer/Consumer.kt" to consumer), "veh")
+        assertEquals(5L, loader.loadClass("veh.consumer.Consumer").getMethod("probe").invoke(null))
+    }
 }
