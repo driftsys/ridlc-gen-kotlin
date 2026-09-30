@@ -28,10 +28,12 @@ bounded with `withTimeout`, as nothing in a port times out.
 registers its own interest, and `cancel` runs once when the coroutine is
 cancelled while waiting. A generated `<Iface>AsyncClient` runs each call through
 it. A wake that lands during a poll makes the next round yield once before it
-polls again: a poll that wakes itself, as the generated `serveAsync` does after
-a pass of 32 claims (driftsys/ridl#568), then never holds its dispatcher, and
-the yield is where a cancellation is seen. `AwaitPollTest` pins it on one
-thread.
+polls again, whoever woke it: a poll that wakes itself, as the generated
+`serveAsync` does after a pass of 32 claims (driftsys/ridl#568), then never
+holds its dispatcher, and the yield is where a cancellation is seen. The rule
+also covers a client: when its outcome or event lands while its own poll runs,
+it reads the value on the next poll, one dispatch later. `AwaitPollTest` pins
+both cases on one thread.
 
 ## Status
 
