@@ -102,21 +102,33 @@ class FacesEmitterTest {
         options,
     ).emit()
 
+    /** The error diagnostics of the whole plugin over [declarations] and [iface]. */
+    private fun refusals(vararg declarations: String, iface: Interface.Builder): List<String> = Generator.generate(
+        Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(
+            Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo"))
+                .addAllDeclarations(declarations.map { scalar(it).build() }).addInterfaces(iface),
+        ).build(),
+    ).diagnosticsList.filter { it.severity == Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_ERROR }.map { it.message }
+
     @Test
-    fun `two generated types of one name skip their interface`() {
+    fun `two generated types of one name refuse the package, naming both sources`() {
         val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
             .addSlots(command(1, "set", "Set")).addSlots(command(2, "set_call", "SetCall"))
-        val emitted = faces("Level", iface = iface)
-        assertNull(emitted.text)
-        assertTrue("`DriveSetCall` is generated twice" in emitted.warnings.single(), emitted.warnings.single())
+        assertEquals(emptyList<String>(), faces("Level", iface = iface).warnings, "the face is not skipped")
+        assertEquals(
+            listOf(
+                "$PLUGIN: `DriveSetCall` is generated twice in package `kt.demo`: for the descriptor of member `set_call` " +
+                    "of interface `Drive`, and for the call of member `set` of interface `Drive`; rename one of them",
+            ),
+            refusals("Level", iface = iface),
+        )
     }
 
     @Test
-    fun `a generated type named like a declared one skips its interface`() {
+    fun `a generated type named like a declared one refuses the package`() {
         val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
-        val emitted = faces("Level", "DriveSet", iface = iface)
-        assertNull(emitted.text)
-        assertTrue("`DriveSet` collides with a declaration" in emitted.warnings.single(), emitted.warnings.single())
+        val refusal = refusals("Level", "DriveSet", iface = iface).single()
+        assertTrue("for declaration `DriveSet`, and for the descriptor of member `set` of interface `Drive`" in refusal, refusal)
     }
 
     @Test

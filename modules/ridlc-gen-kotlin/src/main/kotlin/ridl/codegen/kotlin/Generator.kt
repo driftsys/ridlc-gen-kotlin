@@ -5,6 +5,7 @@ import ridl.codegen.v1.Plugin.CodegenResponse
 import ridl.codegen.kotlin.types.CodecEmitter
 import ridl.codegen.kotlin.types.FacesEmitter
 import ridl.codegen.kotlin.types.TypesEmitter
+import ridl.codegen.kotlin.types.collisions
 import ridl.codegen.v1.Plugin.Diagnostic
 import ridl.codegen.v1.Plugin.DiagnosticSeverity
 import ridl.codegen.v1.Plugin.GeneratedFile
@@ -38,6 +39,10 @@ object Generator {
         val faces = FacesEmitter(request.model, options).emit()
         val errors = types.errors + codec.errors + faces.errors
         if (errors.isNotEmpty()) return failure(errors)
+        // Two generated types of one name: every file's names are one
+        // package's, so they are checked together.
+        val clashes = collisions(request.model.name.dotted, types.claims + codec.claims + faces.claims)
+        if (clashes.isNotEmpty()) return failure(clashes)
         val files = listOf(types.path to types.text, codec.path to codec.text, faces.path to faces.text)
             .mapNotNull { (path, text) -> text?.let { GeneratedFile.newBuilder().setPath(path).setText(it).build() } }
         return CodegenResponse.newBuilder()
