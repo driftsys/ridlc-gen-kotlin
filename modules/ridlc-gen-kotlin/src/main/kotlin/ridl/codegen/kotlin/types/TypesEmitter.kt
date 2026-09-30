@@ -46,11 +46,11 @@ class EmittedTypes(val path: String, val text: String?, val errors: List<String>
 /**
  * `Types.kt`: the value objects of one package (docs/design.md §4), written
  * with KotlinPoet (D-K2). One Kotlin declaration per model declaration and
- * per induced tuple, and the constants in one `object Constants`.
+ * per induced tuple, and the constants in one `object Constants_`.
  */
 class TypesEmitter(private val model: Model, private val options: Options) {
     private val pkg = options.kotlinPackage
-    private val file = FileSpec.builder(pkg, "Types")
+    private val file = FileSpec.builder(pkg, "Types").jvmName("Types")
     private val errors = mutableListOf<String>()
     private var deprecated = false
 
@@ -59,7 +59,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         for (collision in model.tupleCollisionsList) {
             errors += "$PLUGIN: two tuples of `${model.name.dotted}` are both named `${collision.name}`"
         }
-        val constants = TypeSpec.objectBuilder("Constants")
+        val constants = TypeSpec.objectBuilder(CONSTANTS)
             .addKdoc("The constants of `%L`.", model.name.dotted)
         for (declaration in model.declarationsList) {
             guarded(declaration.name.declared) {
@@ -92,13 +92,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             }
         }
         val built = constants.build()
-        if (built.propertySpecs.isNotEmpty()) {
-            if (model.declarationsList.any { it.name.camel == "Constants" && !it.hasConstant() }) {
-                errors += "$PLUGIN: `${model.name.dotted}` declares a type named `Constants`, " +
-                    "the name of the object its constants are generated into"
-            }
-            file.addType(built)
-        }
+        if (built.propertySpecs.isNotEmpty()) file.addType(built)
         if (errors.isNotEmpty()) return EmittedTypes(path, null, errors)
         if (deprecated) {
             file.addAnnotation(AnnotationSpec.builder(Suppress::class).addMember("%S", "DEPRECATION").build())
@@ -299,7 +293,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
     // -- constants ---------------------------------------------------------
 
     /**
-     * One constant as a property of `object Constants`: a `const val` for a
+     * One constant as a property of `object Constants_`: a `const val` for a
      * primitive or a regex, a `val` holding the value object for a named
      * scalar. A bytes constant, and one whose type does not resolve, has no
      * Kotlin spelling and is left out, as the Rust backend leaves it out.
@@ -374,7 +368,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             val constant = TypeSpec.anonymousClassBuilder()
                 .addSuperclassConstructorParameter("%L", Literals.long(value.value.toString()))
             if (value.doc.isNotEmpty()) constant.addKdoc("%L", value.doc)
-            builder.addEnumConstant(value.name.declared, constant.build())
+            builder.addEnumConstant(enumEntry(value.name), constant.build())
         }
         builder.addType(
             TypeSpec.companionObjectBuilder()
@@ -407,7 +401,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             .addProperty(PropertySpec.builder("EMPTY", self).addKdoc("The set of no member.").initializer("%T(0L)", self).build())
         for (bit in set.bitsList) {
             if (bit.value !in 0..63) refuse("the bit of `${bit.name.declared}` is ${bit.value}, outside 0..63")
-            val property = PropertySpec.builder(bit.name.declared, self).initializer("%T(1L shl %L)", self, bit.value)
+            val property = PropertySpec.builder(enumSetBit(bit.name), self).initializer("%T(1L shl %L)", self, bit.value)
             if (bit.doc.isNotEmpty()) property.addKdoc("%L", bit.doc)
             companion.addProperty(property.build())
         }
@@ -531,7 +525,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         for (field in fields) {
             if (!field.hasType()) refuse("the field `${field.name.declared}` carries no type")
             if (field.name.camel.isEmpty()) refuse("a field has no name")
-            val property = field.name.camel.replaceFirstChar(Char::lowercaseChar)
+            val property = field.name.property
             val type = kotlinType(field.type)
             val parameter = ParameterSpec.builder(property, type)
             if (type.isNullable) parameter.defaultValue("null")
@@ -539,12 +533,12 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             constructor.addParameter(parameter.build())
             val bytes = type.copy(nullable = false) == BYTE_ARRAY
             val stored = if (bytes) "_$property" else property
-            val copy = copyOf(property, field.type)
+            val copy = copyOf(escaped(property), field.type)
             if (bytes) {
                 builder.addProperty(PropertySpec.builder(stored, type, KModifier.PRIVATE).initializer(copy).build())
                 builder.addProperty(
                     PropertySpec.builder(property, type).apply { if (field.doc.isNotEmpty()) addKdoc("%L", field.doc) }
-                        .getter(FunSpec.getterBuilder().addStatement("return %L", copyOf(stored, field.type)).build()).build(),
+                        .getter(FunSpec.getterBuilder().addStatement("return %L", copyOf("this.$stored", field.type)).build()).build(),
                 )
             } else {
                 val prop = PropertySpec.builder(property, type).initializer(copy)
@@ -560,7 +554,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             members += Member(property, stored, bytes)
             // `this.`: in `init`, the constructor parameter of the same name
             // shadows the property, and the property holds the copy.
-            checks("this.$stored", field.type, declared, patterns, depth = 0)?.let(init::add)
+            checks("this.${escaped(stored)}", field.type, declared, patterns, depth = 0)?.let(init::add)
         }
         patterns.declare(builder)
         builder.primaryConstructor(constructor.build())
@@ -674,7 +668,8 @@ class TypesEmitter(private val model: Model, private val options: Options) {
     private fun equalsOf(self: ClassName, members: List<Member>): FunSpec {
         val body = CodeBlock.builder().add("return this === other || other is %T", self)
         for (m in members) {
-            if (m.bytes) body.add(" &&\n    %L.contentEquals(other.%L)", m.stored, m.stored) else body.add(" &&\n    %L == other.%L", m.name, m.name)
+            // `this.`: a field may be named `other`, like the parameter.
+            if (m.bytes) body.add(" &&\n    this.%N.contentEquals(other.%N)", m.stored, m.stored) else body.add(" &&\n    this.%N == other.%N", m.name, m.name)
         }
         return FunSpec.builder("equals").addModifiers(KModifier.OVERRIDE)
             .addParameter("other", ANY_NULLABLE).returns(BOOLEAN)
@@ -693,11 +688,13 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         return FunSpec.builder("hashCode").addModifiers(KModifier.OVERRIDE).returns(INT).addCode(body.build()).build()
     }
 
-    private fun hashOf(m: Member): String = if (m.bytes) "${m.stored}.contentHashCode()" else "${m.name}.hashCode()"
+    // `this.`: a field may be named `result`, like the local.
+    private fun hashOf(m: Member): String =
+        if (m.bytes) "this.${escaped(m.stored)}.contentHashCode()" else "this.${escaped(m.name)}.hashCode()"
 
     private fun toStringOf(name: String, members: List<Member>): FunSpec {
         val text = members.joinToString(", ", "$name(", ")") { m ->
-            if (m.bytes) "${m.name}=\${${m.stored}.contentToString()}" else "${m.name}=\$${m.name}"
+            if (m.bytes) "${m.name}=\${this.${escaped(m.stored)}.contentToString()}" else "${m.name}=\${this.${escaped(m.name)}}"
         }
         return FunSpec.builder("toString").addModifiers(KModifier.OVERRIDE).returns(STRING)
             .addStatement("return %P", text).build()

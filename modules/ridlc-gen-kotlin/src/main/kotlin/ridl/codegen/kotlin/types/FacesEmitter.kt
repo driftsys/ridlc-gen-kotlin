@@ -3,6 +3,7 @@ package ridl.codegen.kotlin.types
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.BOOLEAN
+import com.squareup.kotlinpoet.BYTE_ARRAY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -11,6 +12,7 @@ import com.squareup.kotlinpoet.INT
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.LambdaTypeName
 import com.squareup.kotlinpoet.LIST
+import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.NOTHING
 import com.squareup.kotlinpoet.ParameterSpec
@@ -115,7 +117,7 @@ class EmittedFaces(val path: String, val text: String?, val errors: List<String>
  */
 class FacesEmitter(private val model: Model, private val options: Options) {
     private val pkg = options.kotlinPackage
-    private val file = FileSpec.builder(pkg, "Faces")
+    private val file = FileSpec.builder(pkg, "Faces").jvmName("Faces")
     private val wires = Wires(model, pkg)
     private val inits = Inits(model, pkg, wires)
     private val warnings = mutableListOf<String>()
@@ -128,7 +130,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
     /** The top-level names of `Types.kt` and `Codec.kt`, which no face type may take. */
     private val declared: Set<String> =
-        model.declarationsList.filter { !it.hasConstant() }.flatMap { listOf(it.name.camel, it.name.camel + "Codec") }.toSet() + "Constants"
+        model.declarationsList.filter { !it.hasConstant() }.flatMap { listOf(it.name.camel, it.name.camel + "Codec") }.toSet()
 
     /** The top-level types of the interfaces faced so far. */
     private val faced = mutableSetOf<String>()
@@ -251,7 +253,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             FunSpec.builder("deadlineAfter").addModifiers(KModifier.PRIVATE)
                 .addKdoc("[now] plus [max], saturating at the largest timestamp.")
                 .addParameter("now", TIMESTAMP).addParameter("max", DURATION).returns(TIMESTAMP)
-                .addStatement("return %T(if (Long.MAX_VALUE - max.micros < now.micros) Long.MAX_VALUE else now.micros + max.micros)", TIMESTAMP)
+                .addStatement("return %T(if (%T.MAX_VALUE - max.micros < now.micros) %T.MAX_VALUE else now.micros + max.micros)", TIMESTAMP, LONG, LONG)
                 .build(),
         )
         file.addType(interactionCall())
@@ -261,7 +263,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         val p = TypeVariableName("P", listOf(CALLER, CLOCK, WAKEABLE))
         val t = TypeVariableName("T", ANY)
         val correlationOrNull = CORRELATION.copy(nullable = true)
-        return TypeSpec.classBuilder("InteractionCall").addModifiers(KModifier.INTERNAL, KModifier.ABSTRACT)
+        return TypeSpec.classBuilder(INTERACTION_CALL).addModifiers(KModifier.INTERNAL, KModifier.ABSTRACT)
             .addKdoc(
                 "One command or query in flight: the counterpart of the Rust named future. It is sent when it is " +
                     "created; `SendError.Busy` leaves it unsent, to retry on a later poll. Each [poll] registers " +
@@ -469,25 +471,25 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             if (signals.isNotEmpty() || events.isNotEmpty()) types += publisher()
             if (hasCalls) types += provider()
-            checkNames(hasCalls)
+            checkNames()
             // Set last: an interface refused above adds nothing to the file, helpers included.
             if (waits) this@FacesEmitter.waits = true
             if (hasCalls) this@FacesEmitter.calls = true
             faced += types.map { it.name!! }
         }
 
-        /** Refuses the interface when a type it generates would take a name already taken in the package. */
-        private fun checkNames(hasCalls: Boolean) {
+        /**
+         * Refuses the interface when a type it generates would take a name
+         * already taken in the package. `InteractionCall_` is out of reach
+         * of every generated name, so it is not checked.
+         */
+        private fun checkNames() {
             val own = types.map { it.name!! }
-            val helper = if (hasCalls) listOf("InteractionCall") else emptyList()
-            (own + helper).groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.let {
+            own.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.let {
                 refuse("the type `${it.key}` is generated twice")
             }
-            (own + helper).firstOrNull { it in declared }?.let { refuse("the generated `$it` collides with a declaration") }
-            own.firstOrNull { it in faced || (it == "InteractionCall" && this@FacesEmitter.calls) }?.let {
-                refuse("the generated `$it` is also generated for another interface")
-            }
-            helper.firstOrNull { it in faced }?.let { refuse("the generated `$it` is also generated for another interface") }
+            own.firstOrNull { it in declared }?.let { refuse("the generated `$it` collides with a declaration") }
+            own.firstOrNull { it in faced }?.let { refuse("the generated `$it` is also generated for another interface") }
         }
 
         private fun TypeSpec.Builder.visibility(): TypeSpec.Builder = apply { if (internal) addModifiers(KModifier.INTERNAL) }
@@ -499,7 +501,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val hashCode = if (hash.size == 32 && hash.any { it != 0.toByte() }) {
                 CodeBlock.of("%T(byteArrayOf(%L))", CATALOG_HASH, hash.joinToString { it.toString() })
             } else {
-                CodeBlock.of("%T(ByteArray(%T.SIZE))", CATALOG_HASH, CATALOG_HASH)
+                CodeBlock.of("%T(%T(%T.SIZE))", CATALOG_HASH, BYTE_ARRAY, CATALOG_HASH)
             }
             val callSizes = commands.map { argument(it).second.maxSize } +
                 queries.flatMap { listOf(argument(it).second.maxSize, reply(it).maxSize) }
@@ -597,7 +599,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
                 // An explicit null: a `Unit?` lambda returning servePass's `Nothing?` fails JVM verification.
                 .addStatement("val until = deadline(timeout)")
-                .addStatement("%M<Unit>(until) { waker -> servePass(handler, provider, buffer, until, waker); null }", BLOCK_ON)
+                .addStatement("%M<%T>(until) { waker -> servePass(handler, provider, buffer, until, waker); null }", BLOCK_ON, UNIT)
                 .build()
         }
 
@@ -778,7 +780,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addKdoc("One %L `%L` in flight.", if (query) "query" else "command", m.declared)
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).addParameter(value, arg.type).build())
-                .superclass(ClassName(pkg, "InteractionCall").parameterizedBy(p, result))
+                .superclass(ClassName(pkg, INTERACTION_CALL).parameterizedBy(p, result))
                 .addSuperclassConstructorParameter("port")
                 .addSuperclassConstructorParameter("%L", number())
                 .addSuperclassConstructorParameter("%L", ordinal(m))
@@ -897,7 +899,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .returns(NOTHING)
                 .addStatement("claimServed(handler)")
                 .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
-                .addStatement("return %M<Nothing>({}) { waker -> servePass(handler, provider, buffer, null, waker) }", AWAIT_POLL)
+                .addStatement("return %M<%T>({}) { waker -> servePass(handler, provider, buffer, null, waker) }", AWAIT_POLL, NOTHING)
                 .build()
         }
 
@@ -918,7 +920,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 addFunction(
                     FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(signalPayload(m).type))
                         .addKdoc("Reads signal `%L`, as the runtime resolved it. It does not wait.", m.declared)
-                        .addStatement("return poll.%L()", m.method).build(),
+                        .addStatement("return poll.%N()", m.method).build(),
                 )
             }
         }
@@ -1006,13 +1008,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             for (m in commands + queries) {
                 val (param, arg) = argument(m)
-                val value = param.name.camel.replaceFirstChar(Char::lowercaseChar)
+                val value = param.name.property
                 val f = FunSpec.builder(m.method).addParameter(value, arg.type)
                     .addKdoc("Calls %L `%L` and waits for its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
                 if (m.interaction.hasQuery()) {
-                    f.returns(reply(m).type).addStatement("return %T(this.port, %L).block(this.timeoutBound)", callClass(m), value)
+                    f.returns(reply(m).type).addStatement("return %T(this.port, %N).block(this.timeoutBound)", callClass(m), value)
                 } else {
-                    f.addStatement("%T(this.port, %L).block(this.timeoutBound)", callClass(m), value)
+                    f.addStatement("%T(this.port, %N).block(this.timeoutBound)", callClass(m), value)
                 }
                 builder.addFunction(f.build())
             }
@@ -1057,13 +1059,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             for (m in commands + queries) {
                 val (param, arg) = argument(m)
-                val value = param.name.camel.replaceFirstChar(Char::lowercaseChar)
+                val value = param.name.property
                 val f = FunSpec.builder(m.method).addModifiers(KModifier.SUSPEND).addParameter(value, arg.type)
                     .addKdoc("Calls %L `%L` and suspends until its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
                 if (m.interaction.hasQuery()) {
-                    f.returns(reply(m).type).addStatement("return this.calls.%M { %T(this.port, %L).await() }", WITH_LOCK, callClass(m), value)
+                    f.returns(reply(m).type).addStatement("return this.calls.%M { %T(this.port, %N).await() }", WITH_LOCK, callClass(m), value)
                 } else {
-                    f.addStatement("this.calls.%M { %T(this.port, %L).await() }", WITH_LOCK, callClass(m), value)
+                    f.addStatement("this.calls.%M { %T(this.port, %N).await() }", WITH_LOCK, callClass(m), value)
                 }
                 builder.addFunction(f.build())
             }
@@ -1119,7 +1121,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
         private fun send(m: Member): FunSpec {
             val (param, arg) = argument(m)
-            val argName = param.name.camel.replaceFirstChar(Char::lowercaseChar)
+            val argName = param.name.property
             val kind = if (m.interaction.hasCommand()) "command" else "query"
             return FunSpec.builder(m.method).addParameter(argName, arg.type).returns(correlation(m))
                 .addKdoc(
@@ -1127,11 +1129,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "`SendError.Contract(Contract.PreconditionFailed)`, and nothing is sent.",
                     kind, m.declared,
                 )
-                .beginControlFlow("if (!%T.require(%L))", m.descriptor, argName)
+                .beginControlFlow("if (!%T.require(%N))", m.descriptor, argName)
                 .addStatement("throw %T.Contract(%T.PreconditionFailed)", SEND_ERROR, CONTRACT)
                 .endControlFlow()
                 .addStatement(
-                    "return %T(this.port.%L(%L, %L, encoded(%T, %L)))",
+                    "return %T(this.port.%L(%L, %L, encoded(%T, %N)))",
                     correlation(m), kind, number(), ordinal(m), arg.codec, argName,
                 )
                 .build()
@@ -1190,7 +1192,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val (param, arg) = argument(m)
                 builder.addFunction(
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
-                        .addParameter(param.name.camel.replaceFirstChar(Char::lowercaseChar), arg.type)
+                        .addParameter(param.name.property, arg.type)
                         .addKdoc(
                             "Serves command `%L`. A command has no failure the application reports (ridl §6.1); arguments " +
                                 "that break their constraints or `require` never reach it.",
@@ -1202,7 +1204,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val (param, arg) = argument(m)
                 builder.addFunction(
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
-                        .addParameter(param.name.camel.replaceFirstChar(Char::lowercaseChar), arg.type)
+                        .addParameter(param.name.property, arg.type)
                         .returns(reply(m).type)
                         .addKdoc("Serves query `%L`. A reply that breaks an `ensure` clause is discarded, and `ContractBroken` settled.", m.declared)
                         .build(),
@@ -1267,7 +1269,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .addStatement("settle(handler, claim.id, %T.failure(%T.PreconditionFailed))", RESULT, CONTRACT)
                     .nextControlFlow("else")
                     .addStatement("val ok = settle(handler, claim.id, %T.success(%T.allocate(0)))", RESULT, BYTE_BUFFER)
-                    .addStatement("provider.%L(%L)", m.method, value)
+                    .addStatement("provider.%N(%L)", m.method, value)
                     .addStatement("ok")
                     .endControlFlow()
                     .endControlFlow()
@@ -1286,7 +1288,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .beginControlFlow("if (!%T.require(%L))", m.descriptor, value)
                     .addStatement("settle(handler, claim.id, %T.failure(%T.PreconditionFailed))", RESULT, CONTRACT)
                     .nextControlFlow("else")
-                    .addStatement("val reply = provider.%L(%L)", m.method, value)
+                    .addStatement("val reply = provider.%N(%L)", m.method, value)
                     .beginControlFlow("if (!%T.ensure(%L, reply))", m.descriptor, value)
                     .addStatement("settle(handler, claim.id, %T.failure(%T.ContractBroken))", RESULT, CONTRACT)
                     .nextControlFlow("else")
@@ -1328,7 +1330,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("handler", HANDLER).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
                 .addParameter(ParameterSpec.builder("until", VALUE_TIME_MARK.copy(nullable = true)).defaultValue("null").build())
-                .addParameter(ParameterSpec.builder("budget", INT).defaultValue("Int.MAX_VALUE").build())
+                .addParameter(ParameterSpec.builder("budget", INT).defaultValue("%T.MAX_VALUE", INT).build())
                 .addParameter(ParameterSpec.builder("onBudgetSpent", LambdaTypeName.get(returnType = UNIT)).defaultValue("{}").build())
                 .returns(INT).addCode(code.build()).build()
         }

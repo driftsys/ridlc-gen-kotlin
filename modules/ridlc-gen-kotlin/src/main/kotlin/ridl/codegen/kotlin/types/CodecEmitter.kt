@@ -54,7 +54,7 @@ private const val BUFFER_ALIGN = 8
  */
 class CodecEmitter(private val model: Model, private val options: Options) {
     private val pkg = options.kotlinPackage
-    private val file = FileSpec.builder(pkg, "Codec")
+    private val file = FileSpec.builder(pkg, "Codec").jvmName("Codec")
     private val wires = Wires(model, pkg)
     private val errors = mutableListOf<String>()
     private val withheld = mutableListOf<String>()
@@ -215,7 +215,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         if (resolved.isEmpty()) {
             encode.addStatement("return builder.pushTable(4, 4, %L, emptyList())", slots)
         } else {
-            encode.addStatement("val fields = ArrayList<%T>(%L)", TABLE_FIELD, resolved.size)
+            encode.addStatement("val fields = %T<%T>(%L)", ARRAY_LIST, TABLE_FIELD, resolved.size)
             for ((slot, offset) in resolved.zip(layout.offsets)) {
                 val property = "value.${slot.property}"
                 if (slot.optional) {
@@ -257,7 +257,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     }
 
     private class Slot(val id: Int, field: Field, val wire: Wire, val optional: Boolean) {
-        val property = field.name.camel.replaceFirstChar(Char::lowercaseChar)
+        val property = escaped(field.name.property)
     }
 
     /**
@@ -534,8 +534,8 @@ class CodecEmitter(private val model: Model, private val options: Options) {
             val v = fresh("vector")
             val i = fresh("i")
             CodeBlock.of(
-                "reader.vector(%L, %L).let { %L -> List(%L.len) { %L -> %L } }",
-                at, wire.element.width, v, v, i, decodeAt(wire.element, "$v.element($i, ${wire.element.width})"),
+                "reader.vector(%L, %L).let { %L -> %M(%L.len) { %L -> %L } }",
+                at, wire.element.width, v, LIST_OF_SIZE, v, i, decodeAt(wire.element, "$v.element($i, ${wire.element.width})"),
             )
         }
         is Wire.Map -> {
@@ -558,7 +558,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     private fun construct(domain: Domain, raw: CodeBlock): CodeBlock = when (domain) {
         Domain.Primitive, is Domain.Inline -> raw
         is Domain.Named -> if (domain.scalar.vacuous) CodeBlock.of("%T(%L)", domain.type, raw) else CodeBlock.of("%T.unchecked(%L)", domain.type, raw)
-        is Domain.EnumOf -> CodeBlock.of("(%T.fromValue(%L) ?: %T.%L)", domain.type, raw, domain.type, domain.first.name.declared)
+        is Domain.EnumOf -> CodeBlock.of("(%T.fromValue(%L) ?: %T.%N)", domain.type, raw, domain.type, enumEntry(domain.first.name))
         is Domain.SetOf -> CodeBlock.of("(%T.ofOrNull(%L) ?: %T.EMPTY)", domain.type, raw, domain.type)
     }
 

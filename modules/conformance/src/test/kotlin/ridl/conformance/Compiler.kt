@@ -10,7 +10,8 @@ import java.nio.file.Path
 /**
  * Compiles generated Kotlin as a consumer's build would: against
  * `ridl-rt-kt` on the class path, with warnings as errors (docs/design.md §7,
- * "The output compiles").
+ * "The output compiles"). Each source keeps its own path and file name, so a
+ * file's JVM facade is the one a consumer's build gives it.
  */
 object Compiler {
     class Compiled(val ok: Boolean, val messages: String, val classLoader: ClassLoader?)
@@ -19,7 +20,7 @@ object Compiler {
     fun compile(sources: Map<String, String>, work: Path): Compiled {
         val output = ByteArrayOutputStream()
         val result: JvmCompilationResult = KotlinCompilation().apply {
-            this.sources = sources.map { (path, text) -> SourceFile.kotlin(path.replace('/', '_'), text) }
+            this.sources = sources.map { (path, text) -> SourceFile.kotlin(path, text) }
             inheritClassPath = true
             allWarningsAsErrors = true
             jvmTarget = "17"
