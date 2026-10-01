@@ -13,8 +13,9 @@ queue, no IO; the Kotlin spelling of `crates/ridl-loopback` (docs/design.md §3,
 all twelve port interfaces by delegating to six role handles, `ReaderHandle`,
 `WriterHandle`, `SourceHandle`, `SinkHandle`, `CallerHandle` and
 `HandlerHandle`, which `split()` hands out and `reader()`, `writer()` and the
-other factories add. `advance` drives the clock by hand, `provisionFixed`
-supplies a `fixed`, and `failNextSettle` injects the one fault the runtime has.
+other factories add; `attach()` adds a second aggregate on the same store.
+`advance` drives the clock by hand, `provisionFixed` supplies a `fixed`, and
+`failNextSettle` injects the one fault the runtime has.
 
 ## Status
 
@@ -33,6 +34,17 @@ any other kind is woken at once. The aggregate routes each key to the handle
 that observes it, and `CallerHandle` also carries `Clock`. Closing a handler
 returns the claims it held and had not settled to the waiting calls, in send
 order, and wakes the handlers that serve them (ADR-0021 decision 5).
+
+`attach()`, of ridl 0.5.0 (driftsys/ridl#488), makes a second aggregate on the
+same store: six new role handles, opened as `reader()` to `handler()` open one
+each, so an application holds several faces over one runtime, each owning its
+own. What is in the store is shared — the published signals, the `fixed` values,
+the clock and the call table — and what is on a handle is not carried over: the
+attached aggregate starts subscribed to nothing, with nothing staged, no call
+sent and nothing served. The Kotlin aggregate has no `close`; closing the
+handles an attached aggregate splits into is what dropping it does in Rust, and
+closes only those. `PortsTest` holds the eight cases of
+`crates/ridl-loopback/tests/ports.rs`.
 
 driftsys/ridlc-gen-kotlin#10 adds `ReadError.ShortClaim` of ridl 0.4.0
 (driftsys/ridl#569, ADR-0021 decision 5 amended 2026-09-28). A call whose

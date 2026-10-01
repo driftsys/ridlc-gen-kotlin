@@ -31,7 +31,8 @@ import java.nio.ByteBuffer
  *   are left to a runtime;
  * - `Freshness.Unbounded` follows from this runtime holding no member table;
  * - two sinks on one event channel is a misuse this runtime does not police;
- * - `HandlerHandle.served` and `Loopback.split` are this runtime's own API;
+ * - `HandlerHandle.served`, `Loopback.split` and `Loopback.attach` are this
+ *   runtime's own API;
  * - a handler that has served nothing is presented every call, this runtime's
  *   deliberate deviation from `Handler.serve`;
  * - provisioning a `fixed` has no port;
@@ -161,6 +162,166 @@ class PortsTest {
         )) {
             assertEquals(catalog(), catalog)
         }
+    }
+
+    // `Loopback.attach` (driftsys/ridl#488). The Kotlin aggregate has no
+    // `close`, so where the Rust tests drop an attached aggregate, these close
+    // the handles it splits into, which is what that drop closes.
+
+    @Test
+    fun `an attached aggregate carries the catalog`() {
+        val attached = runtime().attach()
+        assertEquals(catalog(), attached.caller().catalog)
+        val handles = attached.split()
+        for (catalog in listOf(
+            handles.reader.catalog, handles.writer.catalog, handles.source.catalog,
+            handles.sink.catalog, handles.caller.catalog, handles.handler.catalog,
+        )) {
+            assertEquals(catalog(), catalog)
+        }
+    }
+
+    @Test
+    fun `a value committed through one aggregate is read through an attached one`() {
+        // The published signals are in the store, and staging is on the writer
+        // handle: one aggregate's commit publishes only what that aggregate
+        // staged, and a value staged before the attach is not carried over.
+        val rt = runtime()
+        rt.set(iface, ord, bytes(1))
+        val attached = rt.attach()
+        attached.set(iface, other, bytes(2))
+        attached.commit()
+
+        assertEquals(Provenance.Init, rt.read(iface, ord, out(8)).provenance)
+        val published = out(8)
+        rt.read(iface, other, published)
+        assertArrayEquals(array(2), published.written())
+
+        rt.commit()
+        val sample = out(8)
+        attached.read(iface, ord, sample)
+        assertArrayEquals(array(1), sample.written())
+    }
+
+    @Test
+    fun `an attached aggregate advances the one clock`() {
+        val rt = runtime()
+        rt.attach().advance(Duration(5))
+        assertEquals(Timestamp(5), rt.now())
+    }
+
+    @Test
+    fun `an attached aggregate starts with none of the originals handle state`() {
+        // Subscriptions, the served set and the sequence counters are on a
+        // handle, so an aggregate attached after the original used all of them
+        // starts with none of them.
+        val rt = runtime()
+        rt.subscribe(iface, listOf(ord))
+        rt.serve(iface, listOf(ord))
+        rt.set(iface, ord, bytes(1))
+        rt.commit()
+        rt.raise(iface, ord, bytes(1))
+        rt.command(iface, ord, bytes(1))
+        val attached = rt.attach()
+
+        attached.set(iface, ord, bytes(2))
+        attached.commit()
+        assertEquals(1uL, attached.read(iface, ord, out(8)).envelope.seq, "the attached writer's first publication")
+
+        attached.raise(iface, ord, bytes(2))
+        assertNull(attached.next(out(8)), "the attached source is subscribed to nothing")
+        assertEquals(listOf(1uL, 1uL), drain(rt), "each sink's first raise is its own seq 1")
+
+        attached.command(iface, ord, bytes(2))
+        val sent = generateSequence { rt.nextClaim(out(8)) }.map { it.envelope.seq }.toList()
+        assertEquals(listOf(1uL, 1uL), sent, "each caller's first call is its own seq 1")
+
+        assertTrue(attached.split().handler.served.isEmpty())
+    }
+
+    @Test
+    fun `an attached aggregate has its own subscriptions and queue`() {
+        val rt = runtime()
+        val attached = rt.attach()
+        rt.subscribe(iface, listOf(ord))
+
+        attached.raise(iface, ord, bytes(1))
+        assertNull(attached.next(out(8)), "the attached aggregate's source is subscribed to nothing")
+
+        attached.subscribe(iface, listOf(ord))
+        attached.raise(iface, ord, bytes(2))
+        assertEquals(listOf(listOf<Byte>(1), listOf<Byte>(2)), payloads(rt))
+        assertEquals(listOf(listOf<Byte>(2)), payloads(attached))
+    }
+
+    @Test
+    fun `a call sent through one aggregate is served through an attached one`() {
+        val rt = runtime()
+        val attached = rt.attach()
+        val sent = rt.command(iface, ord, bytes(1))
+
+        val claim = attached.nextClaim(out(8))!!
+        attached.settle(claim.id, ok())
+        assertEquals(Result.success(Unit), rt.ack(sent))
+    }
+
+    @Test
+    fun `closing an attached aggregate leaves the originals calls and subscriptions`() {
+        // Each handle's close ends that handle's own identity in the store,
+        // and the handles of an attached aggregate have identities of their
+        // own: the original's claim stays the original's. The attached
+        // aggregate's own unclaimed call is withdrawn with it.
+        val rt = runtime()
+        rt.subscribe(iface, listOf(ord))
+        val sent = rt.command(iface, ord, bytes(1))
+        val attached = rt.attach()
+        attached.subscribe(iface, listOf(ord))
+        attached.command(iface, ord, bytes(2))
+        val buf = out(8)
+        val claim = rt.nextClaim(buf)!!
+        assertArrayEquals(array(1), buf.written(), "the original's call, sent first")
+        attached.split().run {
+            source.close()
+            caller.close()
+            handler.close()
+        }
+
+        rt.raise(iface, ord, bytes(3))
+        assertEquals(listOf(listOf<Byte>(3)), payloads(rt))
+
+        rt.settle(claim.id, ok())
+        assertEquals(Result.success(Unit), rt.ack(sent), "the claim is still the original's")
+        assertNull(rt.nextClaim(out(8)), "the closed aggregate's call was withdrawn")
+    }
+
+    @Test
+    fun `an attached aggregate keeps the store after the original is closed`() {
+        // The store outlives the original, and so do the attached aggregate's
+        // own subscription and call.
+        val rt = runtime()
+        val attached = rt.attach()
+        attached.subscribe(iface, listOf(ord))
+        val sent = attached.command(iface, ord, bytes(5))
+        rt.set(iface, ord, bytes(4))
+        rt.commit()
+        rt.split().run {
+            source.close()
+            caller.close()
+            handler.close()
+        }
+
+        val sample = out(8)
+        attached.read(iface, ord, sample)
+        assertArrayEquals(array(4), sample.written())
+
+        attached.raise(iface, ord, bytes(6))
+        assertEquals(listOf(listOf<Byte>(6)), payloads(attached))
+
+        val buf = out(8)
+        val claim = attached.nextClaim(buf)!!
+        assertArrayEquals(array(5), buf.written(), "the attached aggregate's call")
+        attached.settle(claim.id, ok())
+        assertEquals(Result.success(Unit), attached.ack(sent))
     }
 
     @Test
@@ -299,6 +460,10 @@ class PortsTest {
 
     /** The bytes a port wrote into this buffer: from 0 to its position. */
     private fun ByteBuffer.written(): ByteArray = ByteArray(position()).also { duplicate().flip().get(it) }
+
+    /** Every occurrence waiting on [source], as its payload. */
+    private fun payloads(source: ridl.rt.port.EventSource): List<List<Byte>> =
+        generateSequence { out(8).let { buf -> source.next(buf)?.let { buf.written().toList() } } }.toList()
 
     private fun drain(source: ridl.rt.port.EventSource): List<ULong> =
         generateSequence { source.next(out(8)) }.map { it.envelope.seq }.toList()

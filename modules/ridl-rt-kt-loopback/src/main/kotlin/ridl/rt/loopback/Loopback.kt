@@ -66,12 +66,18 @@ public class Handles internal constructor(
  * It also presents [Wakeable], and routes each key to the role handle that
  * observes it: `Outcome` and `Slot` to the caller, `Event` to the source,
  * `Claim` to the handler.
+ *
+ * [attach] makes a second aggregate on the same store, for a program that
+ * holds several faces over one runtime, each owning its own.
  */
-public class Loopback(
+public class Loopback private constructor(
     override val catalog: CatalogRef,
+    private val store: Store,
 ) : Clock, SignalWriter, EventSource, EventSink, Caller, Handler, FixedReader, ScannableSignals, CoherentSignals,
     Wakeable {
-    private val store = Store()
+    /** A runtime over a new, empty store. */
+    public constructor(catalog: CatalogRef) : this(catalog, Store())
+
     private var held: Handles? = Handles(
         reader = ReaderHandle(store, catalog),
         writer = WriterHandle(store, catalog),
@@ -91,6 +97,21 @@ public class Loopback(
      * factories, [advance], [provisionFixed] and [failNextSettle] still work.
      */
     public fun split(): Handles = handles.also { held = null }
+
+    /**
+     * An additional aggregate on the same store: six new role handles, made
+     * the way [reader] to [handler] make one each. This is how an application
+     * holds several faces over one runtime — a client, a publisher, a second
+     * client with a call of its own in flight — each owning its own aggregate
+     * (driftsys/ridl#488).
+     *
+     * What is in the store is shared: the published signals, the `fixed`
+     * values, the clock and the call table. What is on a handle is not carried
+     * over: the attached aggregate starts subscribed to nothing, with no value
+     * staged, no call sent and nothing served. Closing its handles closes only
+     * those handles. It works on a split aggregate too, as the factories do.
+     */
+    public fun attach(): Loopback = Loopback(catalog, store)
 
     /** An additional reader handle on the same store. */
     public fun reader(): ReaderHandle = ReaderHandle(store, catalog)
