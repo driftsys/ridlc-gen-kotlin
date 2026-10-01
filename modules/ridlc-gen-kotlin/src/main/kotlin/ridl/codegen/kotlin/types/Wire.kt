@@ -70,8 +70,11 @@ internal sealed interface Domain {
     /** A named scalar: `.value` out, `unchecked` or the constructor in. */
     data class Named(val type: ClassName, val declared: String, val scalar: Scalar) : Domain
 
-    /** An enum: `.value` out, `fromValue` in, the first member as the fallback. */
-    data class EnumOf(val type: ClassName, val declared: String, val first: EnumValue) : Domain
+    /**
+     * An enum: `.value` out, `fromValue` in, the first member as the fallback.
+     * [zero] is the member numbered 0, which an absent field reads as.
+     */
+    data class EnumOf(val type: ClassName, val declared: String, val first: EnumValue, val zero: EnumValue?) : Domain
 
     /** An enum set: `.bits` out, `ofOrNull` in, `EMPTY` as the fallback. */
     data class SetOf(val type: ClassName, val declared: String) : Domain
@@ -84,6 +87,28 @@ internal sealed interface Wire {
 
     data class ScalarWire(val prim: Prim, val domain: Domain) : Wire {
         override val width get() = prim.width
+
+        /**
+         * Whether 0, the FlatBuffers default, is a value of this position's
+         * type, decided at generation time as the Rust codec decides it
+         * (driftsys/ridl#472): an absent non-optional field reads as 0 when
+         * it is, and is `MissingRequired` when it is not.
+         */
+        val zeroLegal: Boolean
+            get() = when (domain) {
+                Domain.Primitive, is Domain.SetOf -> true
+                is Domain.Inline -> domain.scalar.constraint.holdsZero()
+                is Domain.Named -> domain.scalar.constraint.holdsZero()
+                is Domain.EnumOf -> domain.zero != null
+            }
+
+        /** 0 as the backing [Prim.widen] produces: a `Long`, `Double` or `Boolean` literal. */
+        val zero: String
+            get() = when (prim) {
+                Prim.Bool -> "false"
+                Prim.F32, Prim.F64 -> "0.0"
+                else -> "0L"
+            }
     }
 
     data class Text(val domain: Domain) : Wire {
@@ -172,7 +197,9 @@ internal class Wires(private val model: Model, private val pkg: String) {
                 scalar(declaration.scalar, Domain.Named(type, declaration.name.declared, declaration.scalar))
             Declaration.KindCase.ENUM -> {
                 if (declaration.enum.valuesCount == 0) refuse("the enum `$reference` has no value")
-                Wire.ScalarWire(Prim.I64, Domain.EnumOf(type, declaration.name.declared, declaration.enum.getValues(0)))
+                val enum = declaration.enum
+                val zero = if (enum.hasZeroMember()) enum.valuesList.getOrNull(enum.zeroMember) else null
+                Wire.ScalarWire(Prim.I64, Domain.EnumOf(type, declaration.name.declared, enum.getValues(0), zero))
             }
             Declaration.KindCase.ENUM_SET ->
                 Wire.ScalarWire(intPrim(declaration.enumSet.width), Domain.SetOf(type, declaration.name.declared))

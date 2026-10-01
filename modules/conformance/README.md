@@ -20,7 +20,7 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.4.0`, the tag that carries ridl 0.4.0's binaries. The tests
+Pinned to `editor-v0.5.0`, the tag that carries ridl 0.5.0's binaries. The tests
 of stage K2a run: a request the pinned `ridl` wrote parses, a request with an
 unknown key parses, a request nested 1,000 levels parses in process and through
 the installed script, a wrong schema is one error diagnostic and exit 0, an
@@ -47,7 +47,7 @@ exception of the JVM's own. How to regenerate both files is in
 
 The test of stage K2c, `CodecTest`: for every corpus package, the generated
 `Codec.kt` encodes sample values of every public root, written from the model
-(`RoundTrip`), and a corpus of those buffers and their mutants — 10,266 in all —
+(`RoundTrip`), and a corpus of those buffers and their mutants — 13,049 in all —
 goes through `verify`, `decode` and `encode` again in Kotlin and, once, in the
 Rust codec of the pinned release, whose verdicts are checked in as
 `resources/flatbuffers/<package>-codec-rust-verdicts.txt`. Every sample
@@ -55,6 +55,19 @@ re-encodes to the same bytes in Rust, no buffer meets an exception other than
 `VerifyError`, and every verdict is Rust's except where Kotlin alone refuses a
 step, a NaN or an inline constraint. A wrong table layout, a missing count check
 or a wrong union error each turns it red.
+
+Since ridl 0.5.0 (driftsys/ridl#472), an absent non-optional scalar or enum
+field reads as its FlatBuffers default when 0 is a legal value of its type; a
+mutant that zeroes a byte of a vtable entry makes a field absent. Both the codec
+verdicts and the spike's were regenerated over that release, where 219 verdicts
+changed from `MissingRequired` to a decoded default, and the spike's
+hand-written codec follows. The corpus package `kt-zero` holds what the other
+packages cannot: an absent field whose type excludes 0, an inline range, a named
+range, a step whose grid misses 0, a step with no minimum and an enum with no
+zero member, refused, each beside one that admits 0, in a struct, a tuple, a map
+entry, a union arm and a box root. Reading every absent scalar as 0, reading an
+absent enum as its first member rather than its zero member, or refusing an
+absent named scalar each turns it red.
 
 The test of stage K3a, `FacesTest`: the generated faces of `cabin` and
 `kt-values`, over `ridl-rt-kt-loopback`, driven by the probes of

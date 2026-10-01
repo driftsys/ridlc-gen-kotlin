@@ -54,7 +54,7 @@ ok:af6f710ab56cacdb
 ok:af6f710ab56cacdb
 ok:af6f710ab56cacdb
 ok:af6f710ab56cacdb
-err:Structure(MissingRequired)
+ok:af6f710ab56cacdb
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -133,7 +133,7 @@ ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
-err:Structure(MissingRequired)
+ok:5decf26db9765413
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -212,7 +212,7 @@ ok:7154265816af4576
 ok:7154265816af4576
 ok:7154265816af4576
 ok:7154265816af4576
-err:Structure(MissingRequired)
+ok:5decf26db9765413
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -300,7 +300,7 @@ ok:152829cd84241839
 ok:152829cd84241839
 ok:152829cd84241839
 ok:152829cd84241839
-err:Structure(MissingRequired)
+ok:51595ee9789e1c56
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -396,7 +396,7 @@ ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
-err:Structure(MissingRequired)
+ok:5decf26db9765413
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -479,7 +479,7 @@ ok:7c631e397388691b
 ok:7c631e397388691b
 ok:7c631e397388691b
 ok:7c631e397388691b
-err:Structure(MissingRequired)
+ok:7c631e397388691b
 err:Structure(OutOfBounds)
 ok:7c631e397388691b
 err:Structure(OutOfBounds)
@@ -488,7 +488,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:b11b4ba533659ece
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -655,7 +655,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:7e324423fc6e6883
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -714,12 +714,12 @@ ok:7e324423fc6e6883
 ok:7e324423fc6e6883
 ok:7e324423fc6e6883
 ok:7e324423fc6e6883
-err:Structure(MissingRequired)
+ok:7e324423fc6e6883
 err:Structure(OutOfBounds)
 ok:7e324423fc6e6883
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:7e324423fc6e6883
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -958,7 +958,7 @@ ok:154cace1df1c79ee
 ok:154cace1df1c79ee
 ok:154cace1df1c79ee
 ok:154cace1df1c79ee
-err:Structure(MissingRequired)
+ok:154cace1df1c79ee
 err:Structure(OutOfBounds)
 ok:154cace1df1c79ee
 err:Structure(OutOfBounds)
@@ -968,7 +968,7 @@ err:Structure(OutOfBounds)
 err:Contract(Violation { type_name: "Percent", rule: Range })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:511b568b1d2e4cd2
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -1114,7 +1114,7 @@ ok:6f877730b5374b40
 ok:6f877730b5374b40
 ok:6f877730b5374b40
 ok:6f877730b5374b40
-err:Structure(MissingRequired)
+ok:00224f740b4a8423
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)

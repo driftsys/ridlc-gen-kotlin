@@ -29,7 +29,7 @@ bound, a bare `string` or `bytes`, an optional array element or map part.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.4.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.5.0` (`modules/conformance/ridl-release`).
 
 ## Where the code departs from docs/design.md
 
@@ -95,7 +95,7 @@ encode, verify and decode helpers per table-shaped type. It lays a table out as
 the Rust codec does — declaration order, each field at its own alignment — and
 pushes children in the same order, so it writes the same bytes, and verifies in
 the same order, so it reaches the same verdict. The conformance module holds it
-to that over 10,266 buffers (`CodecTest`).
+to that over 13,049 buffers (`CodecTest`).
 
 - **O-K1 is taken as option A**, pending its disposition
   ([`docs/k1b-flatbuffers-spike.md`](../../docs/k1b-flatbuffers-spike.md)), and
@@ -106,6 +106,16 @@ to that over 10,266 buffers (`CodecTest`).
 - **`verify` refuses three things the Rust verifier accepts**: a float off its
   `step`, a NaN, and an inline scalar outside its constraints. `decode` builds
   value objects, whose constructors refuse all three, and must never throw.
+- **An absent non-optional scalar or enum field reads as 0**, the FlatBuffers
+  default, as the Rust codec reads it since ridl 0.5.0 (driftsys/ridl#472): 0
+  itself, the enum's zero member, or the empty enum set, in a struct's, a
+  tuple's or a map entry's table, a union arm's box and a box root. When 0 is
+  not a legal value of the field's type it is still `MissingRequired`. Legality
+  is decided at generation time by the Rust rule (`Zero.kt`, after
+  `ridl_ir::zero::range_holds_zero`): an enum needs a zero member, and a numeric
+  range must hold 0, on the grid of its `step` when it has one, read from the
+  model's exact decimal text. A step with no minimum is not decided, and
+  refused. The bytes the codec writes do not change.
 - **A map decodes to a `Map`**, so two entries with one key keep the last, where
   the Rust codec keeps a `Vec` of pairs.
 - **The helpers are `internal`**, and a codec reaches another package's helpers

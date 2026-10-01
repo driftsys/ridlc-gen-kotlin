@@ -54,7 +54,7 @@ ok:e27ba30b88872cdc
 ok:e27ba30b88872cdc
 ok:e27ba30b88872cdc
 ok:e27ba30b88872cdc
-err:Structure(MissingRequired)
+ok:5decf26db9765413
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -134,7 +134,7 @@ ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
-err:Structure(MissingRequired)
+ok:5decf26db9765413
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -213,7 +213,7 @@ ok:af6f710ab56cacdb
 ok:af6f710ab56cacdb
 ok:af6f710ab56cacdb
 ok:af6f710ab56cacdb
-err:Structure(MissingRequired)
+ok:af6f710ab56cacdb
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -292,7 +292,7 @@ ok:bda567e0ff8a466a
 ok:bda567e0ff8a466a
 ok:bda567e0ff8a466a
 ok:bda567e0ff8a466a
-err:Structure(MissingRequired)
+ok:bda567e0ff8a466a
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -379,7 +379,7 @@ ok:152829cd84241839
 ok:152829cd84241839
 ok:152829cd84241839
 ok:152829cd84241839
-err:Structure(MissingRequired)
+ok:51595ee9789e1c56
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -479,12 +479,12 @@ ok:8aaed8cf4e44e63d
 ok:8aaed8cf4e44e63d
 ok:8aaed8cf4e44e63d
 ok:8aaed8cf4e44e63d
-err:Structure(MissingRequired)
+ok:8aaed8cf4e44e63d
 err:Structure(OutOfBounds)
 ok:8aaed8cf4e44e63d
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:7038b7a0382c6c21
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)

@@ -1,0 +1,63 @@
+// Whether an absent field reads as 0 (driftsys/ridl#472), in every position
+// the FlatBuffers codec reads one: a struct's, a tuple's and a map entry's
+// field, a union arm's box and a box root. The types are those of
+// `crates/ridl-backend-rust/tests/fixtures/flatbuffers_zero_legality.ridl` in
+// driftsys/ridl, each beside one that admits 0, so a buffer whose slot is
+// absent is read as 0 for one and refused as `MissingRequired` for the other.
+package kt.zero
+
+/// A label, as in the ridl fixture.
+type Label : string [0..16]
+
+/// A float whose grid is -1.5, -0.5, 0.5 and 1.5: 0 lies inside the range
+/// but not on the grid, so 0 is not a legal value.
+type Odd : float [-1.5..1.5 step 1.0]
+
+/// A float whose grid is -1.0, 0.0 and 1.0: 0 is on the grid.
+type Even : float [-1.0..1.0 step 1.0]
+
+/// A range that excludes 0.
+type Gear : integer [1..6]
+
+/// A step with no lower bound, which the rule does not decide: refused.
+type Loose : float [..10.0 step 2.0]
+
+/// An enum whose zero member is not its first.
+enum Mode {
+  ON  = 1
+  OFF = 0
+}
+
+/// An enum with no zero member.
+enum Side {
+  LEFT  = 1
+  RIGHT = 2
+}
+
+/// Every flavour of scalar position, twice: one admits 0, one excludes it.
+struct Inner {
+  range : integer [1..10]
+  zero  : integer [0..10]
+  odd   : Odd
+  even  : Even
+  gear  : Gear
+  loose : Loose
+  mode  : Mode
+  side  : Side
+  label : Label
+}
+
+/// A tuple's field, a map entry's key and value, and a union arm's box.
+struct Outer {
+  pair   : (gear: Gear, mode: Mode)
+  sides  : [Label : Side; 1..2]
+  evens  : [integer : Even; 1..2]
+  choice : Choice
+}
+
+union Choice {
+  gear : Gear
+  mode : Mode
+  side : Side
+  even : Even
+}
