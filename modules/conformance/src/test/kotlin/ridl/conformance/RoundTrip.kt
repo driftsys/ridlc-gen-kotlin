@@ -120,9 +120,7 @@ object RoundTrip {
         }
 
         fun named(ref: ridl.codegen.v1.ModelOuterClass.TypeRef, variant: Int, i: Int): String {
-            // By package, not `ref.foreign`, which the pinned lowering leaves false on
-            // a foreign declaration's own references (driftsys/ridl#586, the plugin's Refs.kt).
-            val (pkg, declaration) = if (ref.`package` != model.scope.`package`) {
+            val (pkg, declaration) = if (ref.foreign) {
                 model.getForeign(ref.index).let { it.`package` to it.declaration }
             } else {
                 model.name.dotted to model.getDeclarations(ref.index)

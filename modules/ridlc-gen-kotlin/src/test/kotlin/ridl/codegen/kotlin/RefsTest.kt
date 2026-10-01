@@ -44,13 +44,12 @@ class RefsTest {
         assertEquals("Small", model.declarationOf(small).name.declared)
     }
 
-    // The pinned ridl's lowering copies a foreign union's arm into this model
-    // re-indexed into the foreign table but with `foreign` left false.
     @Test
-    fun `a reference to another package with its foreign flag unset still resolves in the foreign table`() {
-        val arm = ref("Small", "a", foreign = false, index = 1)
-        assertTrue(model.isForeign(arm))
-        assertEquals("Small", model.declarationOf(arm).name.declared)
+    fun `a reference whose foreign flag disagrees with its package is refused`() {
+        val unmarked = assertThrows<Refusal> { model.declarationOf(ref("Small", "a", foreign = false, index = 1)) }
+        assertEquals("the reference `Small` of package a is marked local in package b", unmarked.message)
+        val marked = assertThrows<Refusal> { model.declarationOf(ref("Local", "b", foreign = true, index = 0)) }
+        assertEquals("the reference `Local` of package b is marked foreign in package b", marked.message)
     }
 
     @Test
