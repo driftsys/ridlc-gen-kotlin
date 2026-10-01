@@ -130,6 +130,13 @@ reachable, the shadowed `nextEvent`, `subscribePing` and `unsubscribePing`
 through an aliased import. The probe imports the extensions of `Probe` and
 `Clash` under one name, the Kotlin counterpart of a consumer of two preludes.
 
+The test of #12, `PatternsTest`: a package the pinned `ridl` accepts, whose
+patterns ECMA-262 and the Rust `regex` crate both compile, declares four that
+`java.util.regex` does not — `\p{Greek}` through a regex constant, `\p{Letter}`,
+`\u{41}` and, inline in a struct, `\p{Emoji}` — and each refuses its declaration
+with the pattern and Java's reason. Eighteen patterns Java compiles, where the
+engines' syntaxes differ most, generate, compile, and their classes load.
+
 The tests of #16 and #18, `NamesTest`: a name the plugin chose never refuses a
 package. Two packages, written inline and built with
 `ridl build --emit codegen-model`, declare names that meet one the plugin

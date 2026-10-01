@@ -6,6 +6,8 @@ import com.squareup.kotlinpoet.MemberName
 import ridl.codegen.v1.ModelOuterClass.FloatWidth
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import java.util.regex.Pattern
+import java.util.regex.PatternSyntaxException
 
 /** `ridl.rt.payload.Rule`, the kind of constraint a value breaks. */
 internal enum class RuleName { Range, Step, Length, Pattern, Variant }
@@ -96,6 +98,22 @@ internal fun scalarChecks(
         else -> refuse("scalar class `${scalar.class_}` is not one this plugin reads")
     }
     return code.build().takeUnless { it.isEmpty() }
+}
+
+/**
+ * [body], refused unless `java.util.regex` compiles it, as the generated
+ * `Regex(body)` does when its class loads. `ridl check` passes a pattern
+ * ECMA-262 and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and
+ * neither guarantees Java does: `\p{Greek}`, `\p{Letter}` or `\u{41}` pass
+ * both and throw `PatternSyntaxException` here (driftsys/ridlc-gen-kotlin#12).
+ */
+internal fun javaPattern(body: String): String {
+    try {
+        Pattern.compile(body)
+    } catch (e: PatternSyntaxException) {
+        refuse("its pattern `/$body/` does not compile under java.util.regex: ${e.description}")
+    }
+    return body
 }
 
 /** Whether [scalarChecks] needs a compiled pattern for this scalar. */
