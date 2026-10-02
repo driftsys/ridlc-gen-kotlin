@@ -74,4 +74,30 @@ class AwaitPollTest {
         assertEquals(1, ran.get(), "the other coroutine ran")
         assertTrue(polls.get() >= 1)
     }
+
+    /**
+     * A client woken during its own poll, by a value that lands while the poll
+     * runs, yields once and reads the value on the next poll: the other
+     * coroutine the dispatcher holds runs between the two polls.
+     */
+    @Test
+    fun `a client woken during its own poll yields once, then reads the value`() = runBlocking {
+        val order = mutableListOf<String>()
+        val value = AtomicReference<Int?>(null)
+        val other = async { order += "other" }
+        val waiting = async(start = CoroutineStart.UNDISPATCHED) {
+            awaitPoll({}) { waker ->
+                order += "poll"
+                val read = value.get()
+                if (read == null) {
+                    value.set(5)
+                    waker.wake()
+                }
+                read
+            }
+        }
+        assertEquals(5, waiting.await())
+        other.await()
+        assertEquals(listOf("poll", "other", "poll"), order)
+    }
 }
