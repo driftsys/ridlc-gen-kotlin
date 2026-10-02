@@ -160,10 +160,13 @@ runs and a query after.
   `Bind` has no counterpart: a constructor cannot collide with a member. Nothing
   is renamed or refused, and the corpus interface `Clash` compiles and runs each
   case.
-- **An interface whose generated types would take a name already taken** is
-  skipped with a warning: two of its own (members `set` and `set_call` both give
-  `<Iface>SetCall`), a declaration's or its codec's, or another interface's. A
-  parameter's name never shadows the generated code's own.
+- **An interface whose generated types would take a name already taken** refuses
+  the package (#18, below): two of its own (members `set` and `set_call` both
+  give `<Iface>SetCall`), a declaration's or its codec's, or another
+  interface's. It was skipped with a warning; ridl's generated-name collision
+  design rejects the skip, because a missing face is found only at the
+  consumer's call site. A parameter's name never shadows the generated code's
+  own.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a
@@ -234,6 +237,34 @@ name that ends in `_` is one no declaration, interface or member can take:
 
 `NamesTest` in the conformance module compiles a package that declares each of
 these names and runs the value objects it can reach.
+
+### Two generated names one namespace cannot hold
+
+Where two names the plugin spells from ridl names meet in one Kotlin namespace,
+no rename is the plugin's to make, and the package is refused with one message
+naming both sources, then "rename one of them" (#18, step 2.2 of the design's
+rule). `ridl check` refuses none of these: each is met by the Kotlin output
+alone. Two namespaces are checked:
+
+- **The package's classes and objects**, across `Types.kt`, `Codec.kt` and
+  `Faces.kt`: a declaration, an induced tuple, a codec `<Type>Codec`, and a
+  faced interface's descriptor, member descriptors `<Iface><Member>`, calls
+  `<Iface><Member>Call`, clients, publisher and provider. Each emitter reports
+  what it emits, and `Generator` checks them together, so an interface whose
+  face is skipped claims nothing, as in the Rust backend (X-8b). The design's
+  cases X-8 (members `XY` and `x_y`), X-9, X-11, X-12, X-13 and X-14b are
+  refused here, as are two declarations `Level` and `level`, a declaration named
+  like another's codec, and a member named like the provider.
+- **One struct's or tuple's properties**: two fields whose `camel_case` agrees
+  (`minSpeed` and `min_speed`, X-6a) are one property.
+
+The other scopes need no table. A constant is a property of `Constants_`, so
+X-17 builds. An enum's values and a union's arms are checked by RIDL-149, and an
+enum set's bits are exact names; the escape above is injective. A member's
+methods on the clients, publisher and provider are spelled from the member's
+`camel_case`, which is also its descriptor's, so the package table refuses two
+of them first. The two interfaces of X-14a, `HTTPServer` and `HttpServer`, are
+two classes in Kotlin, and build.
 
 ### No AIDL
 

@@ -6,30 +6,50 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import ridl.codegen.kotlin.Generator
 import ridl.codegen.kotlin.Wire
+import ridl.codegen.v1.Plugin.CodegenResponse
+import ridl.codegen.v1.Plugin.DiagnosticSeverity
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
 /**
- * driftsys/ridlc-gen-kotlin#16: a name the plugin chose never refuses a
- * package. Each package here declares names that meet a name the plugin
- * writes, and its output must compile with warnings as errors and behave.
+ * driftsys/ridlc-gen-kotlin#16 and #18, the rule of driftsys/ridl's
+ * generated-name collision design. A name the plugin chose never refuses a
+ * package: a package that declares names meeting one the plugin writes
+ * compiles with warnings as errors and behaves. Two generated names spelled
+ * from ridl names that one Kotlin namespace cannot hold refuse the package,
+ * with one message naming both sources: the cases of the design note's
+ * appendix that Kotlin also derives (X-6a, X-8, X-9, X-11 to X-14), and the
+ * ones only Kotlin meets.
  */
 class NamesTest {
     @TempDir
     lateinit var work: Path
 
-    /** The files the plugin writes for [source], a package named `probe.<name>`, with no diagnostic. */
-    private fun generate(name: String, source: String): Map<String, String> {
+    private val WARNING = DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING
+
+    /** The plugin's response for [source], a package named `probe.<name>`, by package: it and every package it reaches. */
+    private fun responses(name: String, source: String): Map<String, CodegenResponse> {
         val pkg = work.resolve("src-$name").createDirectories()
         pkg.resolve("ridl.toml").writeText("[package]\nname = \"probe.$name\"\nversion = \"1.0.0\"\n")
         pkg.resolve("$name.ridl").writeText("package probe.$name\n\n$source")
         val requests = Harness.capturedRequests(pkg, name, work, "--emit", "codegen-model")
-        return requests.values.map(Wire::readRequest).flatMap { request ->
-            val response = Generator.generate(request)
-            assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        return requests.mapValues { (_, request) -> Generator.generate(Wire.readRequest(request)) }
+    }
+
+    /** The files the plugin writes for [source], with no diagnostic but the [warnings] it expects. */
+    private fun generate(name: String, source: String, warnings: Int = 0): Map<String, String> =
+        responses(name, source).values.flatMap { response ->
+            assertEquals(emptyList<String>(), response.diagnosticsList.filter { it.severity != WARNING }.map { it.message })
+            assertEquals(warnings, response.diagnosticsList.size, response.diagnosticsList.toString())
             response.filesList.map { it.path to it.text }
         }.toMap()
+
+    /** The error diagnostics of package `probe.<name>`, which writes no file. */
+    private fun refusals(name: String, source: String): List<String> {
+        val response = responses(name, source).getValue("probe.$name")
+        assertEquals(emptyList<String>(), response.filesList.map { it.path })
+        return response.diagnosticsList.map { it.message }
     }
 
     private fun compiles(sources: Map<String, String>, name: String): ClassLoader {
@@ -177,4 +197,188 @@ class NamesTest {
         val failures = loader.loadClass("probe.members.check.MembersProbe").getMethod("probe").invoke(null) as List<String>
         assertEquals(emptyList<String>(), failures)
     }
+
+    private fun refused(name: String, source: String, vararg expected: String) {
+        val messages = refusals(name, source)
+        for (e in expected) assertTrue(messages.any { e in it }, "no refusal says `$e`: $messages")
+    }
+
+    @Test
+    fun `X-6a two tuple fields one property cannot hold are refused`() = refused(
+        "xsixa",
+        """
+        type Speed : integer [0..250]
+        struct Reading {
+          bounds : (minSpeed : Speed, min_speed : Speed)
+        }
+        """.trimIndent(),
+        "`probe.xsixa.ReadingBounds` cannot be generated: its fields `minSpeed` and `min_speed` are both the property " +
+            "`minSpeed`; rename one of them",
+    )
+
+    @Test
+    fun `two struct fields one property cannot hold are refused`() = refused(
+        "fields",
+        """
+        type Level : integer [0..100]
+        struct S {
+          XY  : Level
+          x_y : Level
+        }
+        """.trimIndent(),
+        "`probe.fields.S` cannot be generated: its fields `XY` and `x_y` are both the property `xY`",
+    )
+
+    private val twoMembers = """
+        type Level : integer [0..100]
+        interface Cabin {
+          signal XY  : Level @10ms
+          signal x_y : Level @10ms
+    """.trimIndent()
+
+    @Test
+    fun `X-8 two members equal under camel case are refused`() = refused(
+        "xeight",
+        "$twoMembers\n}",
+        "`CabinXY` is generated twice in package `probe.xeight`: for the descriptor of member `XY` of interface " +
+            "`Cabin`, and for the descriptor of member `x_y` of interface `Cabin`; rename one of them",
+    )
+
+    @Test
+    fun `X-8b the same members in a skipped face claim nothing and build`() {
+        val sources = generate("xeightb", "$twoMembers\n  command set(a: Level, b: Level) @[..50ms]\n}", warnings = 1)
+        compiles(sources, "xeightb")
+    }
+
+    @Test
+    fun `X-8c the same members in a face the plugin carries are refused`() = refused(
+        "xeightc",
+        "$twoMembers\n  command set(level: Level) @[..50ms]\n}",
+        "`CabinXY` is generated twice",
+    )
+
+    @Test
+    fun `X-9 a descriptor named like a declaration is refused`() = refused(
+        "xnine",
+        """
+        type CabinTemperature : integer [-40..85]
+        interface Cabin {
+          signal temperature : CabinTemperature @10ms
+        }
+        """.trimIndent(),
+        "`CabinTemperature` is generated twice in package `probe.xnine`: for declaration `CabinTemperature`, and for " +
+            "the descriptor of member `temperature` of interface `Cabin`",
+    )
+
+    @Test
+    fun `X-11 an induced tuple named like a declaration is refused`() = refused(
+        "xeleven",
+        """
+        type Speed : integer [0..250]
+        struct Reading {
+          bounds : (low : Speed, high : Speed)
+        }
+        struct ReadingBounds {
+          low : Speed
+        }
+        """.trimIndent(),
+        "`ReadingBounds` is generated twice in package `probe.xeleven`: for declaration `ReadingBounds`, and for the " +
+            "tuple induced from `Reading.bounds`",
+    )
+
+    @Test
+    fun `X-12 two descriptors across interfaces are refused`() = refused(
+        "xtwelve",
+        """
+        type Level : integer [0..100]
+        interface A { signal bC : Level @10ms }
+        interface AB { signal c : Level @10ms }
+        """.trimIndent(),
+        "`ABC` is generated twice in package `probe.xtwelve`: for the descriptor of member `bC` of interface `A`, and " +
+            "for the descriptor of member `c` of interface `AB`",
+    )
+
+    @Test
+    fun `X-13 a descriptor named like an interface is refused`() = refused(
+        "xthirteen",
+        """
+        type Level : integer [0..100]
+        interface Horn { signal active : Level @10ms }
+        interface HornActive { signal level : Level @10ms }
+        """.trimIndent(),
+        "`HornActive` is generated twice in package `probe.xthirteen`: for the descriptor of member `active` of " +
+            "interface `Horn`, and for the descriptor of interface `HornActive`",
+    )
+
+    @Test
+    fun `X-14a interfaces equal under snake case build`() {
+        val sources = generate(
+            "xfourteena",
+            """
+            type Level : integer [0..100]
+            interface HTTPServer { signal level : Level @10ms }
+            interface HttpServer { signal level : Level @10ms }
+            """.trimIndent(),
+        )
+        compiles(sources, "xfourteena")
+    }
+
+    @Test
+    fun `X-14b an interface and a declaration equal under camel case are refused`() = refused(
+        "xfourteenb",
+        """
+        type cabin : integer [0..100]
+        interface Cabin { signal level : cabin @10ms }
+        """.trimIndent(),
+        "`Cabin` is generated twice in package `probe.xfourteenb`: for declaration `cabin`, and for the descriptor of " +
+            "interface `Cabin`",
+    )
+
+    @Test
+    fun `X-17 a constant named like a descriptor builds`() {
+        val sources = generate(
+            "xseventeen",
+            """
+            type Level : integer [0..100]
+            const CabinLevel : Level = 5
+            interface Cabin { signal level : Level @10ms }
+            """.trimIndent(),
+        )
+        compiles(sources, "xseventeen")
+    }
+
+    @Test
+    fun `two declarations equal under camel case are refused`() = refused(
+        "cased",
+        """
+        type Level : integer [0..100]
+        type level : integer [0..10]
+        """.trimIndent(),
+        "`Level` is generated twice in package `probe.cased`: for declaration `Level`, and for declaration `level`",
+    )
+
+    @Test
+    fun `a declaration named like another's codec is refused`() = refused(
+        "codecs",
+        """
+        type Level : integer [0..100]
+        struct LevelCodec { level : Level }
+        """.trimIndent(),
+        "`LevelCodec` is generated twice in package `probe.codecs`: for declaration `LevelCodec`, and for the codec of " +
+            "declaration `Level`",
+    )
+
+    @Test
+    fun `a member named like the provider is refused`() = refused(
+        "provider",
+        """
+        type Level : integer [0..100]
+        interface Cabin {
+          signal  provider : Level @10ms
+          command set(level: Level) @[..50ms]
+        }
+        """.trimIndent(),
+        "`CabinProvider` is generated twice in package `probe.provider`: for the descriptor of member `provider` of " +
+            "interface `Cabin`, and for the provider of interface `Cabin`",
+    )
 }
