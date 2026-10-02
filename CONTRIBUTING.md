@@ -40,3 +40,29 @@ limit.
 Before submitting a change, run `just verify`. This runs commit linting and the
 build gate: formatting, Prim linting, the repository check, every Gradle check
 and the assembly. CI runs the same recipes.
+
+## Releasing
+
+`git std bump` writes the changelog from the commit messages. Two things it
+cannot do here: it detects no version file, so `version` in `gradle.properties`
+is set by hand, and it lists as breaking only a commit marked `!` or carrying a
+`BREAKING CHANGE:` footer. A break that reached `main` unmarked is added to the
+changelog by hand, from the list below.
+
+1. `git std bump --no-commit` prepends the release's section to `CHANGELOG.md`.
+2. Set `version` in `gradle.properties` to the release's version.
+3. Add each pending note below to the new section's `### BREAKING CHANGES`, and
+   remove it from this list.
+4. Commit as `chore(release): <version>` and tag `v<version>`.
+
+A hand-written line survives every later `git std bump`, which only prepends;
+`git std changelog --full` regenerates the file from the commits and drops it.
+
+### Breaking changes the commits do not mark
+
+- **ridl-rt-kt:** `ReadError.ShortClaim` (b748a3d,
+  driftsys/ridlc-gen-kotlin#14). `ReadError` is a sealed class, so an exhaustive
+  `when` over it no longer compiles, and a `Handler` whose `nextClaim` reports
+  an oversized claim with `Short` no longer meets the port contract: it reports
+  `ShortClaim` with the claim's id. Rust's `ReadError` is `#[non_exhaustive]`,
+  so the same change was not breaking there.
