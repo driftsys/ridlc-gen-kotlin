@@ -64,6 +64,14 @@ Tested against ridl `editor-v0.5.0` (`modules/conformance/ridl-release`).
 - **A range check refuses NaN** (`!(value >= min)`); the Rust one admits it.
 - **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
   whole: the pattern's own `^` and `$` decide.
+- **A pattern `java.util.regex` cannot compile refuses its declaration**, with
+  the pattern and Java's reason (#12). `ridl check` passes a pattern ECMA-262
+  and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and some of
+  those are not Java syntax: a script or a long property name such as
+  `\p{Greek}`, `\p{Letter}` or `\p{Emoji}`, and `\u{41}`. The generated
+  `Regex(…)` threw `PatternSyntaxException` when its class loaded; the plugin
+  now compiles each pattern as it generates it. The check is the JVM the plugin
+  runs on: Android's `java.util.regex` is ICU's, and is not checked.
 - **Every integer is a `Long` and every float a `Double`**, as every Rust
   backing is `i64` or `f64`; the declared widths are the codec's.
 - **An enum's discriminant is a `Long`**, not the `Int` of §4, because the

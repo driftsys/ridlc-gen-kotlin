@@ -193,7 +193,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         val pattern = if (scalar.checksPattern()) {
             companion.addProperty(
                 PropertySpec.builder("PATTERN", REGEX, KModifier.PRIVATE)
-                    .initializer("%T(%S)", REGEX, scalar.constraint.pattern).build(),
+                    .initializer("%T(%S)", REGEX, javaPattern(scalar.constraint.pattern)).build(),
             )
             "PATTERN"
         } else {
@@ -581,7 +581,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         private val bodies = mutableListOf<String>()
 
         fun of(body: String): String {
-            bodies += body
+            bodies += javaPattern(body)
             return "PATTERN_${bodies.size - 1}"
         }
 
