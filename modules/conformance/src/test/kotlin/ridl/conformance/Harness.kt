@@ -76,15 +76,23 @@ object Harness {
      * with an empty response. The IR specification §8's fixture rule. Sorted
      * by package, so what is derived from them comes in one order on every run.
      */
-    fun capturedRequests(name: String, work: Path): Map<String, String> {
-        val pkg = copyOf(name, work)
+    fun capturedRequests(name: String, work: Path): Map<String, String> =
+        capturedRequests(copyOf(name, work), name, work)
+
+    /**
+     * Every request the pinned `ridl` writes to a plugin for the package in
+     * [pkg], a directory holding a `ridl.toml`, as [capturedRequests] reads
+     * a corpus package's; [name] keeps the scratch files of two packages
+     * apart. [emit] is what `ridl build` writes beside the plugin's output.
+     */
+    fun capturedRequests(pkg: Path, name: String, work: Path, vararg emit: String): Map<String, String> {
         val recorded = work.resolve("requests-$name").createDirectories()
         val capture = work.resolve("capture-$name.sh")
         capture.writeText(
             "#!/bin/sh\ncat > \"$(mktemp '${recorded.absolutePathString()}/request-XXXXXX')\"\nprintf '{}'\n",
         )
         Files.setPosixFilePermissions(capture, PosixFilePermissions.fromString("rwxr-xr-x"))
-        build(pkg, work.resolve("capture-out-$name"), "--plugin", "kotlin=${capture.absolutePathString()}")
+        build(pkg, work.resolve("capture-out-$name"), *emit, "--plugin", "kotlin=${capture.absolutePathString()}")
         return recorded.listDirectoryEntries().map { it.readText() }
             .associateBy { Wire.readRequest(it).model.name.dotted }
             .toSortedMap()

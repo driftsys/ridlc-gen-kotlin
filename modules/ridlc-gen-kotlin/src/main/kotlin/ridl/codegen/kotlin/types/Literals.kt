@@ -16,8 +16,9 @@ internal object Literals {
             refuse("`$text` does not fit a 64-bit signed integer")
         }
         // `-9223372036854775808L` is not a Kotlin literal: the minus is a
-        // unary operator over a literal that overflows.
-        return if (value == Long.MIN_VALUE.toBigInteger()) "Long.MIN_VALUE" else "${text}L"
+        // unary operator over a literal that overflows. Nor is `Long.MIN_VALUE`
+        // safe: a declaration named `Long` would take its `Long`.
+        return if (value == Long.MIN_VALUE.toBigInteger()) "(-9223372036854775807L - 1L)" else "${text}L"
     }
 
     fun double(text: String): String {

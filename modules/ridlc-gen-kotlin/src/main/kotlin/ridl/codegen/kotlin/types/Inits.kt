@@ -1,7 +1,9 @@
 package ridl.codegen.kotlin.types
 
+import com.squareup.kotlinpoet.BYTE_ARRAY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.joinToCode
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.Field
@@ -37,7 +39,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
             Declaration.KindCase.ENUM -> {
                 val enum = declaration.enum
                 if (!enum.hasInitMember()) refuse("the enum `$name` has no init member")
-                CodeBlock.of("%T.%L", type, enum.getValues(enum.initMember).name.declared)
+                CodeBlock.of("%T.%N", type, enumEntry(enum.getValues(enum.initMember).name))
             }
             Declaration.KindCase.ENUM_SET -> CodeBlock.of("%T.EMPTY", type)
             Declaration.KindCase.STRUCT ->
@@ -62,7 +64,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
 
     private fun record(type: ClassName, fields: List<Field>): CodeBlock =
         CodeBlock.of("%T(%L)", type, fields.map { field ->
-            CodeBlock.of("%L = %L", field.name.camel.replaceFirstChar(Char::lowercaseChar), field(field))
+            CodeBlock.of("%N = %L", field.name.property, field(field))
         }.joinToCode(", "))
 
     private fun field(field: Field): CodeBlock {
@@ -103,7 +105,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
                 if (count == 0L) {
                     CodeBlock.of("emptyList()")
                 } else {
-                    CodeBlock.of("List(%L) { %L }", count, position(type.array.element, null))
+                    CodeBlock.of("%M(%L) { %L }", LIST_OF_SIZE, count, position(type.array.element, null))
                 }
             }
             Type.KindCase.MAP -> {
@@ -121,7 +123,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
         ScalarClass.SCALAR_CLASS_STRING -> CodeBlock.of("%S", value)
         ScalarClass.SCALAR_CLASS_BYTES -> {
             if (value.isNotEmpty()) refuse("a bytes init value is not supported")
-            CodeBlock.of("ByteArray(0)")
+            CodeBlock.of("%T(0)", BYTE_ARRAY)
         }
         else -> CodeBlock.of("%L", Literals.double(value.ifEmpty { "0" }))
     }

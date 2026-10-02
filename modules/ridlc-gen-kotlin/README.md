@@ -78,9 +78,10 @@ Tested against ridl `editor-v0.4.0` (`modules/conformance/ridl-release`).
   collection. The same `init` checks an inline scalar's constraints, which the
   Rust backend does not check at all. Collections and bytes are copied in, and
   bytes copied out, so a constructed value stays valid.
-- **Constants** are properties of `object Constants`: a `const val` for a
-  primitive or a regex, a `val` holding the value object for a named scalar. A
-  bytes constant has no spelling and is left out, as in the Rust backend.
+- **Constants** are properties of `object Constants_`, not the
+  `object Constants` of §4 (#16, below): a `const val` for a primitive or a
+  regex, a `val` holding the value object for a named scalar. A bytes constant
+  has no spelling and is left out, as in the Rust backend.
 - **A reference into another package** is spelled in that package's dotted name,
   the `kotlin-package` default (O-K2): the model does not say what option the
   other package was generated with.
@@ -132,7 +133,7 @@ runs and a query after.
   `<Iface>Client<P>(port,
   timeout)`, the suspending `<Iface>AsyncClient<P>`,
   and `serve` and `serveAsync` on the descriptor, all over one internal
-  `<Iface><Member>Call` per command and query, whose `InteractionCall` base
+  `<Iface><Member>Call` per command and query, whose `InteractionCall_` base
   carries every call rule. The poll face, `<Iface>PollClient`, its correlations,
   its `…Ack` and `…Reply` methods and `dispatch` are internal. A call returns
   its reply and throws `ClientError` for anything else; `serve` throws
@@ -194,6 +195,45 @@ runs and a query after.
   `serveAsync` under a claim stream that never ends yields its dispatcher
   between passes, and is cancellable. `serve(timeout)` still takes no claim past
   its timeout.
+
+### The names the plugin chooses
+
+A name the plugin chose never refuses a package (#16, driftsys/ridl's
+generated-name collision design,
+`docs/wip/2026-09-29-generated-name-collisions-design.md` in driftsys/ridl).
+Where a ridl name can meet a name the plugin writes, the plugin's name moves out
+of its reach. A ridl identifier is `[A-Za-z][A-Za-z0-9_]*`, and `camel_case`,
+which spells every package-level class, removes each `_`, so a package-level
+name that ends in `_` is one no declaration, interface or member can take:
+
+- **`object Constants_`** and **`InteractionCall_`**, where a declaration named
+  `Constants` was refused and one named `InteractionCall` skipped every face
+  with a call.
+- **The files' JVM classes are `TypesKt_`, `CodecKt_` and `FacesKt_`**
+  (`@file:JvmName`). By default `Faces.kt` compiles to `FacesKt`, and a
+  declaration named `FacesKt` then failed the consumer's build with a duplicate
+  JVM class. A Java caller of the face's extensions names `FacesKt_`.
+- **A Kotlin class the generated code names in an expression goes through
+  KotlinPoet**, which imports or qualifies it: a declaration named `Long`, `Int`
+  or `List` took a bare `Long.MAX_VALUE`, `Int.MAX_VALUE` or `List(n) { … }`.
+  `Long.MIN_VALUE` as a literal is `(-9223372036854775807L - 1L)`.
+- **A Kotlin keyword is written in backticks** wherever the plugin writes a ridl
+  name: a field, a parameter or a member named `class`, `fun`, `in`, `this` or
+  `object` was written bare in `Codec.kt` and the face.
+- **A struct's `equals`, `hashCode` and `toString` read their fields through
+  `this.`**: a field named `other` compared the parameter with itself, and one
+  named `result` would have read the local.
+- **An enum value named like a member of the enum class gets one more `_`**:
+  `name`, `ordinal` and `entries`, which Kotlin gives every enum class, and
+  `value` and `Companion`, which the plugin does. `name` crashed the plugin, and
+  the others failed the consumer's build. An enum set bit named `EMPTY` or
+  `DECLARED_MASK`, the companion's own constants, gets the same escape. The
+  escape is injective, the rule of the Rust backend's keyword escape: a name
+  that is one of these followed by zero or more `_` gets one more `_`, so
+  `EMPTY` is `EMPTY_` and `EMPTY_` is `EMPTY__`.
+
+`NamesTest` in the conformance module compiles a package that declares each of
+these names and runs the value objects it can reach.
 
 ### No AIDL
 

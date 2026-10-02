@@ -116,3 +116,19 @@ its plain call on both clients and the publisher, and each operation stays
 reachable, the shadowed `nextEvent`, `subscribePing` and `unsubscribePing`
 through an aliased import. The probe imports the extensions of `Probe` and
 `Clash` under one name, the Kotlin counterpart of a consumer of two preludes.
+
+The test of #16, `NamesTest`: a name the plugin chose never refuses a package.
+Two packages, written inline and built with `ridl build --emit codegen-model`,
+declare names that meet one the plugin writes. The first declares `Constants`,
+`InteractionCall`, `TypesKt`, `CodecKt`, `FacesKt` and the Kotlin classes the
+generated code names in expressions (`Long`, `Int`, `List`, `ByteArray`, `Math`,
+…), beside an interface of every kind and the expressions that name them. The
+second declares enum values named `name`, `ordinal`, `entries`, `value`,
+`Companion`, `null` and `in`, enum set bits `EMPTY`, `EMPTY_` and
+`DECLARED_MASK`, struct and tuple fields `other`, `result`, `class`, `fun`,
+`this` and `in`, and a parameter and a member named like keywords. Both compile
+with warnings as errors, and a probe checks that `equals` and `hashCode` read a
+field named `other`, that the escaped entries and bits keep their values, and
+that the struct round-trips through its codec. `Compiler` now compiles each file
+under its own path and name, so a file's JVM class is the one a consumer's build
+gives it: a JVM class clash with a file is seen.

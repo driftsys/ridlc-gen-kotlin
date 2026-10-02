@@ -1,5 +1,6 @@
 package ridl.codegen.kotlin.types
 
+import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.MemberName
 import ridl.codegen.v1.ModelOuterClass.FloatWidth
@@ -10,6 +11,7 @@ import ridl.codegen.v1.ModelOuterClass.ScalarClass
 internal enum class RuleName { Range, Step, Length, Pattern, Variant }
 
 private val ABS = MemberName("kotlin.math", "abs")
+private val MATH = ClassName("java.lang", "Math")
 
 /**
  * The typl constraint checks of one scalar (docs/design.md §4), in the order
@@ -59,15 +61,15 @@ internal fun scalarChecks(
                 val base = if (c.hasMin()) Literals.double(c.min) else "0.0"
                 val step = Literals.double(c.step)
                 val ulp = if (scalar.floatWidth == FloatWidth.FLOAT_WIDTH_F32) {
-                    "Math.ulp($value.toFloat()).toDouble()"
+                    CodeBlock.of("%T.ulp(%L.toFloat()).toDouble()", MATH, value)
                 } else {
-                    "Math.ulp($value)"
+                    CodeBlock.of("%T.ulp(%L)", MATH, value)
                 }
                 // No local: the check is inlined into a struct's `init`,
                 // where any name could shadow one of its fields.
                 code.beginControlFlow(
-                    "if (%M(%L - (%L + Math.rint((%L - %L) / %L) * %L)) > %L * 1.0E-6 + %L)",
-                    ABS, value, base, value, base, step, step, step, ulp,
+                    "if (%M(%L - (%L + %T.rint((%L - %L) / %L) * %L)) > %L * 1.0E-6 + %L)",
+                    ABS, value, base, MATH, value, base, step, step, step, ulp,
                 ).add(fail(RuleName.Step)).endControlFlow()
             }
         }
@@ -101,4 +103,4 @@ internal fun Scalar.checksPattern(): Boolean =
     !vacuous && class_ == ScalarClass.SCALAR_CLASS_STRING && constraint.hasPattern()
 
 /** A length bound as an `Int` literal: a JVM string or array holds at most `Int.MAX_VALUE`. */
-private fun Long.toIntBound(): String = if (this > Int.MAX_VALUE) "Int.MAX_VALUE" else toString()
+private fun Long.toIntBound(): String = if (this > Int.MAX_VALUE) Int.MAX_VALUE.toString() else toString()

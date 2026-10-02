@@ -114,9 +114,17 @@ class FacesEmitterTest {
     @Test
     fun `a generated type named like a declared one skips its interface`() {
         val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
-        val emitted = faces("Level", "InteractionCall", iface = iface)
+        val emitted = faces("Level", "DriveSet", iface = iface)
         assertNull(emitted.text)
-        assertTrue("`InteractionCall` collides with a declaration" in emitted.warnings.single(), emitted.warnings.single())
+        assertTrue("`DriveSet` collides with a declaration" in emitted.warnings.single(), emitted.warnings.single())
+    }
+
+    @Test
+    fun `a declaration named like the call base keeps its interface`() {
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
+        val emitted = faces("Level", "InteractionCall", iface = iface)
+        assertEquals(emptyList<String>(), emitted.warnings)
+        assertTrue("internal abstract class InteractionCall_<" in checkNotNull(emitted.text))
     }
 
     /** A signal, or an event, named [declared] and [camel], over one `Level`. */
