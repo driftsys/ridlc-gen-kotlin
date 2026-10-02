@@ -238,18 +238,16 @@ class CodecEmitter(private val model: Model, private val options: Options) {
             if (slot.optional) {
                 verify.beginControlFlow("if (%L != null)", at).add(verifyAt(slot.wire, at, owner)).endControlFlow()
             } else {
-                verify.beginControlFlow("if (%L == null)", at)
-                    .addStatement("throw %T.Structure(%T.MissingRequired)", VERIFY_ERROR, MALFORMED)
-                    .endControlFlow()
-                    .add(verifyAt(slot.wire, at, owner))
+                verify.add(verifyRequired(slot.wire, at, owner))
             }
         }
         val arguments = resolved.map { slot ->
-            val at = fresh("at")
+            val field = CodeBlock.of("reader.field(table, %L, %L)", slot.id, slot.wire.width)
             if (slot.optional) {
-                CodeBlock.of("%L = reader.field(table, %L, %L)?.let { %L -> %L }", slot.property, slot.id, slot.wire.width, at, decodeAt(slot.wire, at))
+                val at = fresh("at")
+                CodeBlock.of("%L = %L?.let { %L -> %L }", slot.property, field, at, decodeAt(slot.wire, at))
             } else {
-                CodeBlock.of("%L = (reader.field(table, %L, %L) ?: 0).let { %L -> %L }", slot.property, slot.id, slot.wire.width, at, decodeAt(slot.wire, at))
+                CodeBlock.of("%L = %L", slot.property, decodeRequired(slot.wire, field))
             }
         }
         val decode = CodeBlock.builder().add("return %T(\n", type).indent()
@@ -327,10 +325,9 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         )
         val verify = CodeBlock.builder()
             .addStatement("val at = reader.field(table, 0, %L)", wire.width)
-            .addStatement("  ?: throw %T.Structure(%T.MissingRequired)", VERIFY_ERROR, MALFORMED)
-            .add(verifyAt(wire, "at", owner))
+            .add(verifyRequired(wire, "at", owner))
         val decode = CodeBlock.builder()
-            .addStatement("return (reader.field(table, 0, %L) ?: 0).let { at -> %L }", wire.width, decodeAt(wire, "at"))
+            .addStatement("return %L", decodeRequired(wire, CodeBlock.of("reader.field(table, 0, %L)", wire.width)))
         helpers(Functions(pkg, name), type, encode.build(), verify.build(), decode.build())
     }
 
@@ -354,18 +351,14 @@ class CodecEmitter(private val model: Model, private val options: Options) {
             CodeBlock.builder()
                 .addStatement("val %L = reader.follow(%L)", box, at)
                 .addStatement("val %L = reader.field(%L, 0, %L)", inner, box, wire.width)
-                .addStatement("  ?: throw %T.Structure(%T.MissingRequired)", VERIFY_ERROR, MALFORMED)
-                .add(verifyAt(wire, inner, owner))
+                .add(verifyRequired(wire, inner, owner))
                 .build()
         }
     }
 
     private fun decodeArm(wire: Wire, at: String): CodeBlock = when (wire) {
         is Wire.Table, is Wire.UnionOf -> decodeAt(wire, at)
-        else -> {
-            val inner = fresh("at")
-            CodeBlock.of("(reader.field(reader.follow(%L), 0, %L) ?: 0).let { %L -> %L }", at, wire.width, inner, decodeAt(wire, inner))
-        }
+        else -> decodeRequired(wire, CodeBlock.of("reader.field(reader.follow(%L), 0, %L)", at, wire.width))
     }
 
     // -- encoding --------------------------------------------------------------
@@ -466,13 +459,31 @@ class CodecEmitter(private val model: Model, private val options: Options) {
                 code.beginControlFlow("for (%L in 0 until %L.len)", i, v)
                     .addStatement("val %L = reader.follow(%L.element(%L, 4))", entry, v, i)
                     .addStatement("val %L = reader.field(%L, 0, %L)", key, entry, wire.key.width)
-                    .addStatement("  ?: throw %T.Structure(%T.MissingRequired)", VERIFY_ERROR, MALFORMED)
-                    .add(verifyAt(wire.key, key, owner))
+                    .add(verifyRequired(wire.key, key, owner))
                     .addStatement("val %L = reader.field(%L, 1, %L)", value, entry, wire.value.width)
-                    .addStatement("  ?: throw %T.Structure(%T.MissingRequired)", VERIFY_ERROR, MALFORMED)
-                    .add(verifyAt(wire.value, value, owner))
+                    .add(verifyRequired(wire.value, value, owner))
                     .endControlFlow()
             }
+        }
+        return code.build()
+    }
+
+    /**
+     * What `verify` does with a non-optional field at [at], a position or
+     * `null` when the slot is absent. A scalar or an enum reads as the
+     * FlatBuffers default when 0 is a legal value of its type, so its absence
+     * passes; anything else, or a type that excludes 0, is `MissingRequired`
+     * (driftsys/ridl#472).
+     */
+    private fun verifyRequired(wire: Wire, at: String, owner: String): CodeBlock {
+        val code = CodeBlock.builder()
+        if (wire is Wire.ScalarWire && wire.zeroLegal) {
+            code.beginControlFlow("if (%L != null)", at).add(verifyAt(wire, at, owner)).endControlFlow()
+        } else {
+            code.beginControlFlow("if (%L == null)", at)
+                .addStatement("throw %T.Structure(%T.MissingRequired)", VERIFY_ERROR, MALFORMED)
+                .endControlFlow()
+                .add(verifyAt(wire, at, owner))
         }
         return code.build()
     }
@@ -544,16 +555,36 @@ class CodecEmitter(private val model: Model, private val options: Options) {
             val v = fresh("vector")
             val i = fresh("i")
             val entry = fresh("entry")
-            val key = fresh("key")
-            val value = fresh("value")
             CodeBlock.of(
                 "reader.vector(%L, 4).let { %L -> (0 until %L.len).associate { %L ->\nval %L = reader.follow(%L.element(%L, 4))\n" +
-                    "(reader.field(%L, 0, %L) ?: 0).let { %L -> %L } to (reader.field(%L, 1, %L) ?: 0).let { %L -> %L }\n} }",
+                    "%L to %L\n} }",
                 at, v, v, i, entry, v, i,
-                entry, wire.key.width, key, decodeAt(wire.key, key),
-                entry, wire.value.width, value, decodeAt(wire.value, value),
+                decodeRequired(wire.key, CodeBlock.of("reader.field(%L, 0, %L)", entry, wire.key.width)),
+                decodeRequired(wire.value, CodeBlock.of("reader.field(%L, 1, %L)", entry, wire.value.width)),
             )
         }
+    }
+
+    /**
+     * The value of a non-optional field whose position [field] finds. An
+     * absent scalar or enum reads as the FlatBuffers default — 0, or the
+     * enum's zero member — which `verify` accepted (driftsys/ridl#472);
+     * anything else `verify` refused when absent.
+     */
+    private fun decodeRequired(wire: Wire, field: CodeBlock): CodeBlock {
+        val at = fresh("at")
+        return if (wire is Wire.ScalarWire) {
+            CodeBlock.of("(%L?.let { %L -> %L } ?: %L)", field, at, decodeAt(wire, at), defaultOf(wire))
+        } else {
+            CodeBlock.of("(%L ?: 0).let { %L -> %L }", field, at, decodeAt(wire, at))
+        }
+    }
+
+    /** What an absent [wire] reads as: 0 in its domain, the first member for an enum `verify` refused it of. */
+    private fun defaultOf(wire: Wire.ScalarWire): CodeBlock = when (val domain = wire.domain) {
+        is Domain.EnumOf -> CodeBlock.of("%T.%N", domain.type, enumEntry((domain.zero ?: domain.first).name))
+        is Domain.SetOf -> CodeBlock.of("%T.EMPTY", domain.type)
+        else -> construct(domain, CodeBlock.of("%L", wire.zero))
     }
 
     /** [raw], read from a verified buffer, as the domain value. */

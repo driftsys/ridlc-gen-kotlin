@@ -37,6 +37,16 @@ specification is untouched, because the answer is not C.
 | The verifier agrees with Rust's             | On all 1,385, Kotlin's verdict — refused with which error, or decoded to which value — is the Rust verifier's, text for text: 978 refused, 407 decoded                                   |
 | The comparison can fail                     | Removing the check that a field lies inside its table turns 24 verdicts into disagreements                                                                                               |
 
+**Since ridl 0.5.0** (2026-10-01): the Rust codec reads an absent non-optional
+scalar or enum field as its FlatBuffers default when 0 is a legal value of its
+type (driftsys/ridl#472), and every cabin type admits 0. Regenerated over
+`editor-v0.5.0`, 142 verdicts move from `MissingRequired` to a decoded default,
+so the corpus is 960 refused and 425 decoded, and the hand-written codec reads
+an absent field as 0 to match. ridl 0.4.0's PascalCase variants also changed the
+`Debug` text of a `Health` (`Ok`, not `OK`). The golden bytes did not change.
+The corpus no longer reaches a refused missing field; `kt-zero`'s, under
+`CodecTest`, does.
+
 The corpus covers §7's malformed cases for these types — truncated buffers,
 offsets past the end, a vtable naming a field across its table's end, a missing
 required field, an enum discriminant out of range, a value outside its range, a
@@ -86,7 +96,7 @@ edition = "2024"
 
 [dependencies]
 veh_cabin = { path = "<path to cabin-rs>" }
-ridl-rt = { version = "0.2", features = ["flatbuffers"] }
+ridl-rt = { version = "0.5", features = ["flatbuffers"] }
 
 [patch.crates-io]
 ridl-rt = { path = "<path to driftsys/ridl>/crates/ridl-rt" }
@@ -126,9 +136,9 @@ fn main() {
             for v in [0i64, 42, 100] { enc("Level", v.to_string(), &Level::new(v).unwrap()); }
             for v in [0i64, 1, 100000] { enc("Window", v.to_string(), &Window::new(v).unwrap()); }
             for v in [0i64, 1000] { enc("Average", v.to_string(), &Average::new(v).unwrap()); }
-            for (n, v) in [("OK", Health::OK), ("WARN", Health::WARN), ("FAIL", Health::FAIL)] { enc("Health", n.into(), &v); }
-            enc("Warning", "7,FAIL".into(), &Warning { code: Level::new(7).unwrap(), health: Health::FAIL });
-            enc("Warning", "100,OK".into(), &Warning { code: Level::new(100).unwrap(), health: Health::OK });
+            for (n, v) in [("OK", Health::Ok), ("WARN", Health::Warn), ("FAIL", Health::Fail)] { enc("Health", n.into(), &v); }
+            enc("Warning", "7,FAIL".into(), &Warning { code: Level::new(7).unwrap(), health: Health::Fail });
+            enc("Warning", "100,OK".into(), &Warning { code: Level::new(100).unwrap(), health: Health::Ok });
         }
         Some("verify") => {
             for line in std::io::stdin().lock().lines() {
@@ -172,12 +182,13 @@ just test   # writes modules/conformance/build/spike/<package>-codec-corpus.txt
 ```
 
 `ridl build` takes a package directory, so run it from inside the package. In
-`gen.py`'s `Cargo.toml`, the `ridl-rt` version must match the release's (`0.2`
-for `editor-v0.2.2`, `0.3` for `v0.3.0`, `0.4` for `editor-v0.4.0`), or the path
-patch does not apply. Before driftsys/ridl#581, the Rust face `kt-values` emits
-does not compile: its `Names` interface has a parameter named `claim`, which the
-Rust `dispatch` shadows. The codec does not depend on the interfaces, so delete
-`Names` from a copy of `probe.ridl` and emit from that copy.
+`gen.py`'s `Cargo.toml`, and in the spike's, the `ridl-rt` version must match
+the release's (`0.2` for `editor-v0.2.2`, `0.3` for `v0.3.0`, `0.4` for
+`editor-v0.4.0`, `0.5` for `editor-v0.5.0`), or the path patch does not apply.
+Before driftsys/ridl#581, the Rust face `kt-values` emits does not compile: its
+`Names` interface has a parameter named `claim`, which the Rust `dispatch`
+shadows. The codec does not depend on the interfaces, so delete `Names` from a
+copy of `probe.ridl` and emit from that copy.
 
 `gen.py`:
 
@@ -187,6 +198,7 @@ Rust `dispatch` shadows. The codec does not depend on the interfaces, so delete
 # Rust codec, and printed as `pkg.Type label ok <hex>` or `... err <error>`.
 import re, sys, pathlib
 crate = pathlib.Path(sys.argv[1]); prog = pathlib.Path(sys.argv[2]); ridl = sys.argv[3]
+name = re.search(r'^name = "([^"]+)"', crate.joinpath('Cargo.toml').read_text(), re.M).group(1)
 arms = []
 for f in sorted(crate.glob('*.rs')):
     if f.name == 'lib.rs': continue
@@ -204,8 +216,8 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-veh_crate = {{ path = "{crate}", package = "{crate.name.replace('-', '_')}" }}
-ridl-rt = {{ version = "0.2", features = ["flatbuffers"] }}
+veh_crate = {{ path = "{crate}", package = "{name}" }}
+ridl-rt = {{ version = "0.5", features = ["flatbuffers"] }}
 
 [patch.crates-io]
 ridl-rt = {{ path = "{ridl}/crates/ridl-rt" }}

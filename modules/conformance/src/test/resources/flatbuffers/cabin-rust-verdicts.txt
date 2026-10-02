@@ -53,7 +53,7 @@ Temperature -40/ones12 ok Temperature(-40)
 Temperature -40/inc12 ok Temperature(-40)
 Temperature -40/ones13 ok Temperature(-40)
 Temperature -40/inc13 ok Temperature(-40)
-Temperature -40/zero14 err Structure(MissingRequired)
+Temperature -40/zero14 ok Temperature(0)
 Temperature -40/ones14 err Structure(OutOfBounds)
 Temperature -40/inc14 err Structure(OutOfBounds)
 Temperature -40/ones15 err Structure(OutOfBounds)
@@ -132,7 +132,7 @@ Temperature 0/ones12 ok Temperature(0)
 Temperature 0/inc12 ok Temperature(0)
 Temperature 0/ones13 ok Temperature(0)
 Temperature 0/inc13 ok Temperature(0)
-Temperature 0/zero14 err Structure(MissingRequired)
+Temperature 0/zero14 ok Temperature(0)
 Temperature 0/ones14 err Structure(OutOfBounds)
 Temperature 0/inc14 err Structure(OutOfBounds)
 Temperature 0/ones15 err Structure(OutOfBounds)
@@ -210,7 +210,7 @@ Temperature 85/ones12 ok Temperature(85)
 Temperature 85/inc12 ok Temperature(85)
 Temperature 85/ones13 ok Temperature(85)
 Temperature 85/inc13 ok Temperature(85)
-Temperature 85/zero14 err Structure(MissingRequired)
+Temperature 85/zero14 ok Temperature(0)
 Temperature 85/ones14 err Structure(OutOfBounds)
 Temperature 85/inc14 err Structure(OutOfBounds)
 Temperature 85/ones15 err Structure(OutOfBounds)
@@ -289,7 +289,7 @@ Level 0/ones12 ok Level(0)
 Level 0/inc12 ok Level(0)
 Level 0/ones13 ok Level(0)
 Level 0/inc13 ok Level(0)
-Level 0/zero14 err Structure(MissingRequired)
+Level 0/zero14 ok Level(0)
 Level 0/ones14 err Structure(OutOfBounds)
 Level 0/inc14 err Structure(OutOfBounds)
 Level 0/ones15 err Structure(OutOfBounds)
@@ -367,7 +367,7 @@ Level 42/ones12 ok Level(42)
 Level 42/inc12 ok Level(42)
 Level 42/ones13 ok Level(42)
 Level 42/inc13 ok Level(42)
-Level 42/zero14 err Structure(MissingRequired)
+Level 42/zero14 ok Level(0)
 Level 42/ones14 err Structure(OutOfBounds)
 Level 42/inc14 err Structure(OutOfBounds)
 Level 42/ones15 err Structure(OutOfBounds)
@@ -446,7 +446,7 @@ Level 100/ones12 ok Level(100)
 Level 100/inc12 ok Level(100)
 Level 100/ones13 ok Level(100)
 Level 100/inc13 ok Level(100)
-Level 100/zero14 err Structure(MissingRequired)
+Level 100/zero14 ok Level(0)
 Level 100/ones14 err Structure(OutOfBounds)
 Level 100/inc14 err Structure(OutOfBounds)
 Level 100/ones15 err Structure(OutOfBounds)
@@ -525,7 +525,7 @@ Window 0/ones12 ok Window(0)
 Window 0/inc12 ok Window(0)
 Window 0/ones13 ok Window(0)
 Window 0/inc13 ok Window(0)
-Window 0/zero14 err Structure(MissingRequired)
+Window 0/zero14 ok Window(0)
 Window 0/ones14 err Structure(OutOfBounds)
 Window 0/inc14 err Structure(OutOfBounds)
 Window 0/ones15 err Structure(OutOfBounds)
@@ -603,7 +603,7 @@ Window 1/ones12 ok Window(1)
 Window 1/inc12 ok Window(1)
 Window 1/ones13 ok Window(1)
 Window 1/inc13 ok Window(1)
-Window 1/zero14 err Structure(MissingRequired)
+Window 1/zero14 ok Window(0)
 Window 1/ones14 err Structure(OutOfBounds)
 Window 1/inc14 err Structure(OutOfBounds)
 Window 1/ones15 err Structure(OutOfBounds)
@@ -682,7 +682,7 @@ Window 100000/ones12 ok Window(100000)
 Window 100000/inc12 ok Window(100000)
 Window 100000/ones13 ok Window(100000)
 Window 100000/inc13 ok Window(100000)
-Window 100000/zero14 err Structure(MissingRequired)
+Window 100000/zero14 ok Window(0)
 Window 100000/ones14 err Structure(OutOfBounds)
 Window 100000/inc14 err Structure(OutOfBounds)
 Window 100000/ones15 err Structure(OutOfBounds)
@@ -763,7 +763,7 @@ Average 0/ones12 ok Average(0)
 Average 0/inc12 ok Average(0)
 Average 0/ones13 ok Average(0)
 Average 0/inc13 ok Average(0)
-Average 0/zero14 err Structure(MissingRequired)
+Average 0/zero14 ok Average(0)
 Average 0/ones14 err Structure(OutOfBounds)
 Average 0/inc14 err Structure(OutOfBounds)
 Average 0/ones15 err Structure(OutOfBounds)
@@ -841,7 +841,7 @@ Average 1000/ones12 ok Average(1000)
 Average 1000/inc12 ok Average(1000)
 Average 1000/ones13 ok Average(1000)
 Average 1000/inc13 ok Average(1000)
-Average 1000/zero14 err Structure(MissingRequired)
+Average 1000/zero14 ok Average(0)
 Average 1000/ones14 err Structure(OutOfBounds)
 Average 1000/inc14 err Structure(OutOfBounds)
 Average 1000/ones15 err Structure(OutOfBounds)
@@ -907,29 +907,29 @@ Health OK/ones2 err Structure(OutOfBounds)
 Health OK/inc2 err Structure(OutOfBounds)
 Health OK/ones3 err Structure(OutOfBounds)
 Health OK/inc3 err Structure(OutOfBounds)
-Health OK/ones4 ok OK
-Health OK/inc4 ok OK
-Health OK/ones5 ok OK
-Health OK/inc5 ok OK
-Health OK/ones6 ok OK
-Health OK/inc6 ok OK
-Health OK/ones7 ok OK
-Health OK/inc7 ok OK
-Health OK/ones8 ok OK
-Health OK/inc8 ok OK
-Health OK/ones9 ok OK
-Health OK/inc9 ok OK
+Health OK/ones4 ok Ok
+Health OK/inc4 ok Ok
+Health OK/ones5 ok Ok
+Health OK/inc5 ok Ok
+Health OK/ones6 ok Ok
+Health OK/inc6 ok Ok
+Health OK/ones7 ok Ok
+Health OK/inc7 ok Ok
+Health OK/ones8 ok Ok
+Health OK/inc8 ok Ok
+Health OK/ones9 ok Ok
+Health OK/inc9 ok Ok
 Health OK/zero10 err Structure(OutOfBounds)
 Health OK/ones10 err Structure(OutOfBounds)
-Health OK/inc10 ok OK
+Health OK/inc10 ok Ok
 Health OK/ones11 err Structure(OutOfBounds)
 Health OK/inc11 err Structure(OutOfBounds)
 Health OK/zero12 err Structure(OutOfBounds)
-Health OK/ones12 ok OK
-Health OK/inc12 ok OK
-Health OK/ones13 ok OK
-Health OK/inc13 ok OK
-Health OK/zero14 err Structure(MissingRequired)
+Health OK/ones12 ok Ok
+Health OK/inc12 ok Ok
+Health OK/ones13 ok Ok
+Health OK/inc13 ok Ok
+Health OK/zero14 ok Ok
 Health OK/ones14 err Structure(OutOfBounds)
 Health OK/inc14 err Structure(OutOfBounds)
 Health OK/ones15 err Structure(OutOfBounds)
@@ -943,16 +943,16 @@ Health OK/ones18 err Structure(OutOfBounds)
 Health OK/inc18 err Structure(OutOfBounds)
 Health OK/ones19 err Structure(OutOfBounds)
 Health OK/inc19 err Structure(OutOfBounds)
-Health OK/ones20 ok OK
-Health OK/inc20 ok OK
-Health OK/ones21 ok OK
-Health OK/inc21 ok OK
-Health OK/ones22 ok OK
-Health OK/inc22 ok OK
-Health OK/ones23 ok OK
-Health OK/inc23 ok OK
+Health OK/ones20 ok Ok
+Health OK/inc20 ok Ok
+Health OK/ones21 ok Ok
+Health OK/inc21 ok Ok
+Health OK/ones22 ok Ok
+Health OK/inc22 ok Ok
+Health OK/ones23 ok Ok
+Health OK/inc23 ok Ok
 Health OK/ones24 err Contract(Violation { type_name: "Health", rule: Variant })
-Health OK/inc24 ok WARN
+Health OK/inc24 ok Warn
 Health OK/ones25 err Contract(Violation { type_name: "Health", rule: Variant })
 Health OK/inc25 err Contract(Violation { type_name: "Health", rule: Variant })
 Health OK/ones26 err Contract(Violation { type_name: "Health", rule: Variant })
@@ -1009,29 +1009,29 @@ Health WARN/ones2 err Structure(OutOfBounds)
 Health WARN/inc2 err Structure(OutOfBounds)
 Health WARN/ones3 err Structure(OutOfBounds)
 Health WARN/inc3 err Structure(OutOfBounds)
-Health WARN/ones4 ok WARN
-Health WARN/inc4 ok WARN
-Health WARN/ones5 ok WARN
-Health WARN/inc5 ok WARN
-Health WARN/ones6 ok WARN
-Health WARN/inc6 ok WARN
-Health WARN/ones7 ok WARN
-Health WARN/inc7 ok WARN
-Health WARN/ones8 ok WARN
-Health WARN/inc8 ok WARN
-Health WARN/ones9 ok WARN
-Health WARN/inc9 ok WARN
+Health WARN/ones4 ok Warn
+Health WARN/inc4 ok Warn
+Health WARN/ones5 ok Warn
+Health WARN/inc5 ok Warn
+Health WARN/ones6 ok Warn
+Health WARN/inc6 ok Warn
+Health WARN/ones7 ok Warn
+Health WARN/inc7 ok Warn
+Health WARN/ones8 ok Warn
+Health WARN/inc8 ok Warn
+Health WARN/ones9 ok Warn
+Health WARN/inc9 ok Warn
 Health WARN/zero10 err Structure(OutOfBounds)
 Health WARN/ones10 err Structure(OutOfBounds)
-Health WARN/inc10 ok WARN
+Health WARN/inc10 ok Warn
 Health WARN/ones11 err Structure(OutOfBounds)
 Health WARN/inc11 err Structure(OutOfBounds)
 Health WARN/zero12 err Structure(OutOfBounds)
-Health WARN/ones12 ok WARN
-Health WARN/inc12 ok WARN
-Health WARN/ones13 ok WARN
-Health WARN/inc13 ok WARN
-Health WARN/zero14 err Structure(MissingRequired)
+Health WARN/ones12 ok Warn
+Health WARN/inc12 ok Warn
+Health WARN/ones13 ok Warn
+Health WARN/inc13 ok Warn
+Health WARN/zero14 ok Ok
 Health WARN/ones14 err Structure(OutOfBounds)
 Health WARN/inc14 err Structure(OutOfBounds)
 Health WARN/ones15 err Structure(OutOfBounds)
@@ -1045,17 +1045,17 @@ Health WARN/ones18 err Structure(OutOfBounds)
 Health WARN/inc18 err Structure(OutOfBounds)
 Health WARN/ones19 err Structure(OutOfBounds)
 Health WARN/inc19 err Structure(OutOfBounds)
-Health WARN/ones20 ok WARN
-Health WARN/inc20 ok WARN
-Health WARN/ones21 ok WARN
-Health WARN/inc21 ok WARN
-Health WARN/ones22 ok WARN
-Health WARN/inc22 ok WARN
-Health WARN/ones23 ok WARN
-Health WARN/inc23 ok WARN
-Health WARN/zero24 ok OK
+Health WARN/ones20 ok Warn
+Health WARN/inc20 ok Warn
+Health WARN/ones21 ok Warn
+Health WARN/inc21 ok Warn
+Health WARN/ones22 ok Warn
+Health WARN/inc22 ok Warn
+Health WARN/ones23 ok Warn
+Health WARN/inc23 ok Warn
+Health WARN/zero24 ok Ok
 Health WARN/ones24 err Contract(Violation { type_name: "Health", rule: Variant })
-Health WARN/inc24 ok FAIL
+Health WARN/inc24 ok Fail
 Health WARN/ones25 err Contract(Violation { type_name: "Health", rule: Variant })
 Health WARN/inc25 err Contract(Violation { type_name: "Health", rule: Variant })
 Health WARN/ones26 err Contract(Violation { type_name: "Health", rule: Variant })
@@ -1112,29 +1112,29 @@ Health FAIL/ones2 err Structure(OutOfBounds)
 Health FAIL/inc2 err Structure(OutOfBounds)
 Health FAIL/ones3 err Structure(OutOfBounds)
 Health FAIL/inc3 err Structure(OutOfBounds)
-Health FAIL/ones4 ok FAIL
-Health FAIL/inc4 ok FAIL
-Health FAIL/ones5 ok FAIL
-Health FAIL/inc5 ok FAIL
-Health FAIL/ones6 ok FAIL
-Health FAIL/inc6 ok FAIL
-Health FAIL/ones7 ok FAIL
-Health FAIL/inc7 ok FAIL
-Health FAIL/ones8 ok FAIL
-Health FAIL/inc8 ok FAIL
-Health FAIL/ones9 ok FAIL
-Health FAIL/inc9 ok FAIL
+Health FAIL/ones4 ok Fail
+Health FAIL/inc4 ok Fail
+Health FAIL/ones5 ok Fail
+Health FAIL/inc5 ok Fail
+Health FAIL/ones6 ok Fail
+Health FAIL/inc6 ok Fail
+Health FAIL/ones7 ok Fail
+Health FAIL/inc7 ok Fail
+Health FAIL/ones8 ok Fail
+Health FAIL/inc8 ok Fail
+Health FAIL/ones9 ok Fail
+Health FAIL/inc9 ok Fail
 Health FAIL/zero10 err Structure(OutOfBounds)
 Health FAIL/ones10 err Structure(OutOfBounds)
-Health FAIL/inc10 ok FAIL
+Health FAIL/inc10 ok Fail
 Health FAIL/ones11 err Structure(OutOfBounds)
 Health FAIL/inc11 err Structure(OutOfBounds)
 Health FAIL/zero12 err Structure(OutOfBounds)
-Health FAIL/ones12 ok FAIL
-Health FAIL/inc12 ok FAIL
-Health FAIL/ones13 ok FAIL
-Health FAIL/inc13 ok FAIL
-Health FAIL/zero14 err Structure(MissingRequired)
+Health FAIL/ones12 ok Fail
+Health FAIL/inc12 ok Fail
+Health FAIL/ones13 ok Fail
+Health FAIL/inc13 ok Fail
+Health FAIL/zero14 ok Ok
 Health FAIL/ones14 err Structure(OutOfBounds)
 Health FAIL/inc14 err Structure(OutOfBounds)
 Health FAIL/ones15 err Structure(OutOfBounds)
@@ -1148,15 +1148,15 @@ Health FAIL/ones18 err Structure(OutOfBounds)
 Health FAIL/inc18 err Structure(OutOfBounds)
 Health FAIL/ones19 err Structure(OutOfBounds)
 Health FAIL/inc19 err Structure(OutOfBounds)
-Health FAIL/ones20 ok FAIL
-Health FAIL/inc20 ok FAIL
-Health FAIL/ones21 ok FAIL
-Health FAIL/inc21 ok FAIL
-Health FAIL/ones22 ok FAIL
-Health FAIL/inc22 ok FAIL
-Health FAIL/ones23 ok FAIL
-Health FAIL/inc23 ok FAIL
-Health FAIL/zero24 ok OK
+Health FAIL/ones20 ok Fail
+Health FAIL/inc20 ok Fail
+Health FAIL/ones21 ok Fail
+Health FAIL/inc21 ok Fail
+Health FAIL/ones22 ok Fail
+Health FAIL/inc22 ok Fail
+Health FAIL/ones23 ok Fail
+Health FAIL/inc23 ok Fail
+Health FAIL/zero24 ok Ok
 Health FAIL/ones24 err Contract(Violation { type_name: "Health", rule: Variant })
 Health FAIL/inc24 err Contract(Violation { type_name: "Health", rule: Variant })
 Health FAIL/ones25 err Contract(Violation { type_name: "Health", rule: Variant })
@@ -1215,30 +1215,30 @@ Warning 7,FAIL/ones2 err Structure(OutOfBounds)
 Warning 7,FAIL/inc2 err Structure(OutOfBounds)
 Warning 7,FAIL/ones3 err Structure(OutOfBounds)
 Warning 7,FAIL/inc3 err Structure(OutOfBounds)
-Warning 7,FAIL/ones4 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc4 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/ones5 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc5 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/ones6 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc6 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/ones7 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc7 ok Warning { code: Level(7), health: FAIL }
+Warning 7,FAIL/ones4 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc4 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/ones5 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc5 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/ones6 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc6 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/ones7 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc7 ok Warning { code: Level(7), health: Fail }
 Warning 7,FAIL/zero8 err Structure(OutOfBounds)
 Warning 7,FAIL/ones8 err Structure(OutOfBounds)
-Warning 7,FAIL/inc8 ok Warning { code: Level(7), health: FAIL }
+Warning 7,FAIL/inc8 ok Warning { code: Level(7), health: Fail }
 Warning 7,FAIL/ones9 err Structure(OutOfBounds)
 Warning 7,FAIL/inc9 err Structure(OutOfBounds)
 Warning 7,FAIL/zero10 err Structure(OutOfBounds)
-Warning 7,FAIL/ones10 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc10 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/ones11 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc11 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/zero12 err Structure(MissingRequired)
+Warning 7,FAIL/ones10 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc10 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/ones11 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc11 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/zero12 ok Warning { code: Level(0), health: Fail }
 Warning 7,FAIL/ones12 err Structure(OutOfBounds)
-Warning 7,FAIL/inc12 ok Warning { code: Level(0), health: FAIL }
+Warning 7,FAIL/inc12 ok Warning { code: Level(0), health: Fail }
 Warning 7,FAIL/ones13 err Structure(OutOfBounds)
 Warning 7,FAIL/inc13 err Structure(OutOfBounds)
-Warning 7,FAIL/zero14 err Structure(MissingRequired)
+Warning 7,FAIL/zero14 ok Warning { code: Level(7), health: Ok }
 Warning 7,FAIL/ones14 err Structure(OutOfBounds)
 Warning 7,FAIL/inc14 err Structure(OutOfBounds)
 Warning 7,FAIL/ones15 err Structure(OutOfBounds)
@@ -1252,16 +1252,16 @@ Warning 7,FAIL/ones18 err Structure(OutOfBounds)
 Warning 7,FAIL/inc18 err Structure(OutOfBounds)
 Warning 7,FAIL/ones19 err Structure(OutOfBounds)
 Warning 7,FAIL/inc19 err Structure(OutOfBounds)
-Warning 7,FAIL/zero20 ok Warning { code: Level(0), health: FAIL }
+Warning 7,FAIL/zero20 ok Warning { code: Level(0), health: Fail }
 Warning 7,FAIL/ones20 err Contract(Violation { type_name: "Level", rule: Range })
-Warning 7,FAIL/inc20 ok Warning { code: Level(8), health: FAIL }
-Warning 7,FAIL/ones21 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc21 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/ones22 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc22 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/ones23 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/inc23 ok Warning { code: Level(7), health: FAIL }
-Warning 7,FAIL/zero24 ok Warning { code: Level(7), health: OK }
+Warning 7,FAIL/inc20 ok Warning { code: Level(8), health: Fail }
+Warning 7,FAIL/ones21 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc21 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/ones22 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc22 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/ones23 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/inc23 ok Warning { code: Level(7), health: Fail }
+Warning 7,FAIL/zero24 ok Warning { code: Level(7), health: Ok }
 Warning 7,FAIL/ones24 err Contract(Violation { type_name: "Health", rule: Variant })
 Warning 7,FAIL/inc24 err Contract(Violation { type_name: "Health", rule: Variant })
 Warning 7,FAIL/ones25 err Contract(Violation { type_name: "Health", rule: Variant })
@@ -1320,30 +1320,30 @@ Warning 100,OK/ones2 err Structure(OutOfBounds)
 Warning 100,OK/inc2 err Structure(OutOfBounds)
 Warning 100,OK/ones3 err Structure(OutOfBounds)
 Warning 100,OK/inc3 err Structure(OutOfBounds)
-Warning 100,OK/ones4 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc4 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/ones5 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc5 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/ones6 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc6 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/ones7 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc7 ok Warning { code: Level(100), health: OK }
+Warning 100,OK/ones4 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc4 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/ones5 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc5 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/ones6 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc6 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/ones7 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc7 ok Warning { code: Level(100), health: Ok }
 Warning 100,OK/zero8 err Structure(OutOfBounds)
 Warning 100,OK/ones8 err Structure(OutOfBounds)
-Warning 100,OK/inc8 ok Warning { code: Level(100), health: OK }
+Warning 100,OK/inc8 ok Warning { code: Level(100), health: Ok }
 Warning 100,OK/ones9 err Structure(OutOfBounds)
 Warning 100,OK/inc9 err Structure(OutOfBounds)
 Warning 100,OK/zero10 err Structure(OutOfBounds)
-Warning 100,OK/ones10 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc10 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/ones11 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc11 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/zero12 err Structure(MissingRequired)
+Warning 100,OK/ones10 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc10 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/ones11 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc11 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/zero12 ok Warning { code: Level(0), health: Ok }
 Warning 100,OK/ones12 err Structure(OutOfBounds)
-Warning 100,OK/inc12 ok Warning { code: Level(0), health: OK }
+Warning 100,OK/inc12 ok Warning { code: Level(0), health: Ok }
 Warning 100,OK/ones13 err Structure(OutOfBounds)
 Warning 100,OK/inc13 err Structure(OutOfBounds)
-Warning 100,OK/zero14 err Structure(MissingRequired)
+Warning 100,OK/zero14 ok Warning { code: Level(100), health: Ok }
 Warning 100,OK/ones14 err Structure(OutOfBounds)
 Warning 100,OK/inc14 err Structure(OutOfBounds)
 Warning 100,OK/ones15 err Structure(OutOfBounds)
@@ -1357,17 +1357,17 @@ Warning 100,OK/ones18 err Structure(OutOfBounds)
 Warning 100,OK/inc18 err Structure(OutOfBounds)
 Warning 100,OK/ones19 err Structure(OutOfBounds)
 Warning 100,OK/inc19 err Structure(OutOfBounds)
-Warning 100,OK/zero20 ok Warning { code: Level(0), health: OK }
+Warning 100,OK/zero20 ok Warning { code: Level(0), health: Ok }
 Warning 100,OK/ones20 err Contract(Violation { type_name: "Level", rule: Range })
 Warning 100,OK/inc20 err Contract(Violation { type_name: "Level", rule: Range })
-Warning 100,OK/ones21 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc21 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/ones22 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc22 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/ones23 ok Warning { code: Level(100), health: OK }
-Warning 100,OK/inc23 ok Warning { code: Level(100), health: OK }
+Warning 100,OK/ones21 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc21 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/ones22 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc22 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/ones23 ok Warning { code: Level(100), health: Ok }
+Warning 100,OK/inc23 ok Warning { code: Level(100), health: Ok }
 Warning 100,OK/ones24 err Contract(Violation { type_name: "Health", rule: Variant })
-Warning 100,OK/inc24 ok Warning { code: Level(100), health: WARN }
+Warning 100,OK/inc24 ok Warning { code: Level(100), health: Warn }
 Warning 100,OK/ones25 err Contract(Violation { type_name: "Health", rule: Variant })
 Warning 100,OK/inc25 err Contract(Violation { type_name: "Health", rule: Variant })
 Warning 100,OK/ones26 err Contract(Violation { type_name: "Health", rule: Variant })

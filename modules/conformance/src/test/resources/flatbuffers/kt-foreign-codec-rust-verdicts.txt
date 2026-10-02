@@ -95,7 +95,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:a66a36a7b6b698b0
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -157,7 +157,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(Union)
 err:Structure(Union)
-err:Structure(MissingRequired)
+ok:835a508ce781a947
 ok:a66a36a7b6b698b0
 ok:a66a36a7b6b698b0
 ok:a66a36a7b6b698b0
@@ -187,7 +187,7 @@ ok:a66a36a7b6b698b0
 ok:a66a36a7b6b698b0
 ok:a66a36a7b6b698b0
 ok:a66a36a7b6b698b0
-err:Structure(MissingRequired)
+ok:a66a36a7b6b698b0
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -266,7 +266,7 @@ ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
-err:Structure(MissingRequired)
+ok:5decf26db9765413
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -341,12 +341,12 @@ ok:339e606ac585755d
 ok:339e606ac585755d
 ok:339e606ac585755d
 ok:339e606ac585755d
-err:Structure(MissingRequired)
+ok:339e606ac585755d
 err:Structure(OutOfBounds)
 ok:339e606ac585755d
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:339e606ac585755d
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -450,7 +450,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(Union)
 err:Structure(Union)
-err:Structure(MissingRequired)
+ok:a5cfce62a52287a8
 ok:4f968cf011990861
 ok:4f968cf011990861
 ok:4f968cf011990861
@@ -480,7 +480,7 @@ ok:4f968cf011990861
 ok:4f968cf011990861
 ok:4f968cf011990861
 ok:4f968cf011990861
-err:Structure(MissingRequired)
+ok:4f968cf011990861
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -609,12 +609,12 @@ ok:9c40b5fd2f0f25b5
 ok:9c40b5fd2f0f25b5
 ok:9c40b5fd2f0f25b5
 ok:9c40b5fd2f0f25b5
-err:Structure(MissingRequired)
+ok:9f4403836dc5cc06
 err:Structure(OutOfBounds)
 ok:9c40b5fd2f0f25b5
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(MissingRequired)
+ok:6ceec240d00e1033
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)

@@ -319,7 +319,9 @@ message TypeRef {
   bool resolved = 2;
   // The declaring package, when resolved.
   string package = 3;
-  // `package` is not `Scope.package`.
+  // `package` is not `Scope.package` — also inside a foreign declaration,
+  // where `reference` is spelled bare. When no package in scope declares it:
+  // whether `reference` is dotted.
   bool foreign = 4;
   // Into `Model.declarations` when local, into `Model.foreign` when foreign.
   uint32 index = 5;
@@ -421,7 +423,10 @@ message Closure {
   bool reaches_text_or_bytes = 2;
   // An array or a map.
   bool reaches_collection = 3;
-  // A reference into another package, resolved or not.
+  // A reference into a package other than `Scope.package`, by the rule
+  // `TypeRef.foreign` follows: a resolved reference, a constant included,
+  // when its declaring package is not `Scope.package`, whatever its
+  // spelling; an unresolved one when its text is dotted.
   bool reaches_foreign = 4;
   // A reference no package in scope declares, or one to a constant.
   bool reaches_unresolved = 5;
@@ -686,7 +691,12 @@ message FbSlot {
   uint32 id = 1;
   // What the slot holds on the wire.
   FbWire wire = 2;
-  // `projection::enum_field_needs_null_default` on an enum-typed slot.
+  // Whether the schema gives the field an explicit `= null` default. True on
+  // an enum-typed slot whose enum declares no zero member
+  // (`projection::enum_field_needs_null_default`, ADR-0019 decision 6), and
+  // on an optional slot that holds a scalar or an enum (decision 9): `= null`
+  // is how the schema states that such a field may be absent, so a reader
+  // following it reads an absent field as absent rather than as 0.
   bool needs_null_default = 3;
   // `SlotSource`.
   oneof source {

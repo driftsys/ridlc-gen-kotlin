@@ -30,8 +30,6 @@ import java.nio.ByteBuffer
 /** What `verify` hands `decode`: the checked buffer and its root table. */
 class FbView(val reader: Reader, val table: Int)
 
-private fun missing(): Nothing = throw VerifyError.Structure(Malformed.MissingRequired)
-
 private fun contract(type: String, rule: Rule?) {
     if (rule != null) throw VerifyError.Contract(Violation(type, rule))
 }
@@ -59,14 +57,15 @@ private abstract class FbCodec<T> : Payload<T, FbView> {
 }
 
 // A named scalar and an enum are rooted in a one-field box table (ADR-0019
-// decision 8). The field is required: a box without it is MissingRequired.
+// decision 8). The field is required, and every cabin type admits 0, so a box
+// without it reads as 0, the FlatBuffers default (driftsys/ridl#472).
 
 private object TemperatureCodec : FbCodec<Temperature>() {
     override val maxSize = 43
     override fun write(value: Temperature, builder: Builder) =
         builder.pushTable(5, 4, 1, listOf(TableField(0, 4, Field.I8(value.value.toInt()))))
     override fun check(reader: Reader, table: Int) {
-        val at = reader.field(table, 0, 1) ?: missing()
+        val at = reader.field(table, 0, 1) ?: return
         contract("Temperature", Temperature.violation(reader.i8(at).toLong()))
     }
     override fun decode(view: FbView) =
@@ -78,7 +77,7 @@ private object LevelCodec : FbCodec<Level>() {
     override fun write(value: Level, builder: Builder) =
         builder.pushTable(5, 4, 1, listOf(TableField(0, 4, Field.U8(value.value.toInt()))))
     override fun check(reader: Reader, table: Int) {
-        val at = reader.field(table, 0, 1) ?: missing()
+        val at = reader.field(table, 0, 1) ?: return
         contract("Level", Level.violation(reader.u8(at).toLong()))
     }
     override fun decode(view: FbView) =
@@ -90,7 +89,7 @@ private object WindowCodec : FbCodec<Window>() {
     override fun write(value: Window, builder: Builder) =
         builder.pushTable(8, 4, 1, listOf(TableField(0, 4, Field.U32(value.value))))
     override fun check(reader: Reader, table: Int) {
-        val at = reader.field(table, 0, 4) ?: missing()
+        val at = reader.field(table, 0, 4) ?: return
         contract("Window", Window.violation(reader.u32(at)))
     }
     override fun decode(view: FbView) =
@@ -102,7 +101,7 @@ private object AverageCodec : FbCodec<Average>() {
     override fun write(value: Average, builder: Builder) =
         builder.pushTable(6, 4, 1, listOf(TableField(0, 4, Field.U16(value.value.toInt()))))
     override fun check(reader: Reader, table: Int) {
-        val at = reader.field(table, 0, 2) ?: missing()
+        val at = reader.field(table, 0, 2) ?: return
         contract("Average", Average.violation(reader.u16(at).toLong()))
     }
     override fun decode(view: FbView) =
@@ -114,7 +113,7 @@ private object HealthCodec : FbCodec<Health>() {
     override fun write(value: Health, builder: Builder) =
         builder.pushTable(16, 8, 1, listOf(TableField(0, 8, Field.I64(value.value))))
     override fun check(reader: Reader, table: Int) {
-        val at = reader.field(table, 0, 8) ?: missing()
+        val at = reader.field(table, 0, 8) ?: return
         if (Health.fromValue(reader.i64(at)) == null) contract("Health", Rule.Variant)
     }
     override fun decode(view: FbView) =
@@ -130,10 +129,10 @@ private object WarningCodec : FbCodec<Warning>() {
         listOf(TableField(0, 4, Field.U8(value.code.value.toInt())), TableField(1, 8, Field.I64(value.health.value))),
     )
     override fun check(reader: Reader, table: Int) {
-        val code = reader.field(table, 0, 1) ?: missing()
-        contract("Level", Level.violation(reader.u8(code).toLong()))
-        val health = reader.field(table, 1, 8) ?: missing()
-        if (Health.fromValue(reader.i64(health)) == null) contract("Health", Rule.Variant)
+        reader.field(table, 0, 1)?.let { code -> contract("Level", Level.violation(reader.u8(code).toLong())) }
+        reader.field(table, 1, 8)?.let { health ->
+            if (Health.fromValue(reader.i64(health)) == null) contract("Health", Rule.Variant)
+        }
     }
     override fun decode(view: FbView): Warning {
         val r = view.reader
@@ -164,7 +163,7 @@ private fun debug(value: Any?): String = when (value) {
     is Level -> "Level(${value.value})"
     is Window -> "Window(${value.value})"
     is Average -> "Average(${value.value})"
-    is Health -> value.name
+    is Health -> value.name.lowercase().replaceFirstChar(Char::uppercaseChar)
     is Warning -> "Warning { code: ${debug(value.code)}, health: ${debug(value.health)} }"
     else -> error("no format for $value")
 }
