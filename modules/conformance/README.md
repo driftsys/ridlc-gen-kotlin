@@ -140,3 +140,7 @@ X-6a, X-8, X-8c, X-9, X-11, X-12, X-13 and X-14b, and three cases only Kotlin
 meets: two declarations `Level` and `level`, a struct named `LevelCodec`, and a
 member named `provider` beside a call. X-8b, whose face is skipped, claims
 nothing and compiles, as X-14a and X-17 do.
+
+The test of #17, in `NamesTest`: X-18, a package `veh` declaring `type common`
+beside its child package `veh.common`, which uses it, compiles, and a consumer
+builds a `veh.common.Uses` from a `veh.Common`.
