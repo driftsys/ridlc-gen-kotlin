@@ -2,6 +2,8 @@
 
 package ridl.conformance.probe.clients.cabin
 
+import ridl.rt.contract.CatalogHash
+import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.Ordinal
 import ridl.rt.error.ClientError
 import ridl.rt.error.ProviderError
@@ -24,6 +26,9 @@ import veh.cabin.CabinProvider
 import veh.cabin.CabinPublisher
 import veh.cabin.CabinSetLevelCall
 import veh.cabin.Health
+import veh.cabin.Horn
+import veh.cabin.HornClient
+import veh.cabin.HornPublisher
 import veh.cabin.Level
 import veh.cabin.Temperature
 import veh.cabin.Warning
@@ -91,7 +96,50 @@ fun probe(): List<String> {
     async()
     readErrors()
     bounds()
+    catalogs()
     return failures
+}
+
+/**
+ * [block] throws the catalog mismatch: an `IllegalStateException` that names
+ * the face, not the `CancellationException` (one too) of a timeout.
+ */
+private fun expectMismatch(label: String, block: () -> Unit) {
+    val e = expectThrows<IllegalStateException>(label, block) ?: return
+    expect("$label: threw $e", e.message.orEmpty().startsWith("the face of interface `"))
+}
+
+/**
+ * ADR-0023 decision 8: every binding compares its port's catalog with the
+ * face's, name and hash, and throws `IllegalStateException` on a mismatch,
+ * before it uses the port.
+ */
+private fun catalogs() {
+    val others = listOf(
+        "hash" to CatalogRef(Cabin.catalog.name, CatalogHash(ByteArray(CatalogHash.SIZE) { 1 })),
+        "name" to CatalogRef("veh.other", Cabin.catalog.hash),
+    )
+    for ((differs, catalog) in others) {
+        val rt = Loopback(catalog)
+        val of = "a port whose catalog's $differs differs"
+        expectMismatch("CabinClient over $of") { CabinClient(rt) }
+        expectMismatch("CabinAsyncClient over $of") { CabinAsyncClient(rt) }
+        expectMismatch("CabinPublisher over $of") { CabinPublisher(rt) }
+        expectMismatch("HornClient over $of") { HornClient(rt) }
+        expectMismatch("HornPublisher over $of") { HornPublisher(rt) }
+        expectMismatch("serve over $of") { Cabin.serve(rt, Recorder(), 100.milliseconds) }
+        // Bounded, so a serveAsync that does not check fails here rather than serving forever.
+        expectMismatch("serveAsync over $of") { runBlocking { withTimeout(1.seconds) { Cabin.serveAsync(rt, Recorder()) } } }
+    }
+    val rt = Loopback(others[0].second)
+    expectEqual(
+        "the message names the interface, the face's catalog, then the port's",
+        "the face of interface `Cabin` was generated from catalog ${Cabin.catalog}, but the port is attached to catalog ${rt.catalog}",
+        expectThrows<IllegalStateException>("a mismatch throws") { CabinClient(rt) }?.message,
+    )
+    expectEqual("the Horn descriptor names its own interface", true,
+        expectThrows<IllegalStateException>("a Horn mismatch throws") { HornClient(rt) }?.message?.startsWith("the face of interface `Horn` "))
+    expectEqual("Horn and Cabin share the package's catalog", Cabin.catalog, Horn.catalog)
 }
 
 private fun callObjects() {
