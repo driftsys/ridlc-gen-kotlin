@@ -3,7 +3,6 @@ package ridl.codegen.kotlin.types
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.BOOLEAN
-import com.squareup.kotlinpoet.BYTE_ARRAY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -41,6 +40,10 @@ import ridl.codegen.v1.ModelOuterClass.TypeRef
 import ridl.codegen.v1.ModelOuterClass.Visibility
 
 private const val RT = "ridl.rt"
+
+/** The size of a catalog hash, `CatalogHash.SIZE` (ADR-0014 decision 15). */
+private const val CATALOG_HASH_SIZE = 32
+
 private val INTERFACE = ClassName("$RT.contract", "Interface")
 private val CATALOG_REF = ClassName("$RT.contract", "CatalogRef")
 private val CATALOG_HASH = ClassName("$RT.contract", "CatalogHash")
@@ -143,6 +146,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
     fun emit(): EmittedFaces {
         val path = pkg.replace('.', '/') + "/Faces.kt"
+        // A malformed catalog hash refuses the whole model, as the Rust backend
+        // refuses it (driftsys/ridl#378): inside the per-interface walk below it
+        // would only skip each interface. The hash is read, never computed.
+        val hash = model.catalog.hash.size()
+        if (hash != CATALOG_HASH_SIZE) {
+            return EmittedFaces(path, null, listOf("$PLUGIN: malformed codegen model: `Catalog.hash` is $hash bytes, not $CATALOG_HASH_SIZE"), emptyList())
+        }
         var faced = 0
         for (iface in model.interfacesList) {
             // A service's inline shape has no declared name to spell, as in the Rust face.
@@ -497,12 +507,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         // -- the descriptors ---------------------------------------------------
 
         private fun descriptor(): TypeSpec {
-            val hash = model.catalog.hash.toByteArray()
-            val hashCode = if (hash.size == 32 && hash.any { it != 0.toByte() }) {
-                CodeBlock.of("%T(byteArrayOf(%L))", CATALOG_HASH, hash.joinToString { it.toString() })
-            } else {
-                CodeBlock.of("%T(%T(%T.SIZE))", CATALOG_HASH, BYTE_ARRAY, CATALOG_HASH)
-            }
+            // The model's hash, copied byte for byte: `emit` refused any other size.
+            val hashCode = CodeBlock.of("%T(byteArrayOf(%L))", CATALOG_HASH, model.catalog.hash.toByteArray().joinToString())
             val callSizes = commands.map { argument(it).second.maxSize } +
                 queries.flatMap { listOf(argument(it).second.maxSize, reply(it).maxSize) }
             val eventSizes = events.map { eventPayload(it).maxSize }

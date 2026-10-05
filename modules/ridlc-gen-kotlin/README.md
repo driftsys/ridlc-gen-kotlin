@@ -194,6 +194,11 @@ runs and a query after.
   named scalar, else the payload type's typl init, built from the model's `Init`
   facts. The Rust face always calls the payload's `Default`, and calls the
   override a follow-up.
+- **A catalog hash that is not 32 bytes refuses the package** with one error
+  diagnostic, and no file is written, as the Rust backend refuses it
+  (driftsys/ridl#378). Each descriptor's `catalog` carries the model's
+  `Catalog.hash` byte for byte, never a placeholder and never recomputed; the
+  pinned release's model carries 32 zero bytes until a release computes it.
 - **The descriptors are top-level**, `CabinTemperature` beside `Cabin`, as in
   Rust: nested in `Cabin`, a descriptor named after its signal would shadow the
   payload type of the same name.
