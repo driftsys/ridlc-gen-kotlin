@@ -47,6 +47,11 @@ an absent field as 0 to match. ridl 0.4.0's PascalCase variants also changed the
 The corpus no longer reaches a refused missing field; `kt-zero`'s, under
 `CodecTest`, does.
 
+**Since ridl 0.5.1** (2026-10-03): the Rust verifier checks float steps,
+non-finite floats, inline constraints and map key uniqueness
+(driftsys/ridl#654). Regenerated over `editor-v0.5.1`, neither the golden bytes
+nor the 1,385 verdicts change: no cabin type has a float or a map.
+
 The corpus covers §7's malformed cases for these types — truncated buffers,
 offsets past the end, a vtable naming a field across its table's end, a missing
 required field, an enum discriminant out of range, a value outside its range, a
@@ -184,11 +189,11 @@ just test   # writes modules/conformance/build/spike/<package>-codec-corpus.txt
 `ridl build` takes a package directory, so run it from inside the package. In
 `gen.py`'s `Cargo.toml`, and in the spike's, the `ridl-rt` version must match
 the release's (`0.2` for `editor-v0.2.2`, `0.3` for `v0.3.0`, `0.4` for
-`editor-v0.4.0`, `0.5` for `editor-v0.5.0`), or the path patch does not apply.
-Before driftsys/ridl#581, the Rust face `kt-values` emits does not compile: its
-`Names` interface has a parameter named `claim`, which the Rust `dispatch`
-shadows. The codec does not depend on the interfaces, so delete `Names` from a
-copy of `probe.ridl` and emit from that copy.
+`editor-v0.4.0`, `0.5` for `editor-v0.5.0` and `editor-v0.5.1`), or the path
+patch does not apply. Before driftsys/ridl#581, the Rust face `kt-values` emits
+does not compile: its `Names` interface has a parameter named `claim`, which the
+Rust `dispatch` shadows. The codec does not depend on the interfaces, so delete
+`Names` from a copy of `probe.ridl` and emit from that copy.
 
 `gen.py`:
 

@@ -1,6 +1,8 @@
 package ridl.conformance
 
+import ridl.codegen.kotlin.types.plain
 import ridl.codegen.v1.ModelOuterClass.Declaration
+import ridl.codegen.v1.ModelOuterClass.FloatWidth
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
 import java.math.BigDecimal
@@ -37,6 +39,9 @@ object Probe {
         "ridl.std.CountryCode" to "FR",
         "ridl.std.LanguageCode" to "fr-FR",
     )
+
+    /** A sample of each inline pattern of the corpus, by its pattern: an inline scalar has no type to key it. */
+    val PATTERN_SAMPLES: Map<String, String> = mapOf("ABC" to "ABC")
 
     /** The probe source for [models], a top-level `fun probe(): List<String>` of the failures. */
     fun source(models: List<Model>): String {
@@ -90,7 +95,7 @@ object Probe {
 
     private fun scalar(type: String, declaration: Declaration, out: StringBuilder) {
         val scalar = declaration.scalar
-        if (scalar.vacuous) {
+        if (scalar.plain) {
             out.line("expect(\"$type has a public constructor\", $type(${vacuousValue(scalar.class_)}) == $type(${vacuousValue(scalar.class_)}))")
             return
         }
@@ -119,9 +124,16 @@ object Probe {
                     ok("min", double(min))
                     if (distinct(min, min - step)) breaks("min - step", "Range", double(min - step))
                     breaks("NaN", "Range", "Double.NaN")
-                    if (c.hasStep()) {
+                    // The lattice checks of an ordinary step. A step past a `Double`,
+                    // or finer than a half step's rounding cell, admits what a
+                    // `Double` cannot tell apart (driftsys/ridl#654).
+                    val next = (min + step).toDouble()
+                    val half = (min + step.divide(BigDecimal(2))).toDouble()
+                    if (c.hasStep() && next.isFinite() && step.toDouble() > 4 * Math.ulp(half)) {
                         ok("min + step", double(min + step))
-                        ok("min + step, through binary32", "${double(min + step)}.toFloat().toDouble()")
+                        if (scalar.floatWidth == FloatWidth.FLOAT_WIDTH_F32) {
+                            ok("min + step, through binary32", "${double(min + step)}.toFloat().toDouble()")
+                        }
                         breaks("min + step / 2", "Step", double(min + step.divide(BigDecimal(2))))
                     }
                 }

@@ -192,7 +192,7 @@ class CorrespondenceTest {
             ),
         ),
         Row("ridl_rt::payload::Violation", Violation::class, members = listOf("type_name", "rule")),
-        Row("ridl_rt::payload::Rule", Rule::class, variants = listOf("Range", "Step", "Length", "Pattern", "Variant")),
+        Row("ridl_rt::payload::Rule", Rule::class, variants = listOf("Range", "Step", "Length", "Pattern", "Variant", "Unique")),
         // flatbuffers: the free reading functions are `Reader`'s methods, Kotlin's own.
         Row(
             "ridl_rt::flatbuffers::Builder", ridl.rt.flatbuffers.Builder::class,
@@ -300,6 +300,7 @@ class CorrespondenceTest {
         val extras = setOf(
             RidlError::class,
             ridl.rt.payload.ConstraintViolation::class,
+            ridl.rt.payload.Steps::class,
             ridl.rt.task.Waker::class,
             ridl.rt.flatbuffers.Reader::class,
             ridl.rt.flatbuffers.TableView::class,

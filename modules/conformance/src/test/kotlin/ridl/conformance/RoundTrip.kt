@@ -1,5 +1,6 @@
 package ridl.conformance
 
+import ridl.codegen.kotlin.types.plain
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.PrimitiveType
@@ -184,7 +185,7 @@ object RoundTrip {
                     val sample = key?.let { Probe.SAMPLES[it] }
                     val text = when {
                         sample != null -> sample
-                        c.hasPattern() -> error("no sample for the patterned $key")
+                        c.hasPattern() -> Probe.PATTERN_SAMPLES[c.pattern] ?: error("no sample for the patterned $key")
                         else -> {
                             // A non-ASCII letter, so a sample carries multibyte UTF-8.
                             val length = maxOf(c.lenMin.toInt(), minOf(c.lenMax.toInt(), 2))
@@ -201,13 +202,14 @@ object RoundTrip {
                     val min = if (c.hasMin()) BigDecimal(c.min) else BigDecimal.ZERO
                     val step = if (c.hasStep()) BigDecimal(c.step) else BigDecimal.ONE
                     var v = min + step * BigDecimal(i)
-                    if (c.hasMax() && v > BigDecimal(c.max)) v = min
+                    // Past the maximum, or past a `Double` for a step too large for one, the minimum stands in.
+                    if ((c.hasMax() && v > BigDecimal(c.max)) || v.toDouble().isInfinite()) v = min
                     v.toPlainString().let { if ('.' in it) it else "$it.0" }
                 }
             }
             return when {
                 type == null -> raw
-                scalar.vacuous -> "$type($raw)"
+                scalar.plain -> "$type($raw)"
                 else -> "$type.of($raw)"
             }
         }

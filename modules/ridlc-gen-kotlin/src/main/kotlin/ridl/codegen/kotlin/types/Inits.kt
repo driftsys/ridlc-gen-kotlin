@@ -56,7 +56,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
     fun named(type: ClassName, scalar: Scalar, value: String, foreign: Boolean): CodeBlock {
         val literal = literal(scalar.class_, value)
         return when {
-            scalar.vacuous -> CodeBlock.of("%T(%L)", type, literal)
+            scalar.plain -> CodeBlock.of("%T(%L)", type, literal)
             foreign -> CodeBlock.of("%T.of(%L)", type, literal)
             else -> CodeBlock.of("%T.unchecked(%L)", type, literal)
         }
@@ -67,12 +67,26 @@ internal class Inits(private val model: Model, private val pkg: String, private 
             CodeBlock.of("%N = %L", field.name.property, field(field))
         }.joinToCode(", "))
 
+    /**
+     * A field's init: its declared `= value` when it has one, else its type's.
+     * An optional field with a declared init holds that value, not absence
+     * (driftsys/ridl#654).
+     */
     private fun field(field: Field): CodeBlock {
-        val type = field.type
-        if (field.hasDeclaredInit() && type.kindCase == Type.KindCase.NAMED && !type.optional) {
+        val type = if (field.hasDeclaredInit() && field.type.optional) field.type.toBuilder().setOptional(false).build() else field.type
+        if (field.hasDeclaredInit() && type.kindCase == Type.KindCase.NAMED) {
             val (owner, declaration) = wires.declarationOf(type.named)
+            val declared = ClassName(owner, declaration.name.camel)
             if (declaration.hasScalar()) {
-                return named(ClassName(owner, declaration.name.camel), declaration.scalar, field.declaredInit, model.isForeign(type.named))
+                return named(declared, declaration.scalar, field.declaredInit, model.isForeign(type.named))
+            }
+            if (declaration.hasEnum()) {
+                // The checker writes the member's value as canonical integer
+                // text; a member is selected by value, its identity (typl §8).
+                val value = field.declaredInit.toLongOrNull()
+                val member = declaration.enum.valuesList.firstOrNull { it.value == value }
+                    ?: refuse("field `${field.name.declared}`'s init `${field.declaredInit}` is no member of `${declaration.name.declared}`")
+                return CodeBlock.of("%T.%N", declared, enumEntry(member.name))
             }
         }
         return position(type, field.init)
@@ -121,9 +135,11 @@ internal class Inits(private val model: Model, private val pkg: String, private 
         ScalarClass.SCALAR_CLASS_INTEGER -> CodeBlock.of("%L", Literals.long(value.ifEmpty { "0" }))
         ScalarClass.SCALAR_CLASS_BOOLEAN -> CodeBlock.of("%L", if (value == "true") "true" else "false")
         ScalarClass.SCALAR_CLASS_STRING -> CodeBlock.of("%S", value)
-        ScalarClass.SCALAR_CLASS_BYTES -> {
-            if (value.isNotEmpty()) refuse("a bytes init value is not supported")
+        // A bytes init is the UTF-8 encoding of its text (driftsys/ridl#654).
+        ScalarClass.SCALAR_CLASS_BYTES -> if (value.isEmpty()) {
             CodeBlock.of("%T(0)", BYTE_ARRAY)
+        } else {
+            CodeBlock.of("%S.encodeToByteArray()", value)
         }
         else -> CodeBlock.of("%L", Literals.double(value.ifEmpty { "0" }))
     }
