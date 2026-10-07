@@ -170,8 +170,8 @@ public data class Member(
     public val name: String,
     /**
      * The member's timing, as the IR resolved it. `null` when the IR carries
-     * no timing: a `command` or a `query` with no timing annotation, or a
-     * `fixed`.
+     * no timing: a `fixed`, or a `command` or `query` in a catalog built
+     * before commands and queries took a default response bound.
      */
     public val timing: Timing?,
     /**
@@ -185,6 +185,11 @@ public data class Member(
      * bound, and so the call's deadline (ridl §9.3; frame specification §8).
      * `null` when the member has no timing or its timing has no `max`.
      * `ridl_rt::contract::Member::call_deadline`.
+     *
+     * A `command` or a `query` in a catalog built by ridl 0.6.0 or later always
+     * has a `max`: an untimed member takes the package's default response
+     * bound (ridl §9.1). `null` remains for a catalog built before that
+     * default existed.
      *
      * The `max` is returned whatever the kind; on a `signal` it is the
      * staleness bound and on an `event` the time to live (ridl §9), neither

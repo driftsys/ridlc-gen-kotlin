@@ -1,14 +1,14 @@
-// The FlatBuffers codec round-trip fixture (E11.7 stage K5, plan Task 4,
-// docs/archive/2026-09-20-flatbuffers-codec-design.md).
+// The FlatBuffers codec round-trip fixture
+// (docs/archive/2026-09-20-flatbuffers-codec-design.md).
 //
 // One declaration per shape the codec has to carry, so that a round trip over
 // `Report` exercises all of them at once: a constrained named scalar over each
-// numeric backing, a vacuous one (D-6 and Epic 10 Task 4 give those two
-// different constructors), a string, a bytes, an enum, an enum set, a nested
-// struct, a union with a table arm and a boxed non-table arm (ADR-0019
-// decisions 1 and 2), an induced tuple, a fixed array, a bounded array, a map,
-// a vector of strings, of tables, of unions and of tuples, an optional scalar
-// and an optional composite, and a reserved tombstone.
+// numeric backing, a vacuous one (the two have different constructors), a
+// string, a bytes, an enum, an enum set, a nested struct, a union with a table
+// arm and a boxed non-table arm (ADR-0019 decisions 1 and 2), an induced tuple,
+// a fixed array, a bounded array, a map, a vector of strings, of tables, of
+// unions and of tuples, an optional scalar and an optional composite, and a
+// reserved tombstone.
 //
 // `Outcome` and `Inner` are root tables in their own right, so the same file
 // also carries a union as a payload and a struct as a payload.
@@ -38,7 +38,7 @@ type Label : string [0..16]
 type Blob : bytes [0..8]
 
 /// A boolean scalar: its constraint checks nothing, so its constructor is the
-/// infallible `new` (Epic 10 Task 4).
+/// infallible `new`.
 type Engaged : boolean
 
 // ---------- Enum and enum set ----------

@@ -29,7 +29,7 @@ bound, a bare `string` or `bytes`, an optional array element or map part.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.5.1` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.6.0` (`modules/conformance/ridl-release`).
 
 ## Where the code departs from docs/design.md
 
@@ -217,8 +217,9 @@ runs and a query after.
 - **A catalog hash that is not 32 bytes refuses the package** with one error
   diagnostic, and no file is written, as the Rust backend refuses it
   (driftsys/ridl#378). Each descriptor's `catalog` carries the model's
-  `Catalog.hash` byte for byte, never a placeholder and never recomputed; the
-  pinned release's model carries 32 zero bytes until a release computes it.
+  `Catalog.hash` byte for byte, never a placeholder and never recomputed. Since
+  ridl 0.6.0 the model carries the SHA-256 catalog hash of ADR-0014 decision 15
+  (driftsys/ridl#676); earlier releases sent 32 zero bytes.
 - **A binding over a port of another catalog throws `IllegalStateException`**
   (#27, driftsys/ridl#381, ADR-0023 decision 8), where the Rust face panics: in
   Kotlin the matching failure for a defect in how the program was assembled is
@@ -233,8 +234,6 @@ runs and a query after.
 - **The descriptors are top-level**, `CabinTemperature` beside `Cabin`, as in
   Rust: nested in `Cabin`, a descriptor named after its signal would shadow the
   payload type of the same name.
-- **A `PayloadInfo` states its FlatBuffers size**, from the model, where the
-  Rust descriptor writes `None` until E16.2.
 - **The publisher has `touch<Signal>`**, as §5 lists, and the client
   `unsubscribe<Event>`; the Rust face has neither.
 - **A port error is thrown**, and `dispatch` counts a settlement the handler

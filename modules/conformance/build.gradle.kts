@@ -49,7 +49,7 @@ val checkSchema = tasks.register("checkSchema") {
     inputs.property("release", release)
     inputs.dir(protoDir)
     doLast {
-        for (name in listOf("plugin.proto", "model.proto")) {
+        for (name in listOf("plugin.proto", "model.proto", "deployment.proto")) {
             val url = "https://raw.githubusercontent.com/driftsys/ridl/${release.get()}" +
                 "/crates/ridl-ir/proto/ridl/codegen/v1/$name"
             val upstream = URI(url).toURL().readBytes()

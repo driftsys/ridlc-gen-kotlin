@@ -1,8 +1,8 @@
-// The cruise-control fixture (E9.8 task 7,
-// docs/archive/2026-08-08-proto3-projection-design.md
-// §3.1). A single-file package declaring one of every construct the design's
-// projection table maps, so each row has a living example against which the
-// emitted proto3 schema is snapshotted and compiled with protox.
+// The cruise-control fixture
+// (docs/archive/2026-08-08-proto3-projection-design.md §3.1). A single-file
+// package declaring one of every construct the design's projection table maps,
+// so each row has a living example against which the emitted proto3 schema is
+// snapshotted and compiled with protox.
 //
 // Kept self-contained (no cross-package import, no `ridl.std` reference) —
 // the compile path this fixture is read through (`ridlc::compile`) wraps one
