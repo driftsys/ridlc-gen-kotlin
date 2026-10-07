@@ -219,6 +219,17 @@ runs and a query after.
   (driftsys/ridl#378). Each descriptor's `catalog` carries the model's
   `Catalog.hash` byte for byte, never a placeholder and never recomputed; the
   pinned release's model carries 32 zero bytes until a release computes it.
+- **A binding over a port of another catalog throws `IllegalStateException`**
+  (#27, driftsys/ridl#381, ADR-0023 decision 8), where the Rust face panics: in
+  Kotlin the matching failure for a defect in how the program was assembled is
+  an unchecked exception from the constructor. The descriptor's internal
+  `checkCatalog` compares the whole `CatalogRef`, name and hash, and its message
+  names the interface, the face's catalog and the port's. The poll client, the
+  plain client and the publisher call it in their constructor, `serve` and
+  `serveAsync` before they register the members; the blocking and async clients
+  reach it through the poll client they build, so each binding compares once and
+  no member method compares anything. A program that must not throw compares
+  `port.catalog == <Iface>.catalog` first.
 - **The descriptors are top-level**, `CabinTemperature` beside `Cabin`, as in
   Rust: nested in `Cabin`, a descriptor named after its signal would shadow the
   payload type of the same name.

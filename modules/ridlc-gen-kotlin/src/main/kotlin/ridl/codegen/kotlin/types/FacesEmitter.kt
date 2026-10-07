@@ -530,6 +530,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     PropertySpec.builder("members", LIST.parameterizedBy(MEMBER), KModifier.OVERRIDE)
                         .initializer("listOf(\n%L,\n)", rows).build(),
                 )
+                .addFunction(checkCatalog())
                 .addProperty(
                     PropertySpec.builder("MAX_BUFFER_SIZE", INT, KModifier.CONST)
                         .addKdoc("The largest argument or reply payload of this interface: a `dispatch` buffer is at least this large. 0 with no call.")
@@ -567,6 +568,36 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             return builder.build()
         }
 
+        /**
+         * `checkCatalog`, the descriptor's comparison of a port's catalog with
+         * its own (ADR-0023 decision 8): the poll client, the plain client, the
+         * publisher, `serve` and `serveAsync` call it once per binding, before
+         * they use the port; the blocking and async clients reach it through
+         * the poll client they build. The whole `CatalogRef` is compared, name
+         * and hash. A mismatch is a defect in how the program was assembled,
+         * so it throws `IllegalStateException`, where the Rust face panics.
+         */
+        private fun checkCatalog(): FunSpec = FunSpec.builder("checkCatalog").addModifiers(KModifier.INTERNAL)
+            .addKdoc(
+                "Throws `IllegalStateException` unless [found] is the catalog the face of interface `%L` was generated " +
+                    "from, [catalog] (ADR-0023 decision 8). Every client, the publisher, `serve` and `serveAsync` call it " +
+                    "once per binding, before they use the port.",
+                iface.declared.declared,
+            )
+            .addParameter("found", CATALOG_REF)
+            .addStatement(
+                "check(found == catalog) { %P }",
+                "the face of interface `${iface.declared.declared}` was generated from catalog \$catalog, " +
+                    "but the port is attached to catalog \$found",
+            )
+            .build()
+
+        /** The sentence every binding's KDoc carries about [checkCatalog]: what throws, and how a program avoids it. */
+        private fun catalogThrows(port: String, timing: String): String =
+            "Throws `IllegalStateException` when [$port] is attached to a catalog other than the one this face was " +
+                "generated from, that is, when the package name or the catalog hash differs (ADR-0023 decision 8); " +
+                "$timing. A program that must not throw compares `$port.catalog == ${self.simpleName}.catalog` first."
+
         private fun claimServed(): FunSpec = FunSpec.builder("claimServed").addModifiers(KModifier.PRIVATE)
             .addParameter("handler", HANDLER)
             .addStatement(
@@ -596,11 +627,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     "Serves interface `%L`'s calls on this thread: registers its members with [handler], then settles each " +
                         "claim as it arrives. Returns when [timeout] passes; with no timeout it returns only by throwing " +
                         "`ProviderError`: `Serve` when [handler] refuses the members, `Claim` when a claim read fails other than on an oversized claim, every " +
-                        "claim settled before it staying settled. An exception [provider] throws is thrown unchanged.",
+                        "claim settled before it staying settled. An exception [provider] throws is thrown unchanged.\n\n%L",
                     iface.declared.declared,
+                    catalogThrows("handler", "the comparison is made once, before the members are registered"),
                 )
                 .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
                 .addParameter(ParameterSpec.builder("timeout", TIME_DURATION.copy(nullable = true)).defaultValue("null").build())
+                .addStatement("checkCatalog(handler.catalog)")
                 .addStatement("claimServed(handler)")
                 .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
                 // An explicit null: a `Unit?` lambda returning servePass's `Nothing?` fails JVM verification.
@@ -815,15 +848,17 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addKdoc(
                     if (pollFace) {
                         "The poll face of interface `%L`: a send returns a correlation, and an outcome is read without " +
-                            "waiting. Internal: the clients and `serve` are built over it."
+                            "waiting. Internal: the clients and `serve` are built over it.\n\n%L"
                     } else {
-                        "The consumer face of interface `%L`, over exactly the ports its interactions need."
+                        "The consumer face of interface `%L`, over exactly the ports its interactions need.\n\n%L"
                     },
                     iface.declared.declared,
+                    catalogThrows("port", "the constructor makes the comparison once, before the port is used"),
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
                 .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
+                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
             for (m in signals) {
                 val payload = signalPayload(m)
                 builder.addFunction(
@@ -898,11 +933,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             return FunSpec.builder("serveAsync").addModifiers(KModifier.SUSPEND).addTypeVariable(h)
                 .addKdoc(
                     "Serves interface `%L`'s calls, suspending between claims. It never returns normally: it ends by " +
-                        "throwing `ProviderError`, as [serve] does, or by the cancellation of its coroutine.",
+                        "throwing `ProviderError`, as [serve] does, or by the cancellation of its coroutine.\n\n%L",
                     iface.declared.declared,
+                    catalogThrows("handler", "the comparison is made once, before the members are registered"),
                 )
                 .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
                 .returns(NOTHING)
+                .addStatement("checkCatalog(handler.catalog)")
                 .addStatement("claimServed(handler)")
                 .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
                 .addStatement("return %M<%T>({}) { waker -> servePass(handler, provider, buffer, null, waker) }", AWAIT_POLL, NOTHING)
@@ -980,8 +1017,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addKdoc(
                     "The blocking client of interface `%L`: each call waits on this thread for its outcome, at most " +
                         "its `timeout` when it is set, and throws `ClientError` for a failed call. Use it from one thread at " +
-                        "a time. `timeout`, `nextEvent` and the subscriptions are extensions (#9).",
+                        "a time. `timeout`, `nextEvent` and the subscriptions are extensions (#9).\n\n%L",
                     iface.declared.declared,
+                    catalogThrows("port", "the comparison is made once, by the poll client the constructor builds"),
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(
@@ -1035,8 +1073,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     "The suspending client of interface `%L`: each call suspends until its outcome and throws `ClientError` " +
                         "for a failed one; a cancelled call is forgotten. Calls run one at a time: a second concurrent call " +
                         "waits for the first, so use a second client over a second caller handle for concurrency. " +
-                        "`nextEvent` and the subscriptions are extensions (#9).",
+                        "`nextEvent` and the subscriptions are extensions (#9).\n\n%L",
                     iface.declared.declared,
+                    catalogThrows("port", "the comparison is made once, by the poll client the constructor builds"),
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
@@ -1156,12 +1195,14 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}Publisher")).visibility()
                 .addKdoc(
                     "The provider face of interface `%L`'s signals and events. `commit` and each signal's `invalidate` " +
-                        "and `touch` are extensions (#9).",
+                        "and `touch` are extensions (#9).\n\n%L",
                     iface.declared.declared,
+                    catalogThrows("port", "the constructor makes the comparison once, before the port is used"),
                 )
                 .addTypeVariable(w)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", w).build())
                 .addProperty(PropertySpec.builder("port", w, KModifier.INTERNAL).initializer("port").build())
+                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
             val receiver = Receiver(ClassName(pkg, "${name}Publisher"), bounds, internal)
             for (m in signals) {
                 val payload = signalPayload(m)

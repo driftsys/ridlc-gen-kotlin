@@ -61,7 +61,8 @@ public class Handles internal constructor(
  * with it.
  *
  * The catalog is carried and never compared: checking it against an
- * interface's own is a generated face's job (ADR-0021 decision 3).
+ * interface's own is a generated face's job, made once per binding
+ * (ADR-0021 decision 3, ADR-0023 decision 8).
  *
  * It also presents [Wakeable], and routes each key to the role handle that
  * observes it: `Outcome` and `Slot` to the caller, `Event` to the source,
