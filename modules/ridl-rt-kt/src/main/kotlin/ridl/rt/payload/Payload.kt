@@ -109,7 +109,7 @@ public enum class Rule {
     /** A number is outside its declared range. */
     Range,
 
-    /** A number is not its range's lower bound plus a whole multiple of its declared step. */
+    /** A number is not its range's lower bound, or 0 without one, plus a whole multiple of its declared step. */
     Step,
 
     /** A string, a byte sequence or a collection is outside its declared length bounds. */
@@ -120,6 +120,9 @@ public enum class Rule {
 
     /** A discriminant names no declared variant. */
     Variant,
+
+    /** A map holds more than one entry with the same key. */
+    Unique,
 }
 
 /**

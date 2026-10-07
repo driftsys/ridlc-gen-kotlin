@@ -19,7 +19,8 @@ type Even : float [-1.0..1.0 step 1.0]
 /// A range that excludes 0.
 type Gear : integer [1..6]
 
-/// A step with no lower bound, which the rule does not decide: refused.
+/// A step with no lower bound, which counts from 0 since ridl 0.5.1
+/// (driftsys/ridl#654): 0 is on its grid.
 type Loose : float [..10.0 step 2.0]
 
 /// An enum whose zero member is not its first.

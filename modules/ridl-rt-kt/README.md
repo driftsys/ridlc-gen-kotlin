@@ -44,6 +44,10 @@ driftsys/ridlc-gen-kotlin#6 adds the runtime helpers of story E11.19 (ridl
 `CorrelateTest` are `freshness.rs`, `event_seq.rs`, `budget.rs`,
 `call_deadline.rs` and `correlate.rs`, case for case.
 
+ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
+(driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
+below.
+
 ## Where the code departs from docs/design.md
 
 - **Errors are exceptions.** §3 spells the error types as `sealed interface`s
@@ -63,6 +67,12 @@ driftsys/ridlc-gen-kotlin#6 adds the runtime helpers of story E11.19 (ridl
 - **`Command.require`, `Query.require` and `Query.ensure` return `Boolean`**
   where Rust returns `Result<(), ()>`.
 - **`ConstraintViolation`** (§4) is Kotlin's own, with no Rust item.
+- **`Steps`** is Kotlin's own, with no Rust item: the floating-point half of the
+  float `step` check (driftsys/ridl#654), which the Rust backend inlines into
+  every generated check and the plugin's generated code calls here, with the
+  constants it computed exactly at generation time. `StepsTest` covers it over a
+  decimal lattice; the conformance module's `ConstraintsTest` covers it over
+  ridl's extreme lattices, through generated code.
 - **`Wakeable` is keyed** (`wakeOn(what: Interest, waker: Waker)`), where §3
   gives it one unkeyed `onChange(callback): AutoCloseable` as Kotlin's own
   extension: `ridl-rt` now has the extension itself (ADR-0021 decision 13), and

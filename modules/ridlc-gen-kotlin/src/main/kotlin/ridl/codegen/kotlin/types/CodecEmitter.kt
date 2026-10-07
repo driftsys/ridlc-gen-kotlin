@@ -456,17 +456,54 @@ class CodecEmitter(private val model: Model, private val options: Options) {
                 val entry = fresh("entry")
                 val key = fresh("key")
                 val value = fresh("value")
+                val read = fresh("read")
+                val previous = fresh("previous")
                 code.beginControlFlow("for (%L in 0 until %L.len)", i, v)
                     .addStatement("val %L = reader.follow(%L.element(%L, 4))", entry, v, i)
                     .addStatement("val %L = reader.field(%L, 0, %L)", key, entry, wire.key.width)
                     .add(verifyRequired(wire.key, key, owner))
                     .addStatement("val %L = reader.field(%L, 1, %L)", value, entry, wire.value.width)
                     .add(verifyRequired(wire.value, value, owner))
+                    // driftsys/ridl#654: no two entries share a key. The earlier
+                    // entries passed already; their keys are read again rather
+                    // than collected, as the Rust verifier does, and compared
+                    // as the backings compare: a float by IEEE equality, so
+                    // 0.0 and -0.0 are one key and NaN is no key's equal.
+                    .addStatement("val %L = %L", read, keyValue(wire.key, entry))
+                    .beginControlFlow("for (%L in 0 until %L)", previous, i)
+                    .beginControlFlow(
+                        "if (%L)",
+                        keysEqual(wire.key, keyValue(wire.key, CodeBlock.of("reader.follow(%L.element(%L, 4))", v, previous)), read),
+                    )
+                    .addStatement("throw %T.Contract(%T(%S, %T.Unique))", VERIFY_ERROR, VIOLATION, owner, RULE)
+                    .endControlFlow()
+                    .endControlFlow()
                     .endControlFlow()
             }
         }
         return code.build()
     }
+
+    /**
+     * The backing of the map key of the verified entry table at [entry]: an
+     * absent scalar key reads as 0, as `verify` admitted it.
+     */
+    private fun keyValue(wire: Wire, entry: Any): CodeBlock {
+        val at = fresh("at")
+        return when (wire) {
+            is Wire.ScalarWire -> CodeBlock.of(
+                "(reader.field(%L, 0, %L)?.let { %L -> %L } ?: %L)",
+                entry, wire.width, at, wire.prim.widen("reader.${wire.prim.read}($at)"), wire.zero,
+            )
+            is Wire.Text -> CodeBlock.of("reader.string(reader.field(%L, 0, 4) ?: 0)", entry)
+            is Wire.Bytes -> CodeBlock.of("reader.bytes(reader.field(%L, 0, 4) ?: 0)", entry)
+            else -> refuse("a map key is not a scalar")
+        }
+    }
+
+    /** Whether two map keys of [wire] are one key: bytes by content, anything else by `==`. */
+    private fun keysEqual(wire: Wire, left: CodeBlock, right: String): CodeBlock =
+        if (wire is Wire.Bytes) CodeBlock.of("%L.contentEquals(%L)", left, right) else CodeBlock.of("%L == %L", left, right)
 
     /**
      * What `verify` does with a non-optional field at [at], a position or
@@ -504,7 +541,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     private fun domainCheck(domain: Domain, value: String, owner: String): CodeBlock = when (domain) {
         Domain.Primitive -> CodeBlock.of("")
         is Domain.Inline -> inlineChecks(domain.scalar, value, owner)
-        is Domain.Named -> if (domain.scalar.vacuous) {
+        is Domain.Named -> if (domain.scalar.plain) {
             CodeBlock.of("")
         } else {
             CodeBlock.of(
@@ -590,7 +627,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     /** [raw], read from a verified buffer, as the domain value. */
     private fun construct(domain: Domain, raw: CodeBlock): CodeBlock = when (domain) {
         Domain.Primitive, is Domain.Inline -> raw
-        is Domain.Named -> if (domain.scalar.vacuous) CodeBlock.of("%T(%L)", domain.type, raw) else CodeBlock.of("%T.unchecked(%L)", domain.type, raw)
+        is Domain.Named -> if (domain.scalar.plain) CodeBlock.of("%T(%L)", domain.type, raw) else CodeBlock.of("%T.unchecked(%L)", domain.type, raw)
         is Domain.EnumOf -> CodeBlock.of("(%T.fromValue(%L) ?: %T.%N)", domain.type, raw, domain.type, enumEntry(domain.first.name))
         is Domain.SetOf -> CodeBlock.of("(%T.ofOrNull(%L) ?: %T.EMPTY)", domain.type, raw, domain.type)
     }
