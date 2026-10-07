@@ -373,7 +373,7 @@ ok:99f9cf6d5f832167
 err:Contract(Violation { type_name: "Offset", rule: Range })
 err:Contract(Violation { type_name: "Offset", rule: Range })
 ok:5b334b6b0beb1b27
-ok:f0cfc398e36d7553
+err:Contract(Violation { type_name: "Offset", rule: Range })
 err:Contract(Violation { type_name: "Offset", rule: Range })
 ok:2891ea60d9e4376b
 ok:4ab540157f5266c8
@@ -1030,9 +1030,9 @@ ok:b94fa3e51864f829
 ok:383c05dd7ad158c9
 ok:52fbbb618c5c988a
 ok:11d353252ebf8f89
-ok:4c33b1c062f2c3b3
+err:Contract(Violation { type_name: "Bundle", rule: Range })
 ok:c96b6e3e87ffd71a
-ok:41b6607180b71867
+err:Contract(Violation { type_name: "Bundle", rule: Length })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -1112,9 +1112,9 @@ err:Structure(Utf8)
 ok:80ae8f51b7137595
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-ok:41b6607180b71867
+err:Contract(Violation { type_name: "Bundle", rule: Length })
 err:Structure(OutOfBounds)
-ok:bf28cfa385543021
+err:Contract(Violation { type_name: "Bundle", rule: Length })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)

@@ -29,7 +29,7 @@ bound, a bare `string` or `bytes`, an optional array element or map part.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.5.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.5.1` (`modules/conformance/ridl-release`).
 
 ## Where the code departs from docs/design.md
 
@@ -57,11 +57,19 @@ Tested against ridl `editor-v0.5.0` (`modules/conformance/ridl-release`).
 - **A string's length is its count of Unicode scalar values**, not its byte
   length as §4 writes: typl §4.4 says a `string [N]` bound counts scalar values
   "not bytes, which `bytes` counts", and the Rust backend counts `chars()`.
-- **`step` is checked.** Integers have no step (TYPL-105). A float is valid at
-  `min + n·step`, from 0 without a minimum, within a millionth of the step plus
-  one ulp at the wire width, so a binary32 that crossed the wire still passes.
-  The Rust backend checks no step (driftsys/ridl#469).
-- **A range check refuses NaN** (`!(value >= min)`); the Rust one admits it.
+- **`step` is checked as the Rust backend checks it** since ridl 0.5.1
+  (driftsys/ridl#654), on `min + n·step`, from 0 without a minimum, at the wire
+  width, with the same compensated lattice reconstruction and the same
+  tolerance; a float with a range must also be finite. The plugin does the exact
+  decimal work at generation time, as the Rust backend does, but where the Rust
+  backend inlines the floating-point half into every check, the generated Kotlin
+  calls `ridl.rt.payload.Steps` in `ridl-rt-kt` (`Lattice.kt`). An integer step,
+  which is not a source form (TYPL-105), is checked too.
+- **A scalar whose every check is empty has a public constructor**, as a vacuous
+  one has: an integer range over all 64 bits checks nothing, and the model does
+  not call it vacuous. The Rust backend gives it a checked `new` that never
+  fails. Every emitter reads `Scalar.plain`, so a value object and its codec
+  agree; the codec called the `unchecked` of a class that had none.
 - **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
   whole: the pattern's own `^` and `$` decide.
 - **A pattern `java.util.regex` cannot compile refuses its declaration**, with
@@ -83,8 +91,8 @@ Tested against ridl `editor-v0.5.0` (`modules/conformance/ridl-release`).
 - **O-K4 is decided as §4 has it**: an array's and a map's bounds are checked
   when the owning struct or tuple is built, with no value class per bounded
   collection. The same `init` checks an inline scalar's constraints, which the
-  Rust backend does not check at all. Collections and bytes are copied in, and
-  bytes copied out, so a constructed value stays valid.
+  Rust backend checks in `verify` alone. Collections and bytes are copied in,
+  and bytes copied out, so a constructed value stays valid.
 - **Constants** are properties of `object Constants_`, not the
   `object Constants` of §4 (#16, below): a `const val` for a primitive or a
   regex, a `val` holding the value object for a named scalar. A bytes constant
@@ -102,7 +110,7 @@ encode, verify and decode helpers per table-shaped type. It lays a table out as
 the Rust codec does — declaration order, each field at its own alignment — and
 pushes children in the same order, so it writes the same bytes, and verifies in
 the same order, so it reaches the same verdict. The conformance module holds it
-to that over 13,049 buffers (`CodecTest`).
+to that over 15,780 buffers (`CodecTest`).
 
 - **O-K1 is taken as option A**, pending its disposition
   ([`docs/k1b-flatbuffers-spike.md`](../../docs/k1b-flatbuffers-spike.md)), and
@@ -110,9 +118,12 @@ to that over 13,049 buffers (`CodecTest`).
   `ridl.rt.flatbuffers`, as the Rust codec is over `ridl_rt::flatbuffers`, not
   over the classes `flatc --kotlin` generates, so a consumer's build needs no
   `flatc`.
-- **`verify` refuses three things the Rust verifier accepts**: a float off its
-  `step`, a NaN, and an inline scalar outside its constraints. `decode` builds
-  value objects, whose constructors refuse all three, and must never throw.
+- **`verify` always checks a `match` pattern**, which the Rust verifier checks
+  only under its `validate-pattern` feature. `decode` builds value objects,
+  whose constructors check the pattern, and must never throw. Since ridl 0.5.1
+  (driftsys/ridl#654) the Rust verifier checks every step, every non-finite
+  float and every inline constraint, so `verify` departs from it in nothing
+  else.
 - **An absent non-optional scalar or enum field reads as 0**, the FlatBuffers
   default, as the Rust codec reads it since ridl 0.5.0 (driftsys/ridl#472): 0
   itself, the enum's zero member, or the empty enum set, in a struct's, a
@@ -121,10 +132,15 @@ to that over 13,049 buffers (`CodecTest`).
   is decided at generation time by the Rust rule (`Zero.kt`, after
   `ridl_ir::zero::range_holds_zero`): an enum needs a zero member, and a numeric
   range must hold 0, on the grid of its `step` when it has one, read from the
-  model's exact decimal text. A step with no minimum is not decided, and
-  refused. The bytes the codec writes do not change.
-- **A map decodes to a `Map`**, so two entries with one key keep the last, where
-  the Rust codec keeps a `Vec` of pairs.
+  model's exact decimal text. A step with no minimum counts from 0 since ridl
+  0.5.1 (driftsys/ridl#654). The bytes the codec writes do not change.
+- **A map decodes to a `Map`**, where the Rust codec keeps a `Vec` of pairs.
+  `verify` refuses two entries with one key with the rule `Unique`, as the Rust
+  verifier does since ridl 0.5.1 (driftsys/ridl#654), comparing the keys as
+  their backings compare: a float by IEEE equality, so 0.0 and -0.0 are one key
+  and a NaN equals no key, and bytes by content. A Kotlin `Map` holds 0.0 and
+  -0.0 apart, so `encode` can write a map `verify` refuses, as a Rust `Vec` of
+  pairs can hold any duplicate.
 - **The helpers are `internal`**, and a codec reaches another package's helpers
   by name: the packages of one `ridl build` are compiled into one module, as the
   Rust backend writes them into one crate.
@@ -193,7 +209,11 @@ runs and a query after.
 - **A channel's init is the signal's own `= value`** when it declares one over a
   named scalar, else the payload type's typl init, built from the model's `Init`
   facts. The Rust face always calls the payload's `Default`, and calls the
-  override a follow-up.
+  override a follow-up. A struct field's declared init is read as the Rust
+  `defaults.rs` of ridl 0.5.1 reads it (driftsys/ridl#654): an optional field
+  with one holds the value, not absence; an enum field's selects the member of
+  that value; and a bytes init is the UTF-8 encoding of its text, where it was
+  refused.
 - **The descriptors are top-level**, `CabinTemperature` beside `Cabin`, as in
   Rust: nested in `Cabin`, a descriptor named after its signal would shadow the
   payload type of the same name.

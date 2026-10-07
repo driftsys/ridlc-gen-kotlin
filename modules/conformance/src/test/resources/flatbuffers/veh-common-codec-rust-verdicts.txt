@@ -4229,7 +4229,7 @@ ok:8449180aa7cda748
 ok:8449180aa7cda748
 ok:8449180aa7cda748
 ok:8449180aa7cda748
-ok:7128e8fd42b52a59
+err:Contract(Violation { type_name: "DriverProfile", rule: Range })
 ok:885f9845b89fda91
 ok:8449180aa7cda748
 ok:8449180aa7cda748
@@ -4553,71 +4553,71 @@ ok:163f0dbb899fcdcd
 ok:17fed952a8b24412
 err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:c0fe7af779e3d4c5
-ok:a20eb55dbe4a2d6e
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:964ed631befb6e85
-ok:25f31195304e178b
-ok:5321c2cf6d33499e
-ok:cdea0eb114565c02
-ok:e002a5dac8136011
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:8ba880e8ee679d33
 err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:348ac91c08ab4256
-ok:4a29c0d94021b303
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:14fb5b07b02119f1
-ok:0f67c54eee25a771
-ok:daa069d59f7dc049
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:beef3e3c788182e7
-ok:256244efb913b522
-ok:711c724d16df3b43
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:80363a2b4108b8fa
 err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:aa24eb7d09928004
-ok:bebe3074b157bb81
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:f3884d84c0529274
-ok:5445be82e4a5fb85
-ok:67861a3445405c8f
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:3c32ea1998c4d483
-ok:5c574f5a515ad80a
-ok:869c17c2d6ba4389
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:8247db470996f5c1
-ok:e541d4c4c079c121
+err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:8b0d90f195dae4bb
-ok:d82ca1129407360e
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:c3e139aa5e6d752b
-ok:a533405d15cbfa68
-ok:6498d56ac3f3482f
-ok:1b85b1c0fc5c0995
-ok:5ca7dd9c207a3ae0
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:fa15978aeeddae17
 err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:9b5f79c80a33d32b
-ok:936c0d2ee0273208
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:155b81aaeaa9bfbf
-ok:2ac6f07d7b02c6d8
-ok:6924d1017dfe0aca
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:9a6ede11078cbe17
-ok:1d5f11c83b14e965
-ok:7b2cc9ad7bee2b6d
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:8874046e55b0bf54
 err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:66b2996f17987759
-ok:3a9519805e206d98
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:68c43d5f2ac1fd56
-ok:9eb0228b3a36219c
-ok:698ff4dd69166c5c
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:0220991480d10225
-ok:97737e2d5c23391d
-ok:3ba9e1f9ee82ff56
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:86eb923ea1ec7db7
 err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:97ad0cb23615eae0
-ok:9274a3e0310594b8
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:21d71eea76e0aa2e
-ok:cbec6a7ef36c723c
-ok:b521706aa04f0e89
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:b2bfa147af5fe847
-ok:d45ec89e258d96b6
-ok:49d655be344fda3d
+err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: "Speed", rule: Step })
 ok:985e8c2ed46548fe
 err:Contract(Violation { type_name: "Speed", rule: Range })
 ok:67faa138488d8d5d

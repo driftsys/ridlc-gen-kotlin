@@ -20,7 +20,7 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.5.0`, the tag that carries ridl 0.5.0's binaries. The tests
+Pinned to `editor-v0.5.1`, the tag that carries ridl 0.5.1's binaries. The tests
 of stage K2a run: a request the pinned `ridl` wrote parses, a request with an
 unknown key parses, a request nested 1,000 levels parses in process and through
 the installed script, a wrong schema is one error diagnostic and exit 0, an
@@ -47,14 +47,38 @@ exception of the JVM's own. How to regenerate both files is in
 
 The test of stage K2c, `CodecTest`: for every corpus package, the generated
 `Codec.kt` encodes sample values of every public root, written from the model
-(`RoundTrip`), and a corpus of those buffers and their mutants — 13,049 in all —
+(`RoundTrip`), and a corpus of those buffers and their mutants — 15,780 in all —
 goes through `verify`, `decode` and `encode` again in Kotlin and, once, in the
 Rust codec of the pinned release, whose verdicts are checked in as
 `resources/flatbuffers/<package>-codec-rust-verdicts.txt`. Every sample
 re-encodes to the same bytes in Rust, no buffer meets an exception other than
 `VerifyError`, and every verdict is Rust's except where Kotlin alone refuses a
-step, a NaN or an inline constraint. A wrong table layout, a missing count check
-or a wrong union error each turns it red.
+string off its pattern, which the Rust verifier checks only under its
+`validate-pattern` feature; no buffer of the corpus reaches one. A wrong table
+layout, a missing count check, a wrong union error or a float step check that
+never fails each turns it red.
+
+Since ridl 0.5.1 (driftsys/ridl#654), the Rust verifier checks every float step,
+every non-finite float under a range and every inline constraint, which Kotlin
+alone checked before, and refuses two map entries with one key. The codec
+verdicts were regenerated over that release: the 91 refusals that were Kotlin's
+alone (`kt-values` 5, `kt-zero` 13, `veh-common` 37, `veh-cruise` 36) are now
+Rust's too, and `CodecTest` no longer excuses them; and 2 `kt-zero` buffers
+whose `Loose` field is absent move from `MissingRequired` to a decoded 0, since
+a step with no minimum now counts from 0. The spike's verdicts and golden bytes
+did not change. The corpus package `payload-constraints`, ridl's own fixture for
+#654, adds 2,731 buffers.
+
+The test of driftsys/ridl#654, `ConstraintsTest`: ridl's
+`crates/ridl-backend-rust/tests/payload_constraints.rs`, case for case where
+Kotlin can spell it, over the `payload-constraints` package, its model rewritten
+as the Rust test rewrites the IR. The value objects accept the lattice points of
+a decimal, a large-origin, a subnormal, an underflowing and an overflowing step
+and refuse their neighbours; a value and the binary32 it crosses the wire as get
+one verdict; an absent field of an extreme lattice reads as 0; and `verify`
+refuses a step, a pattern and a duplicate textual, integer, float (0.0 and -0.0)
+or bytes key with the right rule, while two NaN keys pass. Removing the float
+step check or the key comparison each turns it red.
 
 Since ridl 0.5.0 (driftsys/ridl#472), an absent non-optional scalar or enum
 field reads as its FlatBuffers default when 0 is a legal value of its type; a
@@ -63,11 +87,11 @@ verdicts and the spike's were regenerated over that release, where 219 verdicts
 changed from `MissingRequired` to a decoded default, and the spike's
 hand-written codec follows. The corpus package `kt-zero` holds what the other
 packages cannot: an absent field whose type excludes 0, an inline range, a named
-range, a step whose grid misses 0, a step with no minimum and an enum with no
-zero member, refused, each beside one that admits 0, in a struct, a tuple, a map
-entry, a union arm and a box root. Reading every absent scalar as 0, reading an
-absent enum as its first member rather than its zero member, or refusing an
-absent named scalar each turns it red.
+range, a step whose grid misses 0 and an enum with no zero member, refused, and
+a step with no minimum, which admits 0 since ridl 0.5.1, each beside one that
+admits 0, in a struct, a tuple, a map entry, a union arm and a box root. Reading
+every absent scalar as 0, reading an absent enum as its first member rather than
+its zero member, or refusing an absent named scalar each turns it red.
 
 The test of stage K3a, `FacesTest`: the generated faces of `cabin` and
 `kt-values`, over `ridl-rt-kt-loopback`, driven by the probes of

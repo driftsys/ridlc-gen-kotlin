@@ -319,7 +319,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
                 val type = ref(ref)
                 val (_, literal) = primitiveLiteral(scalarPrimitive(scalar), constant.value) ?: return null
                 val initializer = when {
-                    scalar.vacuous -> CodeBlock.of("%T(%L)", type, literal)
+                    scalar.plain -> CodeBlock.of("%T(%L)", type, literal)
                     model.isForeign(ref) -> CodeBlock.of("%T.of(%L)", type, literal)
                     else -> CodeBlock.of("%T.unchecked(%L)", type, literal)
                 }

@@ -28,10 +28,9 @@ import java.security.MessageDigest
  *
  * Every sample must be `ok` in Rust with the bytes Kotlin encoded, no mutant
  * may meet an exception other than `VerifyError`, and every verdict must be
- * Rust's — except that Kotlin refuses three things Rust decodes: a float off
- * its step, a NaN, and an inline scalar outside its constraints, which the
- * value objects check and the Rust verifier does not (the module README of
- * `ridlc-gen-kotlin`). Any other difference fails.
+ * Rust's — except that Kotlin refuses a string off its pattern, which the
+ * Rust verifier checks only under its `validate-pattern` feature. Any other
+ * difference fails.
  */
 class CodecTest {
     @TempDir
@@ -100,22 +99,12 @@ class CodecTest {
                 val (_, label, hex) = line.split(' ')
                 if ('/' !in label) assertEquals("ok:" + digest(hex), rust[index], "$line: Rust re-encodes the sample Kotlin encoded")
             }
-            // Kotlin's own refusals: a step, which the Rust verifier never
-            // checks; a range on a float, which a NaN breaks in Kotlin alone;
-            // and anything reported against a struct or a tuple, which is an
-            // inline scalar's constraint.
-            val records = models.flatMap { m ->
-                m.declarationsList.filter { it.hasStruct() }.map { it.name.declared } + m.tuplesList.map { it.name.rust }
-            }.toSet()
-            val floats = models.flatMap { m ->
-                m.declarationsList.filter { it.hasScalar() && it.scalar.class_ == ridl.codegen.v1.ModelOuterClass.ScalarClass.SCALAR_CLASS_FLOAT }
-                    .map { it.name.declared }
-            }.toSet()
+            // Kotlin's own refusals: a pattern, which the Rust verifier
+            // checks only under its `validate-pattern` feature. Since ridl
+            // 0.5.1 (driftsys/ridl#654) the Rust verifier checks every step,
+            // every non-finite float and every inline constraint, as Kotlin does.
             val violation = Regex("""err:Contract\(Violation \{ type_name: "([^"]+)", rule: (\w+) \}\)""")
-            fun kotlinOnly(verdict: String): Boolean {
-                val (type, rule) = violation.matchEntire(verdict)?.destructured ?: return false
-                return rule == "Step" || type in records || (rule == "Range" && type in floats)
-            }
+            fun kotlinOnly(verdict: String): Boolean = violation.matchEntire(verdict)?.destructured?.component2() == "Pattern"
             val stricter = mutableListOf<String>()
             val disagreements = mutableListOf<String>()
             for ((index, line) in corpus.withIndex()) {
