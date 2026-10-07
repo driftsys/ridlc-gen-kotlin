@@ -31,6 +31,16 @@ bound, a bare `string` or `bytes`, an optional array element or map part.
 
 Tested against ridl `editor-v0.5.1` (`modules/conformance/ridl-release`).
 
+## Generated code on Android
+
+The generated code compiles against Android's `android.jar` as well as on the
+JVM. Against `android.jar`, Kotlin resolves `ByteBuffer.position(Int)`,
+`limit(Int)`, `flip()` and `clear()` to the `java.nio.Buffer` methods, which
+return a `Buffer`, so the emitters never use what one of those methods returns:
+`out.flip()` is a statement of its own, followed by `return out`.
+[`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#compiling-against-android) says
+why, and how the rule was last checked; CI does not check it.
+
 ## Where the code departs from docs/design.md
 
 - **The recursion limit.** §2 step 1 configures the parser with

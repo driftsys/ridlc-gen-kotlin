@@ -171,7 +171,11 @@ public abstract class Contract<R>(protected val factory: Factory<R>)
         public fun out(size: Int): ByteBuffer = ByteBuffer.allocate(size)
 
         /** The bytes a port wrote into this buffer: from 0 to its position. */
-        public fun ByteBuffer.written(): ByteArray = ByteArray(position()).also { duplicate().flip().get(it) }
+        public fun ByteBuffer.written(): ByteArray {
+            val written = duplicate()
+            written.flip()
+            return ByteArray(written.remaining()).also { written.get(it) }
+        }
 
         public fun array(vararg values: Int): ByteArray = ByteArray(values.size) { values[it].toByte() }
     }

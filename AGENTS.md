@@ -15,6 +15,13 @@ in `gradle/libs.versions.toml` only. Never track build outputs, generated
 sources, `ridl` sources, or a binary other than the Gradle wrapper jar;
 `scripts/check-repo.sh` refuses them.
 
+The runtime modules and the generated code are also compiled against Android's
+`android.jar`, where Kotlin types `ByteBuffer.position(Int)`, `limit(Int)`,
+`flip()` and `clear()` as returning `Buffer`. Never use what one of those
+methods returns, in a runtime module or in an emitted statement; call it as a
+statement, then use the buffer. CI does not check this
+(`modules/ridl-rt-kt/README.md`, "Compiling against Android").
+
 `ridl` enters the repository only as the release tag in
 `modules/conformance/ridl-release` (D-K9). The `ridl.codegen.v1` schema under
 `modules/ridlc-gen-kotlin/src/main/proto` is that release's copy, and the

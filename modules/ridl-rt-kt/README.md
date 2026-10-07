@@ -48,6 +48,21 @@ ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
 below.
 
+## Compiling against Android
+
+The runtime and the loopback are also built from source against Android's
+`android.jar`, with no JDK on the classpath, as an AOSP `java_library` is.
+There, Kotlin resolves `ByteBuffer.position(Int)`, `limit(Int)`, `flip()` and
+`clear()` to the `java.nio.Buffer` methods, which return a `Buffer`, although
+`android.jar` declares the `ByteBuffer` overrides as the JDK does. A chain such
+as `buf.duplicate().position(n).put(bytes)`, or a `flip()` passed where a
+`ByteBuffer` is expected, compiles on the JVM and fails there. So the code never
+uses what one of those methods returns: it calls the method as a statement, then
+uses the buffer. CI has no `android.jar`, so nothing checks this rule; the last
+check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
+`ridl-rt-kt-conformance` and the generated code of every corpus package with
+`kotlinc -no-jdk` against `android-34/android.jar`.
+
 ## Where the code departs from docs/design.md
 
 - **Errors are exceptions.** §3 spells the error types as `sealed interface`s
