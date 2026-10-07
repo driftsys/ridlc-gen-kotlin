@@ -7,9 +7,9 @@ interfaces, the payload interface and the error types that generated code and a
 runtime agree on, and nothing that runs (docs/design.md §3). It is a JVM library
 with no dependency but the Kotlin standard library, in the packages
 `ridl.rt.contract`, `ridl.rt.encoding`, `ridl.rt.error`, `ridl.rt.payload`,
-`ridl.rt.port`, `ridl.rt.sample`, `ridl.rt.flatbuffers` and `ridl.rt.task`, one
-per `ridl_rt` module. The repository is licensed under the root
-[MIT License](../../LICENSE).
+`ridl.rt.port`, `ridl.rt.sample`, `ridl.rt.flatbuffers`, `ridl.rt.task` and
+`ridl.rt.trace`, one per `ridl_rt` module. The repository is licensed under the
+root [MIT License](../../LICENSE).
 
 ## Status
 
@@ -47,6 +47,16 @@ driftsys/ridlc-gen-kotlin#6 adds the runtime helpers of story E11.19 (ridl
 ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
 below.
+
+ridl 0.6.0 adds `ridl.rt.trace` (driftsys/ridl#752, #754, ADR-0021 decision 21):
+`TraceContext`, the W3C `traceparent` layout without its version byte, carried
+unvalidated; and the `Propagation` hook, registered once per process with
+`setPropagation` and read with `propagation()`, which no generated code calls
+yet. `Caller.command`, `Caller.query` and `EventSink.raise` take a last argument
+`trace: TraceContext?`, and `Claim`, `RawOccurrence` and `ReadError.ShortClaim`
+carry it, under the delivery contract the port interfaces state. `TraceTest` is
+`trace.rs`, `propagation.rs` and `propagation_unset.rs`, where the JVM can spell
+them.
 
 ## Where the code departs from docs/design.md
 
@@ -104,6 +114,15 @@ below.
   const-context case have no JVM spelling.
 - **`ClientError` and `ProviderError` have no `From` conversions**: Kotlin has
   no `?`, so a variant is built from its inner error directly.
+- **`TraceContext` is a class over copied arrays**, as `CatalogHash` is: its ids
+  are copied in and out, equality and the hash are over the bytes, and `flags`
+  is a `UByte`. A wrong id length is an `IllegalArgumentException`, where the
+  Rust arrays cannot have one; `trace.rs`'s 25- and 26-byte size test has no JVM
+  spelling.
+- **The `Propagation` hook is not optional**: Rust puts it behind the `std`
+  feature, which the JVM always has. `setPropagation` throws `AlreadySet`, where
+  Rust returns it, and the hook is an interface instance, not a
+  `&'static dyn Propagation`.
 - **`Transport.Busy` breaks an exhaustive `when`.** `Transport` is
   `#[non_exhaustive]` in Rust, so adding `Busy` breaks nothing there; a Kotlin
   sealed class has no such marker, and a `when` over `Transport` or `CallError`

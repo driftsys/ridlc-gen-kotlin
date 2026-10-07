@@ -21,6 +21,7 @@ a `@TestFactory`:
 @TestFactory fun ports() = suite(MyFactory)
 @TestFactory fun scannable() = scannableSuite(MyFactory)
 @TestFactory fun coherent() = coherentSuite(MyFactory)
+@TestFactory fun trace() = traceSuite(MyFactory)
 ```
 
 ## Status
@@ -54,6 +55,18 @@ oversized claim are presented once it is settled` and
 and the settlement leaves the settlement valid` —
 which makes 54 tests.
 
+ridl 0.6.0 (driftsys/ridl#752, ADR-0021 decision 21): the trace context. The
+base arm gains `an event raised without a context arrives without one` and
+`a call sent without a context arrives without one`, rule 4, which every runtime
+passes, and `an oversized claim is reported with its id and is not consumed`
+checks that its `ShortClaim` carries no context. `TraceContract`, run by
+`traceSuite`, holds the 18 cases of the `trace` arm, rules 1 and 2, for a
+runtime that carries the context: 42 base cases and 74 in all. Over the
+loopback, a runtime that delivers `null` fails all 18; one that delivers the
+latest call's context on a claim fails the two in-flight cases, and on a
+`ShortClaim` fails
+`an oversized claims context is the offered calls not the latest`.
+
 The case of a forget before any claim accepts either a call still presented and
 settled or a withdrawn one, and checks that the runtime then accepts exactly
 `slots` further sends, so the forgotten call gave its slot back.
@@ -73,6 +86,9 @@ of a handle.
   return one JUnit `DynamicTest` per test method, named after it. A runtime that
   omits a signal extension does not call that extension's suite, where Rust
   leaves its arm out of the macro.
+- **The trace arm is one contract.** Rust keeps the `trace` arm's cases in
+  `calls.rs` and `events.rs`; here they are `TraceContract`, in the order of the
+  arm, because each Kotlin contract class is one arm's.
 - **Tests are methods of a contract class** over the factory, where Rust has
   free functions generic over `F: Factory`, so the port bounds on `R` are stated
   once per class rather than once per test.

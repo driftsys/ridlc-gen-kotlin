@@ -91,9 +91,9 @@ class PortsTest {
         val second = rt.sink()
         source.subscribe(iface, listOf(ord))
 
-        first.raise(iface, ord, bytes(1))
-        second.raise(iface, ord, bytes(2))
-        first.raise(iface, ord, bytes(3))
+        first.raise(iface, ord, bytes(1), null)
+        second.raise(iface, ord, bytes(2), null)
+        first.raise(iface, ord, bytes(3), null)
         assertEquals(listOf(1uL, 1uL, 2uL), drain(source))
     }
 
@@ -112,14 +112,14 @@ class PortsTest {
     @Test
     fun `a handler that served nothing is presented every call`() {
         val rt = runtime()
-        rt.caller().command(InterfaceNo(2u), other, bytes(1))
+        rt.caller().command(InterfaceNo(2u), other, bytes(1), null)
         assertEquals(InterfaceNo(2u), rt.handler().nextClaim(out(8))!!.iface)
     }
 
     @Test
     fun `the injected settle failure is too large with no capacity`() {
         val rt = runtime()
-        rt.command(iface, ord, bytes(1))
+        rt.command(iface, ord, bytes(1), null)
         val claim = rt.nextClaim(out(8))!!
         rt.failNextSettle()
         assertEquals(
@@ -220,19 +220,19 @@ class PortsTest {
         rt.serve(iface, listOf(ord))
         rt.set(iface, ord, bytes(1))
         rt.commit()
-        rt.raise(iface, ord, bytes(1))
-        rt.command(iface, ord, bytes(1))
+        rt.raise(iface, ord, bytes(1), null)
+        rt.command(iface, ord, bytes(1), null)
         val attached = rt.attach()
 
         attached.set(iface, ord, bytes(2))
         attached.commit()
         assertEquals(1uL, attached.read(iface, ord, out(8)).envelope.seq, "the attached writer's first publication")
 
-        attached.raise(iface, ord, bytes(2))
+        attached.raise(iface, ord, bytes(2), null)
         assertNull(attached.next(out(8)), "the attached source is subscribed to nothing")
         assertEquals(listOf(1uL, 1uL), drain(rt), "each sink's first raise is its own seq 1")
 
-        attached.command(iface, ord, bytes(2))
+        attached.command(iface, ord, bytes(2), null)
         val sent = generateSequence { rt.nextClaim(out(8)) }.map { it.envelope.seq }.toList()
         assertEquals(listOf(1uL, 1uL), sent, "each caller's first call is its own seq 1")
 
@@ -245,11 +245,11 @@ class PortsTest {
         val attached = rt.attach()
         rt.subscribe(iface, listOf(ord))
 
-        attached.raise(iface, ord, bytes(1))
+        attached.raise(iface, ord, bytes(1), null)
         assertNull(attached.next(out(8)), "the attached aggregate's source is subscribed to nothing")
 
         attached.subscribe(iface, listOf(ord))
-        attached.raise(iface, ord, bytes(2))
+        attached.raise(iface, ord, bytes(2), null)
         assertEquals(listOf(listOf<Byte>(1), listOf<Byte>(2)), payloads(rt))
         assertEquals(listOf(listOf<Byte>(2)), payloads(attached))
     }
@@ -258,7 +258,7 @@ class PortsTest {
     fun `a call sent through one aggregate is served through an attached one`() {
         val rt = runtime()
         val attached = rt.attach()
-        val sent = rt.command(iface, ord, bytes(1))
+        val sent = rt.command(iface, ord, bytes(1), null)
 
         val claim = attached.nextClaim(out(8))!!
         attached.settle(claim.id, ok())
@@ -273,10 +273,10 @@ class PortsTest {
         // aggregate's own unclaimed call is withdrawn with it.
         val rt = runtime()
         rt.subscribe(iface, listOf(ord))
-        val sent = rt.command(iface, ord, bytes(1))
+        val sent = rt.command(iface, ord, bytes(1), null)
         val attached = rt.attach()
         attached.subscribe(iface, listOf(ord))
-        attached.command(iface, ord, bytes(2))
+        attached.command(iface, ord, bytes(2), null)
         val buf = out(8)
         val claim = rt.nextClaim(buf)!!
         assertArrayEquals(array(1), buf.written(), "the original's call, sent first")
@@ -286,7 +286,7 @@ class PortsTest {
             handler.close()
         }
 
-        rt.raise(iface, ord, bytes(3))
+        rt.raise(iface, ord, bytes(3), null)
         assertEquals(listOf(listOf<Byte>(3)), payloads(rt))
 
         rt.settle(claim.id, ok())
@@ -301,7 +301,7 @@ class PortsTest {
         val rt = runtime()
         val attached = rt.attach()
         attached.subscribe(iface, listOf(ord))
-        val sent = attached.command(iface, ord, bytes(5))
+        val sent = attached.command(iface, ord, bytes(5), null)
         rt.set(iface, ord, bytes(4))
         rt.commit()
         rt.split().run {
@@ -314,7 +314,7 @@ class PortsTest {
         attached.read(iface, ord, sample)
         assertArrayEquals(array(4), sample.written())
 
-        attached.raise(iface, ord, bytes(6))
+        attached.raise(iface, ord, bytes(6), null)
         assertEquals(listOf(listOf<Byte>(6)), payloads(attached))
 
         val buf = out(8)
@@ -435,14 +435,14 @@ class PortsTest {
         val source = rt.source()
         source.subscribe(iface, listOf(ord))
         source.close()
-        rt.raise(iface, ord, bytes(1))
+        rt.raise(iface, ord, bytes(1), null)
         assertNull(source.next(out(8)))
     }
 
     @Test
     fun `a claim is settled with a call error and nothing else`() {
         val rt = runtime()
-        rt.command(iface, ord, bytes(1))
+        rt.command(iface, ord, bytes(1), null)
         val claim = rt.nextClaim(out(8))!!
         assertThrows<IllegalArgumentException> { rt.settle(claim.id, Result.failure(RuntimeException("no"))) }
         rt.settle(claim.id, ok())

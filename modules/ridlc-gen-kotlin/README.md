@@ -169,6 +169,11 @@ ports their kinds need (RA-19); `<Iface>Publisher<W>`; and `<Iface>Provider`.
 `dispatch` settles as the Rust one does, a command before its provider method
 runs and a query after.
 
+Since ridl 0.6.0 (driftsys/ridl#752) every `command`, `query` and `raise` the
+face sends passes `null` as its trace context, as the Rust face passes `None`;
+no generated signature changes, and `dispatch` does not read a claim's context.
+driftsys/ridl#754 replaces both, through the `Propagation` hook.
+
 - **The clients replace the public poll face.** docs/design.md §5 describes the
   poll face as public, with an `averageAwait` extension per call. The face now
   generates, per interface that waits, the blocking

@@ -57,6 +57,13 @@ waiting calls. A forgotten offered call stays presentable until its settlement,
 or the close of its handler, which withdraws it; the close of a handler that was
 only offered a call neither returns it nor wakes anyone.
 
+ridl 0.6.0 (driftsys/ridl#752): the loopback carries the trace context, under
+rules 1 and 2 of the delivery contract. A call's entry keeps the context it was
+sent with, and its `Claim` and every `ReadError.ShortClaim` that offers it carry
+that context; `raise` copies its context into every subscribed source's queue,
+and the `RawOccurrence` carries it. `ConformanceTest` runs the suite's trace arm
+too.
+
 The call table is `ridl-rt-kt`'s `correlate.Table`, with `Loopback.SLOTS`
 (sixteen) slots and no byte budget, as story E11.18 moved the Rust loopback onto
 it (ridl `main` at eb41a7a). A send with every slot taken throws
