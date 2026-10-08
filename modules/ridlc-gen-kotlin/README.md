@@ -168,9 +168,11 @@ to that over 15,780 buffers (`CodecTest`).
   and a NaN equals no key, and bytes by content. A Kotlin `Map` holds 0.0 and
   -0.0 apart, and two `ByteArray` keys of one content, so a struct's constructor
   refuses such a map with the same rule `Unique` (#38): every map it accepts is
-  one `verify` accepts, and `encode` never writes a duplicate. The other way
-  round, a Kotlin `Map` holds one NaN key, so a buffer with two NaN keys, which
-  `verify` accepts, decodes to one entry.
+  one `verify` accepts, and `encode` never writes a duplicate. A float key
+  carried as f32 is compared as the f32 `encode` writes, so two doubles one f32
+  rounds to, such as 1.0 and 1.0000000001, are one key. The other way round, a
+  Kotlin `Map` holds one NaN key, so a buffer with two NaN keys, which `verify`
+  accepts, decodes to one entry.
 - **The helpers are `internal`**, and a codec reaches another package's helpers
   by name: the packages of one `ridl build` are compiled into one module, as the
   Rust backend writes them into one crate.
