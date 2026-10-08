@@ -27,6 +27,7 @@ import ridl.codegen.v1.ModelOuterClass.Enum
 import ridl.codegen.v1.ModelOuterClass.EnumSet
 import ridl.codegen.v1.ModelOuterClass.Field
 import ridl.codegen.v1.ModelOuterClass.Model
+import ridl.codegen.v1.ModelOuterClass.FloatWidth
 import ridl.codegen.v1.ModelOuterClass.PrimitiveType
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
@@ -655,11 +656,61 @@ class TypesEmitter(private val model: Model, private val options: Options) {
                     value?.let(code::add)
                     code.endControlFlow()
                 }
+                // #38: a Kotlin map holds keys apart that `verify` takes for
+                // one, as driftsys/ridl#654 compares them: 0.0 and -0.0, and two
+                // byte arrays of one content. Each key is compared with the
+                // keys before it, as `verify` compares an entry's. `run`
+                // scopes the key list to this field: every field's checks
+                // share the one `init` block, at the same depth.
+                keysCollide(type.map.key)?.let { collide ->
+                    val keys = "keys$depth"
+                    code.beginControlFlow("run")
+                        .addStatement("val %L = %L.keys.toList()", keys, expr)
+                        .beginControlFlow("for (i$depth in %L.indices)", keys)
+                        .beginControlFlow("for (j$depth in 0 until i$depth)")
+                        .beginControlFlow("if (%L)", collide.same("$keys[j$depth]", "$keys[i$depth]"))
+                        .add(fail("Unique", collide.shown("$keys[i$depth]")))
+                        .endControlFlow()
+                        .endControlFlow()
+                        .endControlFlow()
+                        .endControlFlow()
+                }
                 code.build().takeUnless { it.isEmpty() }
             }
             else -> null
         }
     }
+
+    /**
+     * How two map keys of [key]'s type compare when Kotlin's `equals` holds
+     * them apart and ridl's rule takes them for one, or `null` when the two
+     * agree. A float compares by IEEE equality, so 0.0 and -0.0 are one key and
+     * a NaN is no key's equal, and a float carried as f32 compares as the f32
+     * it is written as; a `bytes` compares by content. Every other key compares
+     * as ridl's rule does, and a named key is a string (TYPL-209).
+     */
+    private fun keysCollide(key: Type): KeyEquality? {
+        val ieee = KeyEquality({ a, b -> "$a == $b" }, { it })
+        // A key carried as f32 is the f32 `encode` narrows it to: two doubles
+        // one f32 rounds to are one key on the wire.
+        val narrow = KeyEquality({ a, b -> "$a.toFloat() == $b.toFloat()" }, { it })
+        val content = KeyEquality({ a, b -> "$a.contentEquals($b)" }, { "$it.contentToString()" })
+        return when (key.kindCase) {
+            // A bare `float` is carried as f64; a `bytes` key is always inline,
+            // with its default length bound.
+            Type.KindCase.PRIMITIVE -> if (key.primitive == PrimitiveType.PRIMITIVE_TYPE_FLOAT) ieee else null
+            Type.KindCase.INLINE -> when (key.inline.class_) {
+                ScalarClass.SCALAR_CLASS_FLOAT, ScalarClass.SCALAR_CLASS_UNSPECIFIED ->
+                    if (key.inline.floatWidth == FloatWidth.FLOAT_WIDTH_F32) narrow else ieee
+                ScalarClass.SCALAR_CLASS_BYTES -> content
+                else -> null
+            }
+            else -> null
+        }
+    }
+
+    /** Two keys' comparison under ridl's rule, and how a refused key is shown. */
+    private class KeyEquality(val same: (String, String) -> String, val shown: (String) -> String)
 
     /**
      * The condition under which a count breaks its bounds, as the Rust
