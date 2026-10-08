@@ -1,0 +1,61 @@
+# The Rust codec verdicts (#39): `just rust-verdicts` regenerates every file
+# the conformance module compares with the Rust codec of the pinned ridl
+# release, and fails when one differs from the committed file. It runs when
+# something that can change those files changes: the pin, the conformance
+# tests and their corpus, the plugin and the runtime, whose generated codec
+# encodes the corpus the Rust programs read, or the regeneration itself.
+name: rust-verdicts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - modules/conformance/ridl-release
+      - modules/conformance/src/test/**
+      - modules/ridlc-gen-kotlin/src/main/**
+      - modules/ridl-rt-kt/src/main/**
+      - scripts/rust-verdicts.py
+      - justfile
+      - .github/workflows/rust-verdicts.yml
+  pull_request:
+    paths:
+      - modules/conformance/ridl-release
+      - modules/conformance/src/test/**
+      - modules/ridlc-gen-kotlin/src/main/**
+      - modules/ridl-rt-kt/src/main/**
+      - scripts/rust-verdicts.py
+      - justfile
+      - .github/workflows/rust-verdicts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-verdicts-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JUST_VERSION: 1.38.0
+
+jobs:
+  rust-verdicts:
+    name: rust-verdicts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: install just
+        run: |
+          set -o pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" just
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: update the Rust toolchain
+        run: rustup update stable --no-self-update && rustup default stable
+      - run: just rust-verdicts

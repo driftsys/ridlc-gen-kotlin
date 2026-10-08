@@ -54,6 +54,7 @@ import ridl.rt.port.FixedReader
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
 import ridl.rt.port.RawOccurrence
+import ridl.rt.trace.TraceContext
 import ridl.rt.port.RawSample
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SettleError
@@ -192,11 +193,11 @@ public class SinkHandle internal constructor(
 ) : EventSink, Wakeable {
     private val seqs = TreeMap<Key, ULong>()
 
-    override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer) {
+    override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?) {
         val key = Key(iface, ord)
         val seq = (seqs[key] ?: 0u) + 1u
         seqs[key] = seq
-        wake(store.locked { raise(key, bytes.remainingBytes(), seq) })
+        wake(store.locked { raise(key, bytes.remainingBytes(), seq, trace) })
     }
 
     /** Wakes every key at once: no role of this handle observes one. */
@@ -220,15 +221,15 @@ public class CallerHandle internal constructor(
     private val id: Int = store.locked { openCaller() }
     private var seq: ULong = 0u
 
-    override fun command(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer): Correlation =
-        send(CallKind.Command, iface, ord, args)
+    override fun command(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer, trace: TraceContext?): Correlation =
+        send(CallKind.Command, iface, ord, args, trace)
 
-    override fun query(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer): Correlation =
-        send(CallKind.Query, iface, ord, args)
+    override fun query(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer, trace: TraceContext?): Correlation =
+        send(CallKind.Query, iface, ord, args, trace)
 
-    private fun send(kind: CallKind, iface: InterfaceNo, ord: Ordinal, args: ByteBuffer): Correlation {
+    private fun send(kind: CallKind, iface: InterfaceNo, ord: Ordinal, args: ByteBuffer, trace: TraceContext?): Correlation {
         val next = seq + 1u
-        val (correlation, wakers) = store.locked { send(id, kind, Key(iface, ord), args.remainingBytes(), next) }
+        val (correlation, wakers) = store.locked { send(id, kind, Key(iface, ord), args.remainingBytes(), next, trace) }
         seq = next
         wake(wakers)
         return correlation

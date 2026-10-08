@@ -25,6 +25,7 @@ import ridl.rt.sample.Freshness
 import ridl.rt.sample.Provenance
 import ridl.rt.sample.Timestamp
 import ridl.rt.task.Waker
+import ridl.rt.trace.TraceContext
 import java.nio.ByteBuffer
 
 /** A port attached to one catalog. `ridl_rt::port::Attached`. */
@@ -110,23 +111,44 @@ public data class RawOccurrence(
     public val ord: Ordinal,
     /** The sender's timestamp and sequence number. */
     public val envelope: Envelope,
+    /** The trace context the occurrence was raised with, under the delivery contract of [EventSink]. */
+    public val trace: TraceContext?,
     /** The number of bytes copied into `out`. */
     public val len: Int,
 )
 
-/** Events, provider side. `ridl_rt::port::EventSink`. */
+/**
+ * Events, provider side. `ridl_rt::port::EventSink`.
+ *
+ * The delivery contract of the trace context, as for [Caller] (ADR-0021
+ * decision 21): a runtime that carries it delivers, on every [RawOccurrence]
+ * a `raise` produces — one for each subscriber — the value its sender
+ * passed, unchanged; a runtime or transport that does not carry it delivers
+ * `null`; and a sender's `null` is delivered as `null`.
+ */
 public interface EventSink : Attached {
-    /** Raises one occurrence: the bytes from [bytes]' position to its limit. */
-    public fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer)
+    /**
+     * Raises one occurrence: the bytes from [bytes]' position to its limit,
+     * with the sender's [trace] context or `null`.
+     */
+    public fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?)
 }
 
-/** Calls, consumer side. `ridl_rt::port::Caller`. */
+/**
+ * Calls, consumer side. `ridl_rt::port::Caller`.
+ *
+ * The delivery contract of the trace context (ADR-0021 decision 21): a
+ * runtime that carries it delivers, on the [Claim] a command or a query
+ * produces, and on the [ReadError.ShortClaim] that offers it, the value its
+ * sender passed, unchanged; a runtime or transport that does not carry it
+ * delivers `null`; and a sender's `null` is delivered as `null`.
+ */
 public interface Caller : Attached {
-    /** Sends a command and returns the correlation of its outcome. */
-    public fun command(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer): Correlation
+    /** Sends a command, with the sender's [trace] context or `null`, and returns the correlation of its outcome. */
+    public fun command(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer, trace: TraceContext?): Correlation
 
-    /** Sends a query and returns the correlation of its reply. */
-    public fun query(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer): Correlation
+    /** Sends a query, with the sender's [trace] context or `null`, and returns the correlation of its reply. */
+    public fun query(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer, trace: TraceContext?): Correlation
 
     /**
      * A command's delivery acknowledgment (ridl §6.1), once it is known: a
@@ -195,6 +217,8 @@ public data class Claim(
     public val ord: Ordinal,
     /** The caller's timestamp and sequence number. */
     public val envelope: Envelope,
+    /** The trace context the call was sent with, under the delivery contract of [Caller]. */
+    public val trace: TraceContext?,
     /** The time left before the response bound passes. `null` when the call has no response bound (ridl §9.3). */
     public val remaining: Duration?,
     /** The number of argument bytes copied into `out`. */
@@ -334,9 +358,11 @@ public sealed class ReadError(message: String) : RidlError(message) {
      * settles it `CallError.Transport(Transport.Corrupt)`, because arguments
      * that do not fit the serving interface's `MAX_BUFFER_SIZE` are not a
      * well-formed encoding of any of its members (ADR-0021 decision 5,
-     * amended 2026-09-28).
+     * amended 2026-09-28). [trace] is the context the call was sent with,
+     * under the delivery contract of [Caller], so that a provider that settles
+     * the claim unread still has it.
      */
-    public data class ShortClaim(public val claim: ClaimId, public val needed: Int) :
+    public data class ShortClaim(public val claim: ClaimId, public val needed: Int, public val trace: TraceContext?) :
         ReadError("claim ${claim.value} needs $needed bytes")
 
     /** `samples` has fewer entries than `ords`. Nothing was consumed. */

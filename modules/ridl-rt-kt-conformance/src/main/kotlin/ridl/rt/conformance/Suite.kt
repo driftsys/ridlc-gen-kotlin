@@ -7,10 +7,11 @@
 // [Factory], the one thing a runtime writes to run them. A runtime runs the
 // whole suite from its own tests with [suite], and the tests of the
 // extensions it implements with [scannableSuite], [coherentSuite] and
-// [wakeableSuite]:
+// [wakeableSuite], and, when it carries the trace context, [traceSuite]:
 //
 //     @TestFactory fun ports() = suite(MyFactory)
 //     @TestFactory fun scannable() = scannableSuite(MyFactory)
+//     @TestFactory fun trace() = traceSuite(MyFactory)
 //
 // What the suite leaves out is the crate documentation's list, unchanged: what
 // the port contract leaves to a runtime (where the clock starts, what `advance`
@@ -140,7 +141,7 @@ public abstract class Contract<R>(protected val factory: Factory<R>)
      * correlations in send order. [rt] must serve `IFACE`/`ORD` already.
      */
     protected fun fill(rt: R): List<Correlation> = List(factory.slots) {
-        val c = rt.command(IFACE, ORD, bytes(1))
+        val c = rt.command(IFACE, ORD, bytes(1), null)
         val claim = checkNotNull(rt.nextClaim(out(8))) { "the call just sent" }
         rt.settle(claim.id, Result.success(bytes()))
         c
@@ -218,3 +219,14 @@ public fun <R> wakeableSuite(factory: Factory<R>): List<DynamicTest>
     where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
           R : Handler, R : Wakeable =
     WakeableContract(factory).dynamicTests()
+
+/**
+ * The tests of a runtime that carries the trace context: `suite!(F; trace)`.
+ * `trace` is not an interface: it asks for nothing beyond the base arm. A
+ * runtime that does not carry the context delivers `null` (ADR-0021 decision
+ * 21, rule 3) and does not run it.
+ */
+public fun <R> traceSuite(factory: Factory<R>): List<DynamicTest>
+    where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
+          R : Handler =
+    TraceContract(factory).dynamicTests()

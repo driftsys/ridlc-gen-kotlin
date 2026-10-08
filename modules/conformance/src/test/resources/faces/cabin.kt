@@ -130,6 +130,26 @@ fun probe(): List<String> {
         }
     }
 
+    // ridl 0.6.0 (driftsys/ridl#752): the face sends no trace context yet, so
+    // over a runtime that carries one, its calls and raises arrive with none.
+    Loopback(Cabin.catalog).let { fresh ->
+        fresh.subscribe(Cabin.number, listOf(Ordinal(2u)))
+        fresh.serve(Cabin.number, listOf(Ordinal(3u), Ordinal(4u)))
+        CabinPublisher(fresh).warning(Warning(Level.of(1), Health.OK))
+        CabinPollClient(fresh).run {
+            setLevel(Level.of(1))
+            average(Window.of(1))
+        }
+        val out = ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)
+        expectEqual("a raise from the face carries no trace context", null, fresh.next(out)?.trace)
+        repeat(2) {
+            out.clear()
+            val claim = fresh.nextClaim(out)
+            expect("a call from the face is claimed", claim != null)
+            expectEqual("a call from the face carries no trace context", null, claim?.trace)
+        }
+    }
+
     // An event: subscribed, raised, received; a corrupt and an invalid occurrence.
     expect("nothing is waiting before a subscription", client.nextEvent() == null)
     client.subscribeWarning()
@@ -139,11 +159,11 @@ fun probe(): List<String> {
         is Cabin.Event.Warning -> expectEqual("an event round-trips", Result.success(warning), event.occurrence.payload)
         null -> failures += "a raised event is received"
     }
-    rt.raise(Cabin.number, Ordinal(2u), corrupt)
+    rt.raise(Cabin.number, Ordinal(2u), corrupt, null)
     (client.nextEvent() as? Cabin.Event.Warning).let {
         expectEqual("a corrupt occurrence is detected", Result.failure<Warning>(Detection.Corrupt), it?.occurrence?.payload)
     }
-    rt.raise(Cabin.number, Ordinal(2u), patched(bytes(WarningCodec, Warning(Level.of(100), Health.OK)), 100, 101))
+    rt.raise(Cabin.number, Ordinal(2u), patched(bytes(WarningCodec, Warning(Level.of(100), Health.OK)), 100, 101), null)
     (client.nextEvent() as? Cabin.Event.Warning).let {
         expectEqual(
             "an occurrence that breaks a constraint is detected",
@@ -179,20 +199,20 @@ fun probe(): List<String> {
     }
     val before = provider.levels.size
     settled("a failing require on the provider side", Contract.PreconditionFailed, {
-        rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(100)))
+        rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(100)), null)
     }, false)
     settled("a failing require of a query", Contract.PreconditionFailed, {
-        rt.query(Cabin.number, Ordinal(4u), bytes(WindowCodec, Window.of(0)))
+        rt.query(Cabin.number, Ordinal(4u), bytes(WindowCodec, Window.of(0)), null)
     }, true)
-    settled("a corrupt argument buffer", Transport.Corrupt, { rt.command(Cabin.number, Ordinal(3u), corrupt) }, false)
+    settled("a corrupt argument buffer", Transport.Corrupt, { rt.command(Cabin.number, Ordinal(3u), corrupt, null) }, false)
     settled("an argument that breaks its constraint", Contract.InvalidValue(Violation("Level", Rule.Range)), {
-        rt.command(Cabin.number, Ordinal(3u), patched(bytes(LevelCodec, Level.of(100)), 100, 101))
+        rt.command(Cabin.number, Ordinal(3u), patched(bytes(LevelCodec, Level.of(100)), 100, 101), null)
     }, false)
     settled("an unknown ordinal", Contract.UnknownInteraction, {
-        rt.command(Cabin.number, Ordinal(9u), bytes(LevelCodec, Level.of(1)))
+        rt.command(Cabin.number, Ordinal(9u), bytes(LevelCodec, Level.of(1)), null)
     }, false)
     settled("another interface's number", Contract.UnknownInteraction, {
-        rt.command(InterfaceNo(7u), Ordinal(3u), bytes(LevelCodec, Level.of(1)))
+        rt.command(InterfaceNo(7u), Ordinal(3u), bytes(LevelCodec, Level.of(1)), null)
     }, false)
     expectEqual("no refused call reached the provider", before, provider.levels.size)
 
@@ -208,8 +228,8 @@ fun probe(): List<String> {
     // driftsys/ridl#569: a claim whose arguments exceed MAX_BUFFER_SIZE comes
     // back as ReadError.ShortClaim. dispatch settles it Corrupt unread, counts
     // it, and serves the claim behind it; only a raw Caller can send one.
-    val oversized = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1))
-    val behind = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(3)))
+    val oversized = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1), null)
+    val behind = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(3)), null)
     val served = provider.levels.size
     expectEqual("an oversized claim and the one behind it are both settled", 2, Cabin.dispatch(rt, provider, buffer))
     expectEqual("the oversized claim is settled Corrupt", Result.failure<Unit>(Transport.Corrupt), rt.ack(oversized))
@@ -219,8 +239,8 @@ fun probe(): List<String> {
     // A refused settlement of an oversized claim, with any SettleError, ends
     // the pass at once: the runtime keeps that claim the next one.
     for (refusal in listOf(ridl.rt.port.SettleError.UnknownClaim, ridl.rt.port.SettleError.TooLarge(0))) {
-        val big = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1))
-        val next = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(4)))
+        val big = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1), null)
+        val next = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(4)), null)
         var reads = 0
         var settles = 0
         val refusing = object : ridl.rt.port.Handler by rt {
@@ -248,7 +268,7 @@ fun probe(): List<String> {
     // driftsys/ridl#568: dispatch takes at most `budget` claims, and says
     // when it stopped at that bound.
     Loopback(Cabin.catalog).let { fresh ->
-        val queued = List(5) { fresh.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(2))) }
+        val queued = List(5) { fresh.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(2)), null) }
         var spent = 0
         expectEqual("a pass takes at most its budget", 3, Cabin.dispatch(fresh, provider, buffer, budget = 3) { spent += 1 })
         expectEqual("and says it stopped at the bound", 1, spent)

@@ -58,6 +58,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`an injected settle failure is not spent on an unknown claim`,
         ::`a handler cannot settle another handlers claim`,
         ::`two handlers each receive only what they served`,
+        ::`a call sent without a context arrives without one`,
     )
 
     private fun ok(vararg values: Int): Result<ByteBuffer> = Result.success(bytes(*values))
@@ -74,7 +75,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `a command is delivered and acknowledged`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3))
+        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3), null)
         assertNull(rt.ack(correlation), "not yet settled")
 
         val buf = out(8)
@@ -94,7 +95,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `a query is delivered and replied`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.query(IFACE, ORD, bytes(9))
+        val correlation = rt.query(IFACE, ORD, bytes(9), null)
 
         val buf = out(8)
         val claim = rt.claim(buf)
@@ -117,7 +118,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `settle can be made to fail once then succeed`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1))
+        val correlation = rt.command(IFACE, ORD, bytes(1), null)
         val claim = rt.claim()
 
         factory.failNextSettle(rt)
@@ -139,8 +140,8 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         val second = factory.caller(rt)
         rt.serve(IFACE, listOf(ORD))
 
-        val a = rt.command(IFACE, ORD, bytes(1))
-        val b = second.command(IFACE, ORD, bytes(2))
+        val a = rt.command(IFACE, ORD, bytes(1), null)
+        val b = second.command(IFACE, ORD, bytes(2), null)
         assertNotEquals(a, b, "the correlations are distinct")
 
         var buf = out(8)
@@ -163,8 +164,8 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `a caller sequence number counts that caller calls`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        rt.command(IFACE, ORD, bytes(1))
-        rt.query(IFACE, ORD, bytes(2))
+        rt.command(IFACE, ORD, bytes(1), null)
+        rt.query(IFACE, ORD, bytes(2), null)
 
         assertEquals(1uL, rt.claim().envelope.seq)
         assertEquals(2uL, rt.claim().envelope.seq, "a command and a query share one counter")
@@ -174,7 +175,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `a settled outcome reports the contract error the provider settled`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1))
+        val correlation = rt.command(IFACE, ORD, bytes(1), null)
         rt.settle(rt.claim().id, Result.failure(ContractError.PreconditionFailed))
         assertEquals(Result.failure<Unit>(ContractError.PreconditionFailed), rt.ack(correlation))
     }
@@ -183,7 +184,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `a claim is presented once and settled once`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        rt.command(IFACE, ORD, bytes(1))
+        rt.command(IFACE, ORD, bytes(1), null)
         val claim = rt.claim()
         assertNull(rt.nextClaim(out(8)), "the claim is presented once")
 
@@ -203,10 +204,11 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `an oversized claim is reported with its id and is not consumed`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3))
+        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3), null)
 
         val unread = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) }
         assertEquals(3, unread.needed, "the bytes the arguments need")
+        assertNull(unread.trace, "a call sent without a context")
         assertEquals(
             unread,
             assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) },
@@ -230,7 +232,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `an unread claim is settled by its id`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3))
+        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3), null)
 
         val claim = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) }.claim
         rt.settle(claim, Result.failure(Transport.Corrupt))
@@ -251,12 +253,12 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `the calls behind an oversized claim are presented once it is settled`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val oversized = rt.command(IFACE, ORD, bytes(1, 2, 3))
-        val behind = rt.command(IFACE, ORD, bytes(4))
+        val oversized = rt.command(IFACE, ORD, bytes(1, 2, 3), null)
+        val behind = rt.command(IFACE, ORD, bytes(4), null)
 
         val first = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(2)) }.claim
         assertEquals(
-            ReadError.ShortClaim(first, 3),
+            ReadError.ShortClaim(first, 3, null),
             assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(2)) },
             "the oversized call stays the next one until it is settled",
         )
@@ -276,7 +278,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `forget releases a settled correlation`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1))
+        val correlation = rt.command(IFACE, ORD, bytes(1), null)
         rt.settle(rt.claim().id, ok())
         assertEquals(Result.success(Unit), rt.ack(correlation))
 
@@ -296,7 +298,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `forget before the claim is presented withdraws or leaves the call`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1))
+        val correlation = rt.command(IFACE, ORD, bytes(1), null)
         rt.forget(correlation)
 
         val buf = out(8)
@@ -316,7 +318,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     private fun sendsUntilBusy(caller: Caller): Int {
         for (sent in 0..factory.slots) {
             try {
-                caller.command(IFACE, ORD, bytes(2))
+                caller.command(IFACE, ORD, bytes(2), null)
             } catch (_: SendError.Busy) {
                 return sent
             }
@@ -341,21 +343,21 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         val mine = mutableListOf<Correlation>()
         val theirs = mutableListOf<Correlation>()
         repeat(factory.slots) { n ->
-            if (n % 2 == 0) mine += rt.command(IFACE, ORD, bytes(1)) else theirs += second.command(IFACE, ORD, bytes(1))
+            if (n % 2 == 0) mine += rt.command(IFACE, ORD, bytes(1), null) else theirs += second.command(IFACE, ORD, bytes(1), null)
             rt.settle(rt.claim().id, ok())
         }
 
-        assertThrows<SendError.Busy> { rt.command(IFACE, ORD, bytes(2)) }
-        assertThrows<SendError.Busy> { rt.query(IFACE, ORD, bytes(2)) }
-        assertThrows<SendError.Busy>("the table is the runtime's, shared by every caller") { second.command(IFACE, ORD, bytes(2)) }
+        assertThrows<SendError.Busy> { rt.command(IFACE, ORD, bytes(2), null) }
+        assertThrows<SendError.Busy> { rt.query(IFACE, ORD, bytes(2), null) }
+        assertThrows<SendError.Busy>("the table is the runtime's, shared by every caller") { second.command(IFACE, ORD, bytes(2), null) }
 
         mine.forEach { assertEquals(Result.success(Unit), rt.ack(it)) }
         theirs.forEach { assertEquals(Result.success(Unit), second.ack(it)) }
-        assertThrows<SendError.Busy>("reading an outcome frees no slot") { second.command(IFACE, ORD, bytes(2)) }
+        assertThrows<SendError.Busy>("reading an outcome frees no slot") { second.command(IFACE, ORD, bytes(2), null) }
 
         rt.forget(mine[0])
-        second.command(IFACE, ORD, bytes(3))
-        assertThrows<SendError.Busy>("and the table is full again") { rt.command(IFACE, ORD, bytes(4)) }
+        second.command(IFACE, ORD, bytes(3), null)
+        assertThrows<SendError.Busy>("and the table is full again") { rt.command(IFACE, ORD, bytes(4), null) }
     }
 
     /** After its slot is reclaimed and taken by a new call, an old correlation answers `null`, and forgetting it again leaves the new call alone. */
@@ -365,7 +367,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         val old = fill(rt)[0]
         rt.forget(old)
 
-        val new = rt.query(IFACE, ORD, bytes(2))
+        val new = rt.query(IFACE, ORD, bytes(2), null)
         assertNotEquals(old, new, "the slot is taken under a new correlation")
         rt.settle(rt.claim().id, ok(8, 8))
 
@@ -381,7 +383,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `forget between the claim and the settlement leaves the settlement valid`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.query(IFACE, ORD, bytes(1))
+        val correlation = rt.query(IFACE, ORD, bytes(1), null)
         val claim = rt.claim()
         rt.forget(correlation)
 
@@ -398,7 +400,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `forget between the offer and the settlement leaves the settlement valid`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3))
+        val correlation = rt.command(IFACE, ORD, bytes(1, 2, 3), null)
         val claim = assertThrows<ReadError.ShortClaim> { rt.nextClaim(out(1)) }.claim
         rt.forget(correlation)
 
@@ -415,7 +417,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `a claim that was never presented cannot be settled`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val correlation = rt.command(IFACE, ORD, bytes(1))
+        val correlation = rt.command(IFACE, ORD, bytes(1), null)
         assertThrows<SettleError.UnknownClaim> { rt.settle(ClaimId(correlation.value), ok()) }
         assertNull(rt.ack(correlation), "and nothing was acknowledged")
 
@@ -432,8 +434,8 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `an injected settle failure is not spent on an unknown claim`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        rt.command(IFACE, ORD, bytes(1))
-        rt.command(IFACE, ORD, bytes(2))
+        rt.command(IFACE, ORD, bytes(1), null)
+        rt.command(IFACE, ORD, bytes(2), null)
         val settled = rt.claim()
         val claim = rt.claim()
         rt.settle(settled.id, ok())
@@ -452,7 +454,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         rt.serve(IFACE, listOf(ORD))
         second.serve(InterfaceNo(2u), listOf(ORD))
 
-        val correlation = rt.command(IFACE, ORD, bytes(1))
+        val correlation = rt.command(IFACE, ORD, bytes(1), null)
         val claim = rt.claim()
 
         assertThrows<SettleError.UnknownClaim>("the claim is not the second handler's to settle") {
@@ -476,8 +478,8 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         rt.serve(IFACE, listOf(ORD))
         second.serve(InterfaceNo(2u), listOf(ORD))
 
-        rt.command(InterfaceNo(2u), ORD, bytes(7))
-        rt.command(IFACE, ORD, bytes(8))
+        rt.command(InterfaceNo(2u), ORD, bytes(7), null)
+        rt.command(IFACE, ORD, bytes(8), null)
 
         var buf = out(8)
         assertEquals(IFACE, rt.claim(buf).iface, "the call the first handler served")
@@ -489,5 +491,19 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
         assertNull(rt.nextClaim(out(8)), "neither handler consumed the other's call")
         assertNull(second.nextClaim(out(8)))
+    }
+
+    /** A command and a query sent without a trace context arrive without one. */
+    public fun `a call sent without a context arrives without one`() {
+        val rt = runtime()
+        rt.serve(IFACE, listOf(ORD))
+
+        rt.command(IFACE, ORD, bytes(1), null)
+        val command = rt.claim()
+        assertNull(command.trace, "the command")
+        rt.settle(command.id, ok())
+
+        rt.query(IFACE, ORD, bytes(2), null)
+        assertNull(rt.claim().trace, "the query")
     }
 }

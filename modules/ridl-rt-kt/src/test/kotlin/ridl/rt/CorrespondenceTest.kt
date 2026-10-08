@@ -67,6 +67,9 @@ import ridl.rt.sample.Occurrence
 import ridl.rt.sample.Provenance
 import ridl.rt.sample.Sample
 import ridl.rt.sample.Timestamp
+import ridl.rt.trace.AlreadySet
+import ridl.rt.trace.Propagation
+import ridl.rt.trace.TraceContext
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
 
@@ -226,7 +229,7 @@ class CorrespondenceTest {
             "ridl_rt::port::EventSource", EventSource::class,
             members = listOf("subscribe", "unsubscribe", "next"), extends = listOf(Attached::class),
         ),
-        Row("ridl_rt::port::RawOccurrence", RawOccurrence::class, members = listOf("iface", "ord", "envelope", "len")),
+        Row("ridl_rt::port::RawOccurrence", RawOccurrence::class, members = listOf("iface", "ord", "envelope", "trace", "len")),
         Row("ridl_rt::port::EventSink", EventSink::class, members = listOf("raise"), extends = listOf(Attached::class)),
         Row(
             "ridl_rt::port::Caller", Caller::class,
@@ -239,7 +242,7 @@ class CorrespondenceTest {
         ),
         Row(
             "ridl_rt::port::Claim", Claim::class,
-            members = listOf("id", "iface", "ord", "envelope", "remaining", "len"),
+            members = listOf("id", "iface", "ord", "envelope", "trace", "remaining", "len"),
         ),
         Row("ridl_rt::port::ClaimId", ClaimId::class),
         Row("ridl_rt::port::FixedReader", FixedReader::class, members = listOf("read_fixed"), extends = listOf(Attached::class)),
@@ -265,6 +268,10 @@ class CorrespondenceTest {
         Row("ridl_rt::port::SubscribeError", SubscribeError::class, variants = listOf("Contract", "Detached")),
         Row("ridl_rt::port::ServeError", ServeError::class, variants = listOf("Contract", "NotOwner", "Detached")),
         Row("ridl_rt::port::SettleError", SettleError::class, variants = listOf("UnknownClaim", "TooLarge", "Detached")),
+        // trace
+        Row("ridl_rt::trace::TraceContext", TraceContext::class, members = listOf("trace_id", "span_id", "flags")),
+        Row("ridl_rt::trace::Propagation", Propagation::class, members = listOf("current", "enter", "leave")),
+        Row("ridl_rt::trace::AlreadySet", AlreadySet::class),
         // task
         Row("ridl_rt::task::WakeFlag", ridl.rt.task.WakeFlag::class, members = listOf("take")),
     )

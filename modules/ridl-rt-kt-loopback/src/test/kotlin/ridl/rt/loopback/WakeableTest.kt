@@ -76,8 +76,8 @@ class WakeableTest {
     @Test
     fun `each settlement wakes only its own calls waiter`() {
         val h = runtime().split()
-        val firstCall = h.caller.command(iface, ord, bytes(1))
-        val secondCall = h.caller.command(iface, ord, bytes(2))
+        val firstCall = h.caller.command(iface, ord, bytes(1), null)
+        val secondCall = h.caller.command(iface, ord, bytes(2), null)
         val first = Count()
         val second = Count()
         h.caller.wakeOn(Interest.Outcome(firstCall), first)
@@ -95,7 +95,7 @@ class WakeableTest {
     @Test
     fun `a waiter registered after the settlement is woken at once`() {
         val h = runtime().split()
-        val c = h.caller.query(iface, ord, bytes(1))
+        val c = h.caller.query(iface, ord, bytes(1), null)
         h.handler.settle(h.handler.nextClaim(out())!!.id, Result.success(bytes(7)))
 
         val count = Count()
@@ -123,7 +123,7 @@ class WakeableTest {
         elsewhere.wakeOn(Interest.Event(iface), otherCount)
         unsubscribed.wakeOn(Interest.Event(iface), none)
 
-        sink.raise(iface, ord, bytes(1))
+        sink.raise(iface, ord, bytes(1), null)
         assertEquals(1, woken.wakes, "the subscribed source is woken")
         assertEquals(0, otherCount.wakes, "a source subscribed to another event is not")
         assertEquals(0, none.wakes, "an unsubscribed source is not")
@@ -135,7 +135,7 @@ class WakeableTest {
         val rt = runtime()
         val source = rt.source()
         source.subscribe(iface2, listOf(ord))
-        rt.sink().raise(iface2, ord, bytes(1))
+        rt.sink().raise(iface2, ord, bytes(1), null)
 
         val count = Count()
         source.wakeOn(Interest.Event(iface), count)
@@ -147,7 +147,7 @@ class WakeableTest {
         val rt = runtime()
         val handler = rt.handler()
         handler.serve(iface2, listOf(ord))
-        rt.caller().command(iface2, ord, bytes(1))
+        rt.caller().command(iface2, ord, bytes(1), null)
 
         val count = Count()
         handler.wakeOn(Interest.Claim(iface), count)
@@ -167,9 +167,9 @@ class WakeableTest {
         otherHandler.serve(iface, listOf(ord))
         elsewhere.serve(iface, listOf(other))
 
-        val kept = caller.command(iface, ord, bytes(1))
+        val kept = caller.command(iface, ord, bytes(1), null)
         val keptClaim = keeper.nextClaim(out())!!
-        caller.command(iface, ord, bytes(2))
+        caller.command(iface, ord, bytes(2), null)
         dropped.nextClaim(out())!!
 
         val first = Count()
@@ -198,12 +198,12 @@ class WakeableTest {
         val sink = rt.sink()
         val source = rt.source()
         source.subscribe(iface, listOf(ord))
-        sink.raise(iface, ord, bytes(1))
+        sink.raise(iface, ord, bytes(1), null)
         val count = Count()
         source.wakeOn(Interest.Event(iface), count)
         assertEquals(1, count.wakes, "an occurrence is waiting")
 
-        sink.raise(iface, ord, bytes(2))
+        sink.raise(iface, ord, bytes(2), null)
         assertEquals(1, count.wakes, "a waker woken at once was not stored")
     }
 
@@ -212,7 +212,7 @@ class WakeableTest {
         // A forgotten call a handler has claimed is still in the call table,
         // but no outcome will be recorded for it.
         val h = runtime().split()
-        val c = h.caller.command(iface, ord, bytes(1))
+        val c = h.caller.command(iface, ord, bytes(1), null)
         h.handler.nextClaim(out())!!
         h.caller.forget(c)
         val count = Count()
@@ -240,11 +240,11 @@ class WakeableTest {
         firstHandler.wakeOn(Interest.Claim(iface), wakers[2])
         secondHandler.wakeOn(Interest.Claim(iface), wakers[3])
 
-        sink.raise(iface, ord, bytes(1))
+        sink.raise(iface, ord, bytes(1), null)
         assertEquals(1, wakers[0].wakes, "the first source")
         assertEquals(1, wakers[1].wakes, "the second source")
 
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         assertEquals(1, wakers[2].wakes, "the first handler")
         assertEquals(1, wakers[3].wakes, "the second handler")
     }
@@ -254,7 +254,7 @@ class WakeableTest {
         val rt = runtime()
         val handler = rt.handler()
         handler.serve(iface, listOf(other))
-        rt.caller().command(iface, ord, bytes(1))
+        rt.caller().command(iface, ord, bytes(1), null)
         val count = Count()
         handler.wakeOn(Interest.Claim(iface), count)
         assertEquals(0, count.wakes, "the waiting call is not this handler's")
@@ -280,9 +280,9 @@ class WakeableTest {
         first.serve(iface, listOf(ord))
         second.serve(iface, listOf(ord))
 
-        val c = caller.command(iface, ord, bytes(1))
+        val c = caller.command(iface, ord, bytes(1), null)
         first.nextClaim(out())!!
-        val later = caller.command(iface, ord, bytes(2))
+        val later = caller.command(iface, ord, bytes(2), null)
         first.nextClaim(out())!!
         assertNull(second.nextClaim(out()), "both calls are held by the first handler")
         val count = Count()
@@ -315,7 +315,7 @@ class WakeableTest {
     private fun sendsUntilBusy(caller: ridl.rt.port.Caller): Int {
         for (sent in 0..Loopback.SLOTS) {
             try {
-                caller.command(iface, ord, bytes(9))
+                caller.command(iface, ord, bytes(9), null)
             } catch (_: SendError.Busy) {
                 return sent
             }
@@ -341,7 +341,7 @@ class WakeableTest {
         val caller = rt.caller()
         val handler = rt.handler()
         handler.serve(iface, listOf(ord))
-        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        val c = caller.command(iface, ord, bytes(1, 2, 3), null)
         val claim = offer(handler)
         caller.forget(c)
 
@@ -367,7 +367,7 @@ class WakeableTest {
         val second = rt.handler()
         first.serve(iface, listOf(ord))
         second.serve(iface, listOf(ord))
-        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        val c = caller.command(iface, ord, bytes(1, 2, 3), null)
         val claim = offer(first)
         // Registered while the offered call is already waiting, so the
         // registration is woken at once; the count is read before the close
@@ -398,7 +398,7 @@ class WakeableTest {
         val second = rt.handler()
         first.serve(iface, listOf(ord))
         second.serve(iface, listOf(ord))
-        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        val c = caller.command(iface, ord, bytes(1, 2, 3), null)
         offer(first)
         caller.forget(c)
 
@@ -420,7 +420,7 @@ class WakeableTest {
         val second = rt.handler()
         first.serve(iface, listOf(ord))
         second.serve(iface, listOf(ord))
-        val c = caller.command(iface, ord, bytes(1, 2, 3))
+        val c = caller.command(iface, ord, bytes(1, 2, 3), null)
         val claim = offer(first)
 
         val taken = checkNotNull(second.nextClaim(out())) { "an offered call can be taken by another serving handler" }
@@ -446,7 +446,7 @@ class WakeableTest {
         serving.wakeOn(Interest.Claim(iface), woken)
         elsewhere.wakeOn(Interest.Claim(iface), otherCount)
 
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         assertEquals(1, woken.wakes, "the serving handler is woken")
         assertEquals(0, otherCount.wakes, "a handler serving another member is not")
         assertNotNull(serving.nextClaim(out()))
@@ -460,7 +460,7 @@ class WakeableTest {
         handler.serve(iface, listOf(other))
         val count = Count()
         handler.wakeOn(Interest.Claim(iface), count)
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         assertEquals(0, count.wakes, "the handler does not serve the member")
 
         handler.serve(iface, listOf(ord))
@@ -490,12 +490,12 @@ class WakeableTest {
         caller.wakeOn(Interest.Slot, slot)
         assertEquals(1, slot.wakes, "a slot is free")
 
-        sink.raise(iface, ord, bytes(1))
+        sink.raise(iface, ord, bytes(1), null)
         val event = Count()
         source.wakeOn(Interest.Event(iface), event)
         assertEquals(1, event.wakes, "an occurrence is waiting")
 
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         val claim = Count()
         handler.wakeOn(Interest.Claim(iface), claim)
         assertEquals(1, claim.wakes, "a call is waiting")
@@ -510,7 +510,7 @@ class WakeableTest {
     @Test
     fun `a forgotten call wakes its waiter`() {
         val h = runtime().split()
-        val c = h.caller.command(iface, ord, bytes(1))
+        val c = h.caller.command(iface, ord, bytes(1), null)
         val count = Count()
         h.caller.wakeOn(Interest.Outcome(c), count)
         h.caller.forget(c)
@@ -543,13 +543,13 @@ class WakeableTest {
         val rt = runtime()
         val caller = rt.caller()
         val handler = rt.handler()
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         handler.nextClaim(out())!!
         val count = Count()
         handler.wakeOn(Interest.Claim(iface), count)
         handler.close()
         assertEquals(0, count.wakes, "the returned claim does not wake it")
-        caller.command(iface, ord, bytes(2))
+        caller.command(iface, ord, bytes(2), null)
         assertEquals(0, count.wakes, "nothing wakes a closed handler's waker")
     }
 
@@ -562,7 +562,7 @@ class WakeableTest {
         val count = Count()
         source.wakeOn(Interest.Event(iface), count)
         source.close()
-        sink.raise(iface, ord, bytes(1))
+        sink.raise(iface, ord, bytes(1), null)
         assertEquals(0, count.wakes, "nothing wakes a closed source's waker")
     }
 
@@ -571,8 +571,8 @@ class WakeableTest {
         val rt = runtime()
         val caller = rt.caller()
         val handler = rt.handler()
-        val command = caller.command(iface, ord, bytes(1))
-        val query = caller.query(iface, ord, bytes(2))
+        val command = caller.command(iface, ord, bytes(1), null)
+        val query = caller.query(iface, ord, bytes(2), null)
         while (true) {
             val claim = handler.nextClaim(out()) ?: break
             handler.settle(claim.id, Result.failure(Transport.Busy))
@@ -588,9 +588,9 @@ class WakeableTest {
         val first = rt.handler()
         val second = rt.handler()
 
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         first.nextClaim(out())!!
-        caller.command(iface, ord, bytes(2))
+        caller.command(iface, ord, bytes(2), null)
         first.close()
 
         val buf = out()
@@ -608,12 +608,12 @@ class WakeableTest {
         val first = rt.handler()
         val second = rt.handler()
 
-        val old = caller.command(iface, ord, bytes(0))
+        val old = caller.command(iface, ord, bytes(0), null)
         first.settle(first.nextClaim(out())!!.id, ok())
         caller.forget(old)
 
-        val reused = caller.command(iface, ord, bytes(1))
-        val fresh = caller.command(iface, ord, bytes(2))
+        val reused = caller.command(iface, ord, bytes(1), null)
+        val fresh = caller.command(iface, ord, bytes(2), null)
         assertTrue(reused.value > fresh.value, "the reused slot's correlation is the larger one")
         first.nextClaim(out())!!
         first.close()
@@ -630,7 +630,7 @@ class WakeableTest {
 
     /** Sends `Loopback.SLOTS` commands through [caller], which fills the table. */
     private fun fill(caller: ridl.rt.port.Caller): List<Correlation> =
-        List(Loopback.SLOTS) { caller.command(iface, ord, bytes(it)) }
+        List(Loopback.SLOTS) { caller.command(iface, ord, bytes(it), null) }
 
     @Test
     fun `the seventeenth in flight call is busy`() {
@@ -641,17 +641,17 @@ class WakeableTest {
         val handler = rt.handler()
         val calls = fill(caller)
 
-        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99)) }
-        assertThrows<SendError.Busy> { caller.query(iface, ord, bytes(99)) }
-        assertThrows<SendError.Busy>("the table is the runtime's, shared by every caller") { other.command(iface, ord, bytes(99)) }
+        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99), null) }
+        assertThrows<SendError.Busy> { caller.query(iface, ord, bytes(99), null) }
+        assertThrows<SendError.Busy>("the table is the runtime's, shared by every caller") { other.command(iface, ord, bytes(99), null) }
 
         handler.settle(handler.nextClaim(out())!!.id, ok())
         assertEquals(Result.success(Unit), caller.ack(calls[0]))
-        assertThrows<SendError.Busy>("a settled call keeps its slot until it is forgotten") { caller.command(iface, ord, bytes(99)) }
+        assertThrows<SendError.Busy>("a settled call keeps its slot until it is forgotten") { caller.command(iface, ord, bytes(99), null) }
 
         caller.forget(calls[0])
-        other.command(iface, ord, bytes(99))
-        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(100)) }
+        other.command(iface, ord, bytes(99), null)
+        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(100), null) }
     }
 
     @Test
@@ -660,7 +660,7 @@ class WakeableTest {
         val caller = rt.caller()
         val handler = rt.handler()
         val calls = fill(caller)
-        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99)) }
+        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99), null) }
 
         var last = 0uL
         repeat(calls.size) {
@@ -669,7 +669,7 @@ class WakeableTest {
             handler.settle(claim.id, ok())
         }
         caller.forget(calls[0])
-        caller.command(iface, ord, bytes(99))
+        caller.command(iface, ord, bytes(99), null)
         assertEquals(last + 1u, handler.nextClaim(out())!!.envelope.seq, "nothing was sent, so no number was used")
     }
 
@@ -687,11 +687,11 @@ class WakeableTest {
         assertArrayEquals(byteArrayOf(0), buf.written(), "the claim is calls[0]")
         caller.forget(calls[0])
         assertEquals(0, count.wakes, "the claimed call still holds its slot")
-        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99)) }
+        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99), null) }
 
         handler.settle(claim.id, ok())
         assertEquals(1, count.wakes, "its settlement reclaims the slot")
-        caller.command(iface, ord, bytes(99))
+        caller.command(iface, ord, bytes(99), null)
     }
 
     @Test
@@ -703,15 +703,15 @@ class WakeableTest {
         val caller = rt.caller()
         val handler = rt.handler()
         handler.serve(iface, listOf(ord))
-        val calls = List(Loopback.SLOTS) { caller.command(iface, other, bytes(it)) }
-        assertThrows<SendError.Busy> { caller.command(iface, other, bytes(99)) }
+        val calls = List(Loopback.SLOTS) { caller.command(iface, other, bytes(it), null) }
+        assertThrows<SendError.Busy> { caller.command(iface, other, bytes(99), null) }
         val count = Count()
         caller.wakeOn(Interest.Slot, count)
 
         calls.forEach(caller::forget)
         assertEquals(1, count.wakes, "the withdrawal reclaimed a slot")
-        repeat(Loopback.SLOTS) { caller.command(iface, other, bytes(it)) }
-        assertThrows<SendError.Busy> { caller.command(iface, other, bytes(99)) }
+        repeat(Loopback.SLOTS) { caller.command(iface, other, bytes(it), null) }
+        assertThrows<SendError.Busy> { caller.command(iface, other, bytes(99), null) }
     }
 
     @Test
@@ -723,8 +723,8 @@ class WakeableTest {
         val count = Count()
         handler.wakeOn(Interest.Claim(iface), count)
 
-        val withdrawn = caller.command(iface, ord, bytes(1))
-        val kept = caller.command(iface, ord, bytes(2))
+        val withdrawn = caller.command(iface, ord, bytes(1), null)
+        val kept = caller.command(iface, ord, bytes(2), null)
         caller.forget(withdrawn)
 
         handler.serve(iface, listOf(ord))
@@ -742,9 +742,9 @@ class WakeableTest {
         val rt = runtime()
         val caller = rt.caller()
         val handler = rt.handler()
-        caller.command(iface, ord, bytes(1))
-        val middle = caller.command(iface, ord, bytes(2))
-        caller.command(iface, ord, bytes(3))
+        caller.command(iface, ord, bytes(1), null)
+        val middle = caller.command(iface, ord, bytes(2), null)
+        caller.command(iface, ord, bytes(3), null)
         caller.forget(middle)
 
         handler.serve(iface, listOf(ord))
@@ -761,7 +761,7 @@ class WakeableTest {
         val rt = runtime()
         val caller = rt.caller()
         val handler = rt.handler()
-        val c = caller.command(iface, ord, bytes(1))
+        val c = caller.command(iface, ord, bytes(1), null)
         handler.nextClaim(out())!!
         val count = Count()
         caller.wakeOn(Interest.Outcome(c), count)
@@ -776,11 +776,11 @@ class WakeableTest {
         val rt = runtime()
         val caller = rt.caller()
         val handler = rt.handler()
-        val old = caller.command(iface, ord, bytes(1))
+        val old = caller.command(iface, ord, bytes(1), null)
         handler.settle(handler.nextClaim(out())!!.id, ok())
         caller.forget(old)
 
-        val new = caller.command(iface, ord, bytes(2))
+        val new = caller.command(iface, ord, bytes(2), null)
         assertNotEquals(old, new, "the slot is reused under a new generation")
         caller.forget(old)
         val buf = out()
@@ -799,22 +799,22 @@ class WakeableTest {
         val rt = runtime()
         val caller = rt.caller()
         val handlers = List(Loopback.SLOTS) { n ->
-            val c = caller.command(iface, ord, bytes(n))
+            val c = caller.command(iface, ord, bytes(n), null)
             rt.handler().also { handler ->
                 handler.serve(iface, listOf(ord))
                 handler.nextClaim(out())!!
                 caller.forget(c)
             }
         }
-        assertThrows<SendError.Busy>("a claimed call keeps its slot after its forget") { caller.command(iface, ord, bytes(99)) }
+        assertThrows<SendError.Busy>("a claimed call keeps its slot after its forget") { caller.command(iface, ord, bytes(99), null) }
         val count = Count()
         caller.wakeOn(Interest.Slot, count)
         assertEquals(0, count.wakes, "no slot is free: the waker is stored")
 
         handlers.forEach { it.close() }
         assertEquals(1, count.wakes, "the closes reclaimed the slots")
-        repeat(Loopback.SLOTS) { caller.command(iface, ord, bytes(100 + it)) }
-        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99)) }
+        repeat(Loopback.SLOTS) { caller.command(iface, ord, bytes(100 + it), null) }
+        assertThrows<SendError.Busy> { caller.command(iface, ord, bytes(99), null) }
         val later = rt.handler()
         later.serve(iface, listOf(ord))
         repeat(Loopback.SLOTS) { n ->
@@ -831,14 +831,14 @@ class WakeableTest {
         val caller = rt.caller()
         val handler = rt.handler()
         handler.serve(iface, listOf(other))
-        val c = caller.command(iface, ord, bytes(1))
+        val c = caller.command(iface, ord, bytes(1), null)
         val count = Count()
         handler.wakeOn(Interest.Claim(iface), count)
         assertEquals(0, count.wakes, "no call it serves waits: stored")
 
         caller.forget(c)
         assertEquals(0, count.wakes, "a withdrawal adds no call to claim, so it wakes no claim waiter")
-        caller.command(iface, other, bytes(2))
+        caller.command(iface, other, bytes(2), null)
         assertEquals(1, count.wakes, "the waker was still stored")
     }
 
@@ -848,15 +848,15 @@ class WakeableTest {
         val caller = rt.caller()
         val first = rt.handler()
         first.serve(iface, listOf(ord))
-        val sent = (1..3).map { caller.command(iface, ord, bytes(it)) }
+        val sent = (1..3).map { caller.command(iface, ord, bytes(it), null) }
         repeat(sent.size) { first.nextClaim(out())!! }
-        for (n in 3 until Loopback.SLOTS) caller.command(iface, other, bytes(n))
+        for (n in 3 until Loopback.SLOTS) caller.command(iface, other, bytes(n), null)
         caller.forget(sent[1])
-        assertThrows<SendError.Busy>("the claimed call keeps its slot after its forget") { caller.command(iface, other, bytes(99)) }
+        assertThrows<SendError.Busy>("the claimed call keeps its slot after its forget") { caller.command(iface, other, bytes(99), null) }
 
         first.close()
-        caller.command(iface, other, bytes(99))
-        assertThrows<SendError.Busy>("exactly one slot came back") { caller.command(iface, other, bytes(100)) }
+        caller.command(iface, other, bytes(99), null)
+        assertThrows<SendError.Busy>("exactly one slot came back") { caller.command(iface, other, bytes(100), null) }
         val later = rt.handler()
         later.serve(iface, listOf(ord))
         for (expected in listOf(1, 3)) {
@@ -874,12 +874,12 @@ class WakeableTest {
         val other = rt.caller()
         val first = rt.handler()
         first.serve(iface, listOf(ord))
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         first.nextClaim(out())!!
 
         caller.close()
         first.close()
-        repeat(Loopback.SLOTS) { other.command(iface, ord, bytes(100 + it)) }
+        repeat(Loopback.SLOTS) { other.command(iface, ord, bytes(100 + it), null) }
         val later = rt.handler()
         later.serve(iface, listOf(ord))
         val buf = out()
@@ -895,7 +895,7 @@ class WakeableTest {
         val second = rt.handler()
         first.serve(iface, listOf(ord))
         second.serve(iface, listOf(ord))
-        val c = caller.command(iface, ord, bytes(1))
+        val c = caller.command(iface, ord, bytes(1), null)
         first.nextClaim(out())!!
         val count = Count()
         second.wakeOn(Interest.Claim(iface), count)
@@ -919,7 +919,7 @@ class WakeableTest {
         val count = Count()
         caller.wakeOn(Interest.Slot, count)
         assertEquals(1, count.wakes, "one slot is free")
-        caller.command(iface, ord, bytes(99))
+        caller.command(iface, ord, bytes(99), null)
         caller.wakeOn(Interest.Slot, count)
         assertEquals(1, count.wakes, "the table is full again: stored")
     }
@@ -950,22 +950,22 @@ class WakeableTest {
         fill(caller)
         repeat(8) { handler.settle(handler.nextClaim(out())!!.id, ok()) }
         val held = List(8) { handler.nextClaim(out())!! }
-        assertThrows<SendError.Busy> { other.command(iface, ord, bytes(99)) }
+        assertThrows<SendError.Busy> { other.command(iface, ord, bytes(99), null) }
         val count = Count()
         other.wakeOn(Interest.Slot, count)
 
         caller.close()
         assertEquals(1, count.wakes, "the close reclaimed the settled calls' slots")
-        repeat(8) { other.command(iface, ord, bytes(it)) }
+        repeat(8) { other.command(iface, ord, bytes(it), null) }
         assertThrows<SendError.Busy>("the closed caller's claimed calls keep their slots until settled") {
-            other.command(iface, ord, bytes(99))
+            other.command(iface, ord, bytes(99), null)
         }
 
         // The provider still settles the eight claims it holds; each
         // settlement reclaims a slot, because the close forgot the call.
         held.forEach { handler.settle(it.id, ok()) }
-        repeat(8) { other.command(iface, ord, bytes(it)) }
-        assertThrows<SendError.Busy> { other.command(iface, ord, bytes(99)) }
+        repeat(8) { other.command(iface, ord, bytes(it), null) }
+        assertThrows<SendError.Busy> { other.command(iface, ord, bytes(99), null) }
     }
 
     @Test
@@ -980,8 +980,8 @@ class WakeableTest {
 
         caller.close()
         assertEquals(1, count.wakes, "the close reclaimed the unclaimed calls")
-        repeat(Loopback.SLOTS) { other.command(iface, ord, bytes(100 + it)) }
-        assertThrows<SendError.Busy> { other.command(iface, ord, bytes(99)) }
+        repeat(Loopback.SLOTS) { other.command(iface, ord, bytes(100 + it), null) }
+        assertThrows<SendError.Busy> { other.command(iface, ord, bytes(99), null) }
 
         repeat(Loopback.SLOTS) { n ->
             val buf = out()
@@ -997,8 +997,8 @@ class WakeableTest {
         val first = rt.caller()
         val second = rt.caller()
         val handler = rt.handler()
-        first.command(iface, ord, bytes(1))
-        val theirs = second.command(iface, ord, bytes(2))
+        first.command(iface, ord, bytes(1), null)
+        val theirs = second.command(iface, ord, bytes(2), null)
         while (true) handler.settle((handler.nextClaim(out()) ?: break).id, ok())
 
         first.close()
@@ -1009,7 +1009,7 @@ class WakeableTest {
     fun `a dropped callers call in flight wakes its outcome waiter`() {
         val rt = runtime()
         val caller = rt.caller()
-        val c = caller.command(iface, ord, bytes(1))
+        val c = caller.command(iface, ord, bytes(1), null)
         val count = Count()
         caller.wakeOn(Interest.Outcome(c), count)
         assertEquals(0, count.wakes, "the call is in flight")
@@ -1045,7 +1045,7 @@ class WakeableTest {
         handler.serve(iface, listOf(ord))
         assertEquals(0, count.wakes, "nothing is waiting")
 
-        caller.command(iface, ord, bytes(1))
+        caller.command(iface, ord, bytes(1), null)
         assertEquals(1, count.wakes, "the waker is still stored, so the send wakes it")
     }
 
@@ -1053,7 +1053,7 @@ class WakeableTest {
     fun `the aggregate routes each key to the handle that observes it`() {
         val rt = runtime()
 
-        val c = rt.command(iface, ord, bytes(1))
+        val c = rt.command(iface, ord, bytes(1), null)
         val outcome = Count()
         rt.wakeOn(Interest.Outcome(c), outcome)
         assertEquals(0, outcome.wakes, "stored, not woken at once")
@@ -1064,13 +1064,13 @@ class WakeableTest {
         val event = Count()
         rt.wakeOn(Interest.Event(iface), event)
         assertEquals(0, event.wakes, "stored, not woken at once")
-        rt.raise(iface, ord, bytes(1))
+        rt.raise(iface, ord, bytes(1), null)
         assertEquals(1, event.wakes, "woken by the raise")
 
         val claim = Count()
         rt.wakeOn(Interest.Claim(iface), claim)
         assertEquals(0, claim.wakes, "stored, not woken at once")
-        rt.caller().command(iface, ord, bytes(1))
+        rt.caller().command(iface, ord, bytes(1), null)
         assertEquals(1, claim.wakes, "woken by the send")
 
         val slot = Count()
@@ -1109,20 +1109,20 @@ class WakeableTest {
         first.serve(iface, listOf(ord))
         second.serve(iface, listOf(other))
 
-        lockProbe(rt).let { (w, d) -> source.wakeOn(Interest.Event(iface), w); sink.raise(iface, ord, bytes(1)); assertReleased(d, "a raise") }
+        lockProbe(rt).let { (w, d) -> source.wakeOn(Interest.Event(iface), w); sink.raise(iface, ord, bytes(1), null); assertReleased(d, "a raise") }
         lockProbe(rt).let { (w, d) -> source.wakeOn(Interest.Event(iface), w); assertReleased(d, "a registration whose key already holds") }
-        lockProbe(rt).let { (w, d) -> first.wakeOn(Interest.Claim(iface), w); caller.command(iface, ord, bytes(1)); assertReleased(d, "a command") }
+        lockProbe(rt).let { (w, d) -> first.wakeOn(Interest.Claim(iface), w); caller.command(iface, ord, bytes(1), null); assertReleased(d, "a command") }
 
         first.nextClaim(out())!!
         val c = lockProbe(rt).let { (w, d) ->
             first.wakeOn(Interest.Claim(iface), w)
-            caller.query(iface, ord, bytes(1)).also { assertReleased(d, "a query") }
+            caller.query(iface, ord, bytes(1), null).also { assertReleased(d, "a query") }
         }
         lockProbe(rt).let { (w, d) -> caller.wakeOn(Interest.Outcome(c), w); caller.forget(c); assertReleased(d, "a forget") }
 
         // No handler had claimed the query, so the forget withdrew it. Another
         // query waits for the second handler's serve.
-        caller.query(iface, ord, bytes(1))
+        caller.query(iface, ord, bytes(1), null)
         lockProbe(rt).let { (w, d) -> second.wakeOn(Interest.Claim(iface), w); second.serve(iface, listOf(ord)); assertReleased(d, "a serve") }
 
         // The second handler takes the query, and its close returns it to the first.
@@ -1139,17 +1139,17 @@ class WakeableTest {
         // forget that withdraws a waiting call.
         first.settle(checkNotNull(first.nextClaim(out())) { "the returned query" }.id, ok())
         val sent = mutableListOf<Correlation>()
-        while (true) sent += try { caller.command(iface, ord, bytes(2)) } catch (_: SendError.Busy) { break }
+        while (true) sent += try { caller.command(iface, ord, bytes(2), null) } catch (_: SendError.Busy) { break }
         first.settle(checkNotNull(first.nextClaim(out())) { "the first command" }.id, ok())
 
         lockProbe(rt).let { (w, d) -> caller.wakeOn(Interest.Slot, w); caller.forget(sent[0]); assertReleased(d, "a forget that reclaims a slot") }
 
-        caller.command(iface, ord, bytes(3))
+        caller.command(iface, ord, bytes(3), null)
         val claim = checkNotNull(first.nextClaim(out())) { "the second command" }
         caller.forget(sent[1])
         lockProbe(rt).let { (w, d) -> caller.wakeOn(Interest.Slot, w); first.settle(claim.id, ok()); assertReleased(d, "a settlement that reclaims a slot") }
 
-        caller.command(iface, ord, bytes(4))
+        caller.command(iface, ord, bytes(4), null)
         lockProbe(rt).let { (w, d) -> caller.wakeOn(Interest.Slot, w); caller.forget(sent[2]); assertReleased(d, "a forget that withdraws an unclaimed call") }
     }
 }
