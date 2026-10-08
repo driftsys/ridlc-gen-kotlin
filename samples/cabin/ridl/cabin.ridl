@@ -6,47 +6,56 @@
 // `ridl build --emit rust`, compiles the emitted crate and a consumer program
 // against it with plain `rustc`, runs the program, and asserts the four round
 // trips. It is the proof that what the CLI writes is a crate an application
-// outside this workspace can link and run, which is what story E11.14 makes
+// outside this workspace can link and run, which `ridl build --emit rust` makes
 // true (driftsys/ridl#444).
 package veh.cabin
 
 /// Cabin air temperature, in degrees.
-type Temperature : integer [-40..85]
+type Temperature: integer [-40..85]
 
 /// A percentage of full scale.
-type Level : integer [0..100]
+type Level: integer [0..100]
 
 /// An averaging window, in milliseconds.
-type Window : integer [0..100000]
+type Window: integer [0..100000]
 
 /// The average a query replies with. Its range is wider than `Level`'s,
 /// so a reply is not constrained to the scale the command takes.
-type Average : integer [0..1000]
+type Average: integer [0..1000]
 
 /// The health of a cabin subsystem.
 enum Health {
-  OK   = 0
+  /// The subsystem works normally.
+  OK = 0
+  /// The subsystem works, with a fault that needs attention.
   WARN = 1
+  /// The subsystem does not work.
   FAIL = 2
 }
 
 /// Raised when a subsystem leaves `OK`.
 struct Warning {
-  code   : Level
-  health : Health
+  /// The warning code, as a percentage of full scale.
+  code: Level
+  /// The health the subsystem moved to.
+  health: Health
 }
 
 /// The cabin's own interface: a signal, an event, a command and a query, so
 /// the proof covers every interaction kind that carries a payload.
 interface Cabin {
-  signal  temperature : Temperature @10ms
-  event   warning     : Warning @[100ms..1s]
+  /// The current cabin air temperature.
+  signal temperature: Temperature @10ms
+  /// Sent when a subsystem leaves `OK`.
+  event warning: Warning @[100ms..1s]
+  /// Sets the cabin level, below 100.
   command setLevel(level: Level) @[..50ms] [
     require level < 100
   ]
-  query   average(window: Window): Average @[..200ms] [
+  /// The average level over the window, in milliseconds.
+  query average(window: Window): Average @[..200ms] [
     require window > 0
-    ensure  result >= 0
+    ensure result >= 0
   ]
 }
 
@@ -54,5 +63,9 @@ interface Cabin {
 /// holds more than one interface module and the per-interface buffer bound is
 /// visibly computed per interface rather than fixed.
 interface Horn {
-  signal active : Health @10ms
+  /// The health of the horn.
+  signal active: Health @10ms
 }
+
+/// The cabin's one service: both interfaces, provided by one component.
+service veh.cabin.control: Cabin, Horn

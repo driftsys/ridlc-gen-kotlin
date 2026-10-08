@@ -1,7 +1,7 @@
 # The `ridl.codegen.v1` schema
 
-`plugin.proto` and `model.proto` are copied unchanged from
-`crates/ridl-ir/proto/ridl/codegen/v1/` of
+`plugin.proto`, `model.proto` and `deployment.proto`, which `plugin.proto`
+imports, are copied unchanged from `crates/ridl-ir/proto/ridl/codegen/v1/` of
 [driftsys/ridl](https://github.com/driftsys/ridl) at the release tag the
 conformance module pins (`modules/conformance/ridl-release`). The conformance
 check `checkSchema` fails when they differ from that tag, so a pin bump and a

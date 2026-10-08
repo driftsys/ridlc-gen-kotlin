@@ -20,7 +20,7 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.5.1`, the tag that carries ridl 0.5.1's binaries. The tests
+Pinned to `editor-v0.6.0`, the tag that carries ridl 0.6.0's binaries. The tests
 of stage K2a run: a request the pinned `ridl` wrote parses, a request with an
 unknown key parses, a request nested 1,000 levels parses in process and through
 the installed script, a wrong schema is one error diagnostic and exit 0, an
@@ -57,6 +57,16 @@ string off its pattern, which the Rust verifier checks only under its
 `validate-pattern` feature; no buffer of the corpus reaches one. A wrong table
 layout, a missing count check, a wrong union error or a float step check that
 never fails each turns it red.
+
+Since ridl 0.6.0, the model carries the real catalog hash (driftsys/ridl#676),
+so every generated descriptor of the corpus carries it; the faces tests attach
+their loopbacks to the generated `<Iface>.catalog`, so they did not change, and
+the cabin hash the plugin writes is the one the Rust backend writes. Untimed
+commands and queries take a default response bound of 1 s and 3 s, which the
+model states as their timing. The Rust codec and `ridl-rt`'s FlatBuffers code
+differ from 0.5.1's in comments only, so no golden file or Rust verdict changed.
+The corpus copies of `cabin` (doc comments and a `service` declaration),
+`fb-demo` and `veh-cruise` (comments) were taken again from the tag.
 
 Since ridl 0.5.1 (driftsys/ridl#654), the Rust verifier checks every float step,
 every non-finite float under a range and every inline constraint, which Kotlin

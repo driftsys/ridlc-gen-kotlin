@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+// The deployment section of a codegen request — the facts of one concrete
+// deployment of a system that a plugin needs to lay out memory for it.
+//
+// The section is a field of `CodegenRequest` beside the model, never a part
+// of `Model`, so a model stays a function of its package and its scope. It is
+// written from the lowered system, once per build: every request of one build
+// carries the same section, whichever package the request is for. A plugin
+// generating package P finds P's regions and P's messages here and their
+// payload sizes in P's model. The design record is
+// `docs/design/codegen-plugins.md`, section "The deployment section".
+//
+// Order rule: every repeated field below is in the order its comment names,
+// so that two runs write the same bytes. The section states no count that is
+// the length of a list.
+//
+// This schema imports `Kind` from `model.proto`, of the same package, and
+// nothing from `ridl.ir.v2`. It restates the enums it needs, with the IR's
+// values where the IR has them, so that the two schemas version
+// independently.
+//
+// Encoding: canonical protobuf JSON, the dialect ADR-0014 decision 14 fixes
+// for the IR, through the same pbjson-generated impls and the same reader
+// guards as the model.
+//
+// Field numbering scheme, as `model.proto` has it: envelope and data fields
+// start at 1; `oneof` members start at 10. This file has no `oneof`.
+package ridl.codegen.v1;
+
+import "ridl/codegen/v1/model.proto";
+
+// One deployment of a system.
+message Deployment {
+  // The system's qualified name.
+  string system = 1;
+  // The deployment's bare name.
+  string name = 2;
+  // The regions, in catalog name order.
+  repeated Region regions = 3;
+  // The instances, in the system IR's placement order.
+  repeated Instance instances = 4;
+  // The channels, in (catalog, interface number, member ordinal, producer
+  // component, producer instance) order.
+  repeated Channel channels = 5;
+  // The bindings, in binding name order.
+  repeated Binding bindings = 6;
+}
+
+// One catalog's region of memory.
+message Region {
+  // The catalog's name.
+  string catalog = 1;
+  // The 32-byte catalog hash, equal to the catalog descriptor's.
+  bytes hash = 2;
+  // The interfaces of the region, in interface number order.
+  repeated RegionInterface interfaces = 3;
+}
+
+// One interface of a region.
+message RegionInterface {
+  string name = 1;
+  uint32 number = 2;
+  bool inline = 3;
+  bool provisional = 4;
+  // The closure service that lists the interface.
+  string service = 5;
+}
+
+// The key of an interface within the catalogs of a system.
+message InterfaceKey {
+  string catalog = 1;
+  uint32 number = 2;
+  string name = 3;
+  bool inline = 4;
+}
+
+// One placed instance of a component.
+message Instance {
+  // The component's qualified name.
+  string component = 1;
+  string instance = 2;
+  string machine = 3;
+  bool external = 4;
+  // The interfaces the instance provides: the regions whose slots it writes.
+  repeated InterfaceKey offers = 5;
+  // The catalogs the instance requires into: the regions it maps.
+  repeated string maps = 6;
+}
+
+// A placed instance, as the producer of a channel.
+message Endpoint {
+  string component = 1;
+  string instance = 2;
+  string machine = 3;
+}
+
+// How far a consumer is from its producer. The values are the IR's.
+enum Crossing {
+  CROSSING_UNSPECIFIED = 0;
+  CROSSING_SAME_MACHINE = 1;
+  CROSSING_DIFFERENT_MACHINE = 2;
+  CROSSING_OFF_BOARD = 3;
+}
+
+// How a payload is encoded on a consumer link.
+enum Encoding {
+  ENCODING_UNSPECIFIED = 0;
+  ENCODING_PROTO3 = 1;
+  ENCODING_FLATBUFFERS = 2;
+  // No link carries it until driftsys/ridl#317.
+  ENCODING_REPR_C = 3;
+}
+
+// Where a sizing value comes from.
+enum ValueSource {
+  VALUE_SOURCE_UNSPECIFIED = 0;
+  // A depth derived as ceil(max / min).
+  VALUE_SOURCE_DERIVED = 1;
+  // An rsdl key, on the placement line or the deployment.
+  VALUE_SOURCE_DECLARED = 2;
+  // A default, for example 16 slots.
+  VALUE_SOURCE_DEFAULT = 3;
+  // The value is absent and nothing declared one. For a depth, in every case
+  // the emitter records the same way: the event carries no timing at all; the
+  // timing has an explicit half-open range, so one bound is missing; the
+  // lower bound is zero, so there is no quotient; an operand is not
+  // `digits[.digits]`, or does not fit; the quotient is zero, which is not a
+  // depth, because a depth is at least 1; or the quotient is above the
+  // 32-bit ceiling.
+  VALUE_SOURCE_UNDERIVABLE = 4;
+}
+
+// A depth and where it comes from.
+message Depth {
+  // Absent if and only if `source` is `VALUE_SOURCE_UNDERIVABLE`.
+  optional uint32 value = 1;
+  ValueSource source = 2;
+}
+
+// One consumer link of a channel.
+message Consumer {
+  string component = 1;
+  string instance = 2;
+  string machine = 3;
+  Crossing crossing = 4;
+  Encoding encoding = 5;
+  // Event channels only.
+  Depth depth = 6;
+  // Call channels only.
+  optional uint32 slots = 7;
+  ValueSource slots_source = 8;
+  // Call channels only; absent means no budget.
+  optional uint64 budget = 9;
+  // `VALUE_SOURCE_UNSPECIFIED` when `budget` is absent.
+  ValueSource budget_source = 10;
+}
+
+// One member of an interface, from one producer to its consumers.
+message Channel {
+  string catalog = 1;
+  uint32 interface_number = 2;
+  string interface = 3;
+  bool inline = 4;
+  uint32 member_ordinal = 5;
+  string member = 6;
+  // The member's kind, as `model.proto` has it.
+  Kind kind = 7;
+  Endpoint producer = 8;
+  // The consumer links, in (component, instance) order.
+  repeated Consumer consumers = 9;
+  // Event channels: the ring depth, the maximum over the consumer links.
+  Depth depth = 10;
+}
+
+// The sizing facts of one wire binding.
+message Binding {
+  // The binding's name, for example "websocket".
+  string name = 1;
+  // The binding document's version.
+  string version = 2;
+  optional uint32 frame_header_max_bytes = 3;
+  optional uint32 envelope_bytes = 4;
+}

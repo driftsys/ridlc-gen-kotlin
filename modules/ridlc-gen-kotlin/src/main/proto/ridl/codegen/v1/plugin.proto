@@ -8,10 +8,11 @@ syntax = "proto3";
 // protobuf JSON, to the standard input of `ridlc-gen-<language>` and reads
 // the response, in the same encoding, from its standard output. The plugin
 // never touches the filesystem: `ridlc` writes every file the response
-// carries (ADR-0020 decision 9; the lane P driver's D-P3).
+// carries (ADR-0020 decision 9).
 //
-// The request carries the lowered model and the backend options, never the
-// raw IR (the lane P driver's D-P2). A backend that still needs a fact the
+// The request carries the lowered model, the backend options and, when the
+// build selected one, the deployment section of `deployment.proto`, never the
+// raw IR. A backend that still needs a fact the
 // model does not state is a gap in the model, fixed in the model.
 //
 // Versioning is the IR specification's §7: `schema` and `toolchain` are the
@@ -23,6 +24,7 @@ syntax = "proto3";
 // start at 1; `oneof` members start at 10.
 package ridl.codegen.v1;
 
+import "ridl/codegen/v1/deployment.proto";
 import "ridl/codegen/v1/model.proto";
 
 // What a backend is asked to generate: one package's lowered model, the
@@ -36,8 +38,8 @@ message CodegenRequest {
   // The `ridlc` version that wrote the request, for example "0.2.0".
   // Informational: a consumer does not refuse on it.
   string toolchain = 2;
-  // The lowered model of the one package to generate for, byte for byte
-  // what `ridl build --emit codegen-model` writes for that package.
+  // The lowered model of the one package to generate for: the same value
+  // that `ridl build --emit codegen-model` writes for that package.
   Model model = 3;
   // The backend options, sorted by key, each key once. Which keys a backend
   // reads, and what it does with a key it does not know, is the backend's
@@ -50,6 +52,22 @@ message CodegenRequest {
   // output out another way, one file per declaration for example, is free
   // to ignore it.
   string artifact_base = 5;
+  // The deployment section: the facts of one concrete deployment of a system,
+  // for a plugin that lays out memory for it. It is a field of the request
+  // beside the model, not part of the model, and every request of one build
+  // carries the same section. Absent when the build selects no deployment; a
+  // request without it is the request that existed before the field.
+  optional Deployment deployment = 6;
+  // The line that marks a generated file as generated, without a comment
+  // token: the host composes it, and a backend writes it as the first line of
+  // every file that can hold a comment. A backend that cannot hold a comment
+  // ignores it. Empty in a request that predates the field.
+  string generated_marker = 7;
+  // The project's file header, normalised by the host: lines joined by `\n`,
+  // with no trailing newline, and without a comment token. Empty when the
+  // project sets none. A backend writes it after the marker, as comment lines;
+  // a backend that cannot hold a comment ignores it.
+  string header = 8;
 }
 
 // One backend option, as the host gives it. No flag sets one yet: the

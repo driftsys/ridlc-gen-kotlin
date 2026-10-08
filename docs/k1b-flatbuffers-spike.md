@@ -52,6 +52,11 @@ non-finite floats, inline constraints and map key uniqueness
 (driftsys/ridl#654). Regenerated over `editor-v0.5.1`, neither the golden bytes
 nor the 1,385 verdicts change: no cabin type has a float or a map.
 
+**Since ridl 0.6.0** (2026-10-07): the Rust codec emitter and `ridl-rt`'s
+FlatBuffers code differ from 0.5.1's in comments only, and no cabin type
+changed, so the golden bytes and the verdicts stand as regenerated over
+`editor-v0.5.1`.
+
 The corpus covers §7's malformed cases for these types — truncated buffers,
 offsets past the end, a vtable naming a field across its table's end, a missing
 required field, an enum discriminant out of range, a value outside its range, a
@@ -101,7 +106,7 @@ edition = "2024"
 
 [dependencies]
 veh_cabin = { path = "<path to cabin-rs>" }
-ridl-rt = { version = "0.5", features = ["flatbuffers"] }
+ridl-rt = { version = "0.6", features = ["flatbuffers"] }
 
 [patch.crates-io]
 ridl-rt = { path = "<path to driftsys/ridl>/crates/ridl-rt" }
@@ -189,11 +194,12 @@ just test   # writes modules/conformance/build/spike/<package>-codec-corpus.txt
 `ridl build` takes a package directory, so run it from inside the package. In
 `gen.py`'s `Cargo.toml`, and in the spike's, the `ridl-rt` version must match
 the release's (`0.2` for `editor-v0.2.2`, `0.3` for `v0.3.0`, `0.4` for
-`editor-v0.4.0`, `0.5` for `editor-v0.5.0` and `editor-v0.5.1`), or the path
-patch does not apply. Before driftsys/ridl#581, the Rust face `kt-values` emits
-does not compile: its `Names` interface has a parameter named `claim`, which the
-Rust `dispatch` shadows. The codec does not depend on the interfaces, so delete
-`Names` from a copy of `probe.ridl` and emit from that copy.
+`editor-v0.4.0`, `0.5` for `editor-v0.5.0` and `editor-v0.5.1`, `0.6` for
+`editor-v0.6.0`), or the path patch does not apply. Before driftsys/ridl#581,
+the Rust face `kt-values` emits does not compile: its `Names` interface has a
+parameter named `claim`, which the Rust `dispatch` shadows. The codec does not
+depend on the interfaces, so delete `Names` from a copy of `probe.ridl` and emit
+from that copy.
 
 `gen.py`:
 
@@ -222,7 +228,7 @@ edition = "2024"
 
 [dependencies]
 veh_crate = {{ path = "{crate}", package = "{name}" }}
-ridl-rt = {{ version = "0.5", features = ["flatbuffers"] }}
+ridl-rt = {{ version = "0.6", features = ["flatbuffers"] }}
 
 [patch.crates-io]
 ridl-rt = {{ path = "{ridl}/crates/ridl-rt" }}

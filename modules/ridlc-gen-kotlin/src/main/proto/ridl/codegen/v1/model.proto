@@ -106,8 +106,8 @@ message Spellings {
   // Empty in a model written by a toolchain older than this field; a reader
   // that meets an empty value derives it as `camel_case(snake)`. Additive in
   // the sense of the IR stability design's D-5: a plugin's lenient reader
-  // ignores a key it does not know, while the toolchain's own reader is
-  // strict by design (ADR-0014).
+  // ignores a key it does not know, as does the toolchain's request reader;
+  // the toolchain's response and IR readers stay strict (ADR-0014).
   string pascal = 5;
 }
 
@@ -453,6 +453,10 @@ message Interface {
   repeated InteractionSlot slots = 7;
   // Index into `Model.services`.
   optional uint32 inline_of_service = 8;
+  // The sum of the reservations of every live interaction, in `MEMBERS`
+  // order. A tombstone does not count. An interface with no live interaction
+  // has a table budget of zero bytes.
+  Reservation table_budget = 9;
   oneof identity {
     // An `interface` declaration.
     Spellings declared = 10;
@@ -481,6 +485,11 @@ message Interaction {
   optional string deprecated = 6;
   // Absent for a fixed, and for a call with no declared bound.
   Timing timing = 7;
+  // The memory a call table reserves for the member, per wire encoding: the
+  // sum of the sizes of its payloads. A signal, an event and a fixed member
+  // have one payload, a command has its request, and a query has its request
+  // and then its reply.
+  Reservation reservation = 8;
   oneof shape {
     SignalShape signal = 10;
     EventShape event = 11;
@@ -497,6 +506,100 @@ message Payload {
   // `uint32` because the projection refuses any bound above `MAX_ENCODABLE`,
   // which is `u32::MAX`.
   optional uint32 flatbuffers_max_size = 2;
+  // The size state of the payload under each wire encoding. Field 2 keeps
+  // being written, equal to the FlatBuffers bounded value, for a reader
+  // older than this field.
+  PayloadSizes sizes = 3;
+}
+
+// The size state of one payload under each wire encoding.
+message PayloadSizes {
+  SizeState proto3 = 1;
+  SizeState flatbuffers = 2;
+}
+
+// One payload's state under one encoding.
+message SizeState {
+  oneof state {
+    // The maximum encoded size in bytes, envelope and framing excluded.
+    uint32 bounded = 10;
+    // No finite bound exists. FlatBuffers only.
+    FbUnbounded unbounded = 11;
+    // The toolchain states no size, with the reason it states none.
+    SizeAbsent absent = 12;
+  }
+}
+
+// Why a payload has no size state under an encoding.
+message SizeAbsent {
+  AbsentCause cause = 1;
+  // The member or the shape the cause names, for a reader. This toolchain
+  // writes no detail today, so its absence is not a defect.
+  optional string detail = 2;
+}
+
+enum AbsentCause {
+  ABSENT_CAUSE_UNSPECIFIED = 0;
+  // No codec defines the encoding of the shape.
+  ABSENT_CAUSE_ENCODING_UNDEFINED = 1;
+  // proto3 only: the type has no message of its own.
+  ABSENT_CAUSE_NO_MESSAGE = 2;
+  // proto3 only: every failure inside the message other than the depth
+  // limit — a member the proto backend refuses, a name inside the message
+  // that does not resolve, a member no proto3 leaf bounds, an enum value
+  // outside int32, and a `u64` sum or product inside the walk that does not
+  // fit. The normative statement is the rustdoc of
+  // `ridl_ir::projection::size::AbsentCause::RefusedMember`.
+  ABSENT_CAUSE_REFUSED_MEMBER = 3;
+  // A string or bytes with no length bound, or a type def with no width.
+  ABSENT_CAUSE_NO_BOUND = 4;
+  // proto3 only: the bound exceeds `u32::MAX`, or the nesting passes the
+  // sizer's depth limit. The FlatBuffers sizer reports a bound it cannot
+  // derive as unbounded, so it never writes this cause.
+  ABSENT_CAUSE_OVERFLOW = 5;
+  // A name that does not resolve, or a declaration with no root form under
+  // the encoding. Under FlatBuffers that is a declaration with no root
+  // table. Under proto3 it is a declaration with no message at all, such as
+  // a constant or an interaction. The normative statement is the rustdoc of
+  // `ridl_ir::projection::size::AbsentCause::Unresolved`.
+  ABSENT_CAUSE_UNRESOLVED = 6;
+}
+
+// A member's reservation under one encoding.
+message ReservationState {
+  oneof state {
+    // The saturating sum, in bytes, of the bounded sizes of the member's
+    // payloads.
+    uint64 bytes = 10;
+    // Why no sum exists. For a member's reservation it is one of two
+    // shapes:
+    //
+    //   `<member>.<role>: <payload>` — the first payload of the member whose
+    //   state is not bounded. `<role>` is `payload`, `request` or `reply`.
+    //   `<payload>` is the payload's type reference when it is one named
+    //   type, and otherwise what the shape is: the kind word `primitive`,
+    //   `inline scalar`, `tuple`, `map`, `stream`, `array of <element>`,
+    //   `no type` or `no payload`; the parameter list `(a, b)` of a request
+    //   whose parameters are not exactly one named type — zero parameters,
+    //   several parameters, or one parameter that is an array, a tuple, a
+    //   map, a stream, an inline scalar, a primitive or untyped;
+    //   `<ok> | <err>` for a fallible reply; or `()` for a query with no
+    //   declared return type.
+    //
+    //   `<member>: no known payload shape` — a member whose kind this
+    //   toolchain does not know. Its payloads are not listed, so it is
+    //   unsized rather than summed as zero.
+    //
+    // For an interface's table budget it is `<member>` alone: the name of the
+    // first live member whose reservation is unsized.
+    string unsized = 11;
+  }
+}
+
+// A reservation under each wire encoding.
+message Reservation {
+  ReservationState proto3 = 1;
+  ReservationState flatbuffers = 2;
 }
 
 message SignalShape {
@@ -517,6 +620,18 @@ message CommandShape {
   Payload request = 2;
   // require only (RIDL-302).
   repeated Clause clauses = 3;
+  // The size state of the request under each wire encoding, for every
+  // command. Where the request is exactly one named type, the state is that
+  // type's own, which may be absent under one encoding and present under the
+  // other: a named scalar is `ABSENT_CAUSE_NO_MESSAGE` under proto3 and
+  // bounded under FlatBuffers. Otherwise it is absent under both encodings:
+  // `ABSENT_CAUSE_ENCODING_UNDEFINED` for no parameter, for several
+  // parameters, for an untyped parameter, and for a single parameter that is
+  // a tuple, an array, a map, a stream, or a scalar a proto3 leaf bounds —
+  // no codec defines the encoding of any of those request shapes;
+  // `ABSENT_CAUSE_NO_BOUND` for a single parameter that is a scalar no proto3
+  // leaf bounds, such as a `string` with no length bound.
+  PayloadSizes request_sizes = 4;
 }
 
 message QueryShape {
@@ -528,6 +643,18 @@ message QueryShape {
   // Present when the reply is one named type.
   Payload reply_payload = 4;
   repeated Clause clauses = 5;
+  // As for a command.
+  PayloadSizes request_sizes = 6;
+  // The size state of the reply under each wire encoding, for every query,
+  // including a query with no declared return type. Where the reply is
+  // exactly one named type, the state is that type's own, under the same rule
+  // as `request_sizes`. Otherwise it is absent under both encodings:
+  // `ABSENT_CAUSE_ENCODING_UNDEFINED` for a fallible `T | E` reply, for no
+  // declared return type, for a return type that declares no reply type, for
+  // an untyped reply, and for a reply that is a tuple, an array, a map, a
+  // stream, or a scalar a proto3 leaf bounds; `ABSENT_CAUSE_NO_BOUND` for a
+  // reply that is a scalar no proto3 leaf bounds.
+  PayloadSizes reply_sizes = 7;
 }
 
 message FixedShape {
@@ -607,7 +734,8 @@ message Service {
 message Catalog {
   // `CatalogRef.name`.
   string package = 1;
-  // 32 bytes; all zero until E16.2 (driftsys/ridl#378).
+  // The 32-byte SHA-256 catalog hash of ADR-0014 decision 15, the value
+  // `ridl_ir::catalog_hash::catalog_hash` returns.
   bytes hash = 2;
   // `Package.retired`, number order.
   repeated RetiredInterface retired = 3;
