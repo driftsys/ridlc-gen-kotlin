@@ -31,6 +31,15 @@ bound, a bare `string` or `bytes`, an optional array element or map part.
 
 Tested against ridl `editor-v0.6.0` (`modules/conformance/ridl-release`).
 
+The plugin ignores two parts of ridl 0.6.0's schema (#31). The request's
+deployment section (`CodegenRequest.deployment`) is for a backend that lays out
+memory for one deployment, and this one lays out none. The model's size states
+(`Payload.sizes`, `request_sizes`, `reply_sizes`, `reservation` and
+`table_budget`) are not read either: a `PayloadInfo` takes its FlatBuffers size
+from `Payload.flatbuffers_max_size`, which ridl keeps writing, equal to the
+bounded FlatBuffers state, and `Member.reservation` and `tableBudget` sum those
+sizes at run time, as `ridl-rt` does.
+
 ## Where the code departs from docs/design.md
 
 - **The recursion limit.** §2 step 1 configures the parser with

@@ -15,7 +15,7 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
-// `plugin.proto` and `model.proto` of the pinned ridl release (see
+// `plugin.proto`, `model.proto` and `deployment.proto` of the pinned ridl release (see
 // src/main/proto/README.md), compiled to Java with the Kotlin builders beside.
 protobuf {
     protoc {
