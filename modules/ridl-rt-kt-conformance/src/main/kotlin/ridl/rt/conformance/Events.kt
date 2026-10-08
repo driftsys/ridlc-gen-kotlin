@@ -28,13 +28,14 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`two sources each receive their own copy of one occurrence`,
         ::`a short buffer leaves the occurrence for the next call`,
         ::`a sink sequence number counts one channel publications`,
+        ::`an event raised without a context arrives without one`,
     )
 
     /** A raised occurrence reaches a subscribed source, whole. */
     public fun `an event raise and receive round trips`() {
         val rt = runtime()
         rt.subscribe(IFACE, listOf(ORD))
-        rt.raise(IFACE, ORD, bytes(5, 6))
+        rt.raise(IFACE, ORD, bytes(5, 6), null)
 
         val buf = out(8)
         val occurrence = checkNotNull(rt.next(buf)) { "an occurrence is waiting" }
@@ -46,7 +47,7 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     /** A late joiner receives nothing retroactive on an event. */
     public fun `an occurrence raised before the subscription is not delivered`() {
         val rt = runtime()
-        rt.raise(IFACE, ORD, bytes(1))
+        rt.raise(IFACE, ORD, bytes(1), null)
         rt.subscribe(IFACE, listOf(ORD))
         assertNull(rt.next(out(8)), "a late joiner receives nothing retroactive on an event")
     }
@@ -55,7 +56,7 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `unsubscribe stops delivery of what is already queued`() {
         val rt = runtime()
         rt.subscribe(IFACE, listOf(ORD))
-        rt.raise(IFACE, ORD, bytes(1))
+        rt.raise(IFACE, ORD, bytes(1), null)
         rt.unsubscribe(IFACE, listOf(ORD))
         assertNull(rt.next(out(8)))
     }
@@ -67,7 +68,7 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         rt.subscribe(IFACE, listOf(ORD))
         second.subscribe(IFACE, listOf(ORD))
 
-        rt.raise(IFACE, ORD, bytes(8))
+        rt.raise(IFACE, ORD, bytes(8), null)
 
         assertEquals(1, checkNotNull(rt.next(out(8))).len, "the first source consumes its own copy")
         assertEquals(1, checkNotNull(second.next(out(8))).len, "and does not consume the second source's")
@@ -77,7 +78,7 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `a short buffer leaves the occurrence for the next call`() {
         val rt = runtime()
         rt.subscribe(IFACE, listOf(ORD))
-        rt.raise(IFACE, ORD, bytes(1, 2, 3))
+        rt.raise(IFACE, ORD, bytes(1, 2, 3), null)
 
         assertEquals(ReadError.Short(3), assertThrows<ReadError.Short> { rt.next(out(1)) })
 
@@ -97,11 +98,21 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         val rt = runtime()
         rt.subscribe(IFACE, listOf(ORD))
 
-        rt.raise(IFACE, ORD, bytes(1))
-        rt.raise(IFACE, OTHER, bytes(2))
-        rt.raise(IFACE, ORD, bytes(3))
+        rt.raise(IFACE, ORD, bytes(1), null)
+        rt.raise(IFACE, OTHER, bytes(2), null)
+        rt.raise(IFACE, ORD, bytes(3), null)
 
         val seqs = generateSequence { rt.next(out(8)) }.map { it.envelope.seq }.toList()
         assertEquals(listOf(1uL, 2uL), seqs, "no gap: the other event has its own counter")
+    }
+
+    /** An event raised without a trace context arrives without one. */
+    public fun `an event raised without a context arrives without one`() {
+        val rt = runtime()
+        rt.subscribe(IFACE, listOf(ORD))
+        rt.raise(IFACE, ORD, bytes(8), null)
+
+        val occurrence = checkNotNull(rt.next(out(8))) { "an occurrence is waiting" }
+        assertNull(occurrence.trace)
     }
 }

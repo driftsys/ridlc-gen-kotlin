@@ -6,6 +6,7 @@ import ridl.rt.conformance.Factory
 import ridl.rt.conformance.coherentSuite
 import ridl.rt.conformance.scannableSuite
 import ridl.rt.conformance.suite
+import ridl.rt.conformance.traceSuite
 import ridl.rt.conformance.wakeableSuite
 import ridl.rt.contract.CatalogRef
 import ridl.rt.port.Caller
@@ -49,4 +50,7 @@ class ConformanceTest {
 
     @TestFactory
     fun `the wakeable extension`(): List<DynamicTest> = wakeableSuite(LoopbackFactory)
+
+    @TestFactory
+    fun `the trace context`(): List<DynamicTest> = traceSuite(LoopbackFactory)
 }

@@ -30,6 +30,7 @@ import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
 import ridl.rt.port.RawOccurrence
+import ridl.rt.trace.TraceContext
 import ridl.rt.port.RawSample
 import ridl.rt.port.ReadError
 import ridl.rt.port.SendError
@@ -79,7 +80,7 @@ internal class Store {
         val changedAt: ULong,
     )
 
-    private class QueuedEvent(val key: Key, val bytes: ByteArray, val envelope: Envelope)
+    private class QueuedEvent(val key: Key, val bytes: ByteArray, val envelope: Envelope, val trace: TraceContext?)
 
     /**
      * One source handle's subscription set and its own queue. `raise` copies
@@ -147,6 +148,8 @@ internal class Store {
         val key: Key,
         val args: ByteArray,
         val envelope: Envelope,
+        /** The trace context the call was sent with, delivered on its claim and on its `ShortClaim`. */
+        val trace: TraceContext?,
         /** The call's place in send order, which a returned claim goes back in by; a reused slot's correlation does not give it. */
         val sent: Long,
     ) {
@@ -347,14 +350,14 @@ internal class Store {
      * now. A late subscriber receives nothing retroactive, ridl's own rule
      * for a late joiner on an event. Each source it queues the occurrence for
      * has its `Event` waker returned, whatever interface that waker was
-     * registered under.
+     * registered under. Every copy carries the sender's [trace].
      */
-    fun raise(key: Key, bytes: ByteArray, seq: ULong): List<Waker> {
+    fun raise(key: Key, bytes: ByteArray, seq: ULong, trace: TraceContext?): List<Waker> {
         val envelope = Envelope(now, seq)
         val wake = mutableListOf<Waker>()
         for (state in sources.values) {
             if (key in state.subscribed) {
-                state.queue.addLast(QueuedEvent(key, bytes, envelope))
+                state.queue.addLast(QueuedEvent(key, bytes, envelope, trace))
                 state.waiter?.let(wake::add)
                 state.waiter = null
             }
@@ -378,7 +381,7 @@ internal class Store {
         val front = state.queue.peekFirst() ?: return null
         copyInto(front.bytes, out)
         state.queue.removeFirst()
-        return RawOccurrence(front.key.iface, front.key.ord, front.envelope, front.bytes.size)
+        return RawOccurrence(front.key.iface, front.key.ord, front.envelope, front.trace, front.bytes.size)
     }
 
     // -- calls --------------------------------------------------------------
@@ -390,10 +393,10 @@ internal class Store {
      *
      * @throws SendError.Busy when every slot is taken.
      */
-    fun send(caller: Int, kind: CallKind, key: Key, args: ByteArray, seq: ULong): Pair<Correlation, List<Waker>> {
+    fun send(caller: Int, kind: CallKind, key: Key, args: ByteArray, seq: ULong, trace: TraceContext?): Pair<Correlation, List<Waker>> {
         // No budget, so the reservation is not read.
         val c = table.insert(0u) ?: throw SendError.Busy
-        calls[Table.slot(c)] = CallEntry(c, caller, kind, key, args, Envelope(now, seq), nextSent++)
+        calls[Table.slot(c)] = CallEntry(c, caller, kind, key, args, Envelope(now, seq), trace, nextSent++)
         pending += c
         val wake = mutableListOf<Waker>()
         wakeHandlersServing(key, wake)
@@ -625,14 +628,14 @@ internal class Store {
         val claimId = entry.claim ?: nextClaimId++.also { entry.claim = it }
         if (out.remaining() < entry.args.size) {
             claims[claimId] = ClaimOwner(c, handler, taken = false)
-            throw ReadError.ShortClaim(ClaimId(claimId), entry.args.size)
+            throw ReadError.ShortClaim(ClaimId(claimId), entry.args.size, entry.trace)
         }
         out.put(entry.args)
         pending.remove(c)
         claims[claimId] = ClaimOwner(c, handler, taken = true)
         // No response bound: a bound is a member's timing, and the loopback
         // has no member table to read one from.
-        return Claim(ClaimId(claimId), entry.key.iface, entry.key.ord, entry.envelope, null, entry.args.size)
+        return Claim(ClaimId(claimId), entry.key.iface, entry.key.ord, entry.envelope, entry.trace, null, entry.args.size)
     }
 
     /**

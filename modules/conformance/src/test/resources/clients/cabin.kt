@@ -70,14 +70,14 @@ private inline fun <reified E : Throwable> expectThrows(label: String, block: ()
 private fun sendsUntilBusy(rt: Loopback): Int {
     var sent = 0
     while (true) {
-        try { rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0)) } catch (_: SendError.Busy) { return sent }
+        try { rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0), null) } catch (_: SendError.Busy) { return sent }
         sent += 1
     }
 }
 
 /** Fills the table with settled calls nobody forgot, and returns their correlations. */
 private fun fill(rt: Loopback) = List(Loopback.SLOTS) {
-    val c = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0))
+    val c = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0), null)
     rt.settle(rt.nextClaim(ByteBuffer.allocate(64))!!.id, Result.success(ByteBuffer.allocate(0)))
     c
 }
@@ -262,7 +262,7 @@ private fun blocking() {
             override fun setLevel(level: Level) = Unit
             override fun average(window: Window): Average = throw IllegalStateException("the provider's own failure")
         }
-        rt.query(Cabin.number, Ordinal(4u), ByteBuffer.allocate(veh.cabin.WindowCodec.maxSize).also { veh.cabin.WindowCodec.encode(Window.of(10), it) }.flip())
+        rt.query(Cabin.number, Ordinal(4u), ByteBuffer.allocate(veh.cabin.WindowCodec.maxSize).also { veh.cabin.WindowCodec.encode(Window.of(10), it) }.flip(), null)
         expectThrows<IllegalStateException>("a provider's exception leaves serve unchanged") { Cabin.serve(rt, broken, 1.seconds) }
     }
 }
@@ -291,7 +291,7 @@ private fun async() = runBlocking {
             val call = launch(start = CoroutineStart.UNDISPATCHED) { CabinAsyncClient(rt).setLevel(Level.of(1)) }
             // Count the free slots without keeping them: send until Busy, then forget each.
             val counted = mutableListOf<ridl.rt.port.Correlation>()
-            try { while (true) counted += rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0)) } catch (_: SendError.Busy) {}
+            try { while (true) counted += rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0), null) } catch (_: SendError.Busy) {}
             expectEqual("the waiting call holds a slot", Loopback.SLOTS - 1, counted.size)
             counted.forEach(rt::forget)
             call.cancelAndJoin()
@@ -378,7 +378,7 @@ private fun bounds() {
             override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = Unit
             override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = if (until.hasPassedNow()) null else ridl.rt.port.Claim(
                 ridl.rt.port.ClaimId(++id), ridl.rt.contract.InterfaceNo(99u), Ordinal(1u),
-                ridl.rt.sample.Envelope(ridl.rt.sample.Timestamp(0), 0u), null, 0,
+                ridl.rt.sample.Envelope(ridl.rt.sample.Timestamp(0), 0u), null, null, 0,
             )
             override fun settle(claim: ridl.rt.port.ClaimId, outcome: Result<ByteBuffer>) = Unit
         }
@@ -398,7 +398,7 @@ private fun bounds() {
             override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = Unit
             override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim = ridl.rt.port.Claim(
                 ridl.rt.port.ClaimId(++id), ridl.rt.contract.InterfaceNo(99u), Ordinal(1u),
-                ridl.rt.sample.Envelope(ridl.rt.sample.Timestamp(0), 0u), null, 0,
+                ridl.rt.sample.Envelope(ridl.rt.sample.Timestamp(0), 0u), null, null, 0,
             )
             override fun settle(claim: ridl.rt.port.ClaimId, outcome: Result<ByteBuffer>) {
                 settled.incrementAndGet()

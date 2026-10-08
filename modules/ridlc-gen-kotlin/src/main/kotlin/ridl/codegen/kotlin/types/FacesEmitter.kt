@@ -301,9 +301,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             )
             .addProperty(PropertySpec.builder("port", p, KModifier.PROTECTED).initializer("port").build())
             .addProperty(PropertySpec.builder("query", BOOLEAN, KModifier.PRIVATE).initializer("query").build())
+            // No trace context yet: the face passes `null`, as the Rust face
+            // passes `None`, until driftsys/ridl#754 has it call the hook.
             .addProperty(
                 PropertySpec.builder("send", LambdaTypeName.get(returnType = CORRELATION), KModifier.PRIVATE)
-                    .initializer("if (query) { { port.query(iface, ord, args) } } else { { port.command(iface, ord, args) } }").build(),
+                    .initializer("if (query) { { port.query(iface, ord, args, null) } } else { { port.command(iface, ord, args, null) } }")
+                    .build(),
             )
             .addProperty(
                 PropertySpec.builder("deadline", TIMESTAMP.copy(nullable = true), KModifier.PRIVATE)
@@ -1182,7 +1185,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addStatement("throw %T.Contract(%T.PreconditionFailed)", SEND_ERROR, CONTRACT)
                 .endControlFlow()
                 .addStatement(
-                    "return %T(this.port.%L(%L, %L, encoded(%T, %N)))",
+                    "return %T(this.port.%L(%L, %L, encoded(%T, %N), null))",
                     correlation(m), kind, number(), ordinal(m), arg.codec, argName,
                 )
                 .build()
@@ -1226,7 +1229,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 builder.addFunction(
                     FunSpec.builder(m.method).addParameter("value", eventPayload(m).type)
                         .addKdoc("Raises one occurrence of event `%L`.", m.declared)
-                        .addStatement("port.raise(%L, %L, encoded(%T, value))", number(), ordinal(m), eventPayload(m).codec).build(),
+                        .addStatement("port.raise(%L, %L, encoded(%T, value), null)", number(), ordinal(m), eventPayload(m).codec).build(),
                 )
             }
             if (signals.isNotEmpty()) {

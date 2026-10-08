@@ -98,8 +98,8 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
     public fun `an outcome waker is kept with its call and woken once by the settlement`() {
         val rt = runtime()
         rt.serve(IFACE, listOf(ORD))
-        val first = rt.command(IFACE, ORD, bytes(1))
-        val second = rt.query(IFACE, ORD, bytes(2))
+        val first = rt.command(IFACE, ORD, bytes(1), null)
+        val second = rt.query(IFACE, ORD, bytes(2), null)
         // Both calls are claimed before the wakers are registered, so nothing
         // changes between a registration and the settlement that wakes it.
         val claims = arrayOfNulls<ridl.rt.port.ClaimId>(2)
@@ -132,7 +132,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         // A third call, registered on before it is claimed. The claim is a
         // change a runtime may wake on spuriously, so nothing is checked
         // between the claim and the settlement.
-        val third = rt.command(IFACE, ORD, bytes(3))
+        val third = rt.command(IFACE, ORD, bytes(3), null)
         val c = Count()
         rt.wakeOn(Interest.Outcome(third), c)
         assertEquals(0, c.wakes, "nothing has changed since the registration")
@@ -163,7 +163,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         assertEquals(0 to 0, mine.wakes to theirs.wakes, "no slot is free, and nothing has changed")
         rt.forget(calls[0])
         assertEquals(1 to 1, mine.wakes to theirs.wakes, "the reclaim wakes every caller's slot waker")
-        val taken = second.command(IFACE, ORD, bytes(1))
+        val taken = second.command(IFACE, ORD, bytes(1), null)
 
         // The settlement of a claimed call that was forgotten.
         mine = Count()
@@ -175,7 +175,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         second.forget(taken)
         rt.settle(claim.id, ok())
         assertEquals(1 to 1, mine.wakes to theirs.wakes, "the reclaim wakes every caller's slot waker")
-        val unclaimed = rt.command(IFACE, ORD, bytes(2))
+        val unclaimed = rt.command(IFACE, ORD, bytes(2), null)
 
         // A forget of a call no handler has claimed: withdrawn, or presented and settled.
         mine = Count()
@@ -190,7 +190,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
             rt.settle(held.id, ok())
         }
         assertEquals(1 to 1, mine.wakes to theirs.wakes, "the reclaim wakes every caller's slot waker")
-        second.command(IFACE, ORD, bytes(3))
+        second.command(IFACE, ORD, bytes(3), null)
     }
 
     /**
@@ -211,12 +211,12 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         second.wakeOn(Interest.Event(IFACE), b)
         assertEquals(0 to 0, a.wakes to b.wakes, "nothing has been raised")
 
-        rt.raise(IFACE, ORD, bytes(1))
+        rt.raise(IFACE, ORD, bytes(1), null)
         assertEquals(1 to 1, a.wakes to b.wakes, "each subscribed source's waker is woken")
         assertNotNull(rt.next(out(8)), "and it reads")
         assertNotNull(second.next(out(8)))
 
-        rt.raise(IFACE, ORD, bytes(2))
+        rt.raise(IFACE, ORD, bytes(2), null)
         assertEquals(1 to 1, a.wakes to b.wakes, "a woken waker is cleared, so a second raise does not reach it")
     }
 
@@ -234,9 +234,9 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
             val count = Count()
             handler.wakeOn(Interest.Claim(IFACE), count)
             assertEquals(0, count.wakes, "no call is waiting")
-            if (query) rt.query(IFACE, ORD, bytes(1)) else rt.command(IFACE, ORD, bytes(1))
+            if (query) rt.query(IFACE, ORD, bytes(1), null) else rt.command(IFACE, ORD, bytes(1), null)
             assertEquals(1, count.wakes, "the call wakes the serving handler")
-            rt.command(IFACE, ORD, bytes(2))
+            rt.command(IFACE, ORD, bytes(2), null)
             assertEquals(1, count.wakes, "a woken waker is cleared, so a second call does not reach it")
             repeat(2) { handler.settle(checkNotNull(handler.nextClaim(out(8))) { "the claim reads after the wake" }.id, ok()) }
         }
@@ -260,7 +260,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         source.subscribe(IFACE, listOf(ORD))
 
         // An outcome.
-        val c = caller.command(IFACE, ORD, bytes(1))
+        val c = caller.command(IFACE, ORD, bytes(1), null)
         val claim = checkNotNull(handler.nextClaim(out(8)))
         var a = Count()
         var b = Count()
@@ -280,7 +280,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         assertEquals(1 to 0, a.wakes to b.wakes, "`Event`: B displaces A under the same interface")
         source.wakeOn(Interest.Event(iface2), third)
         assertEquals(1 to 0, b.wakes to third.wakes, "`Event`: C displaces B under another interface of the kind")
-        rt.raise(IFACE, ORD, bytes(1))
+        rt.raise(IFACE, ORD, bytes(1), null)
         assertEquals(listOf(1, 1, 1), listOf(a, b, third).map { it.wakes }, "`Event`: the raise wakes C, the one waker stored")
 
         // A claim, under one interface and then under another.
@@ -292,7 +292,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         assertEquals(1 to 0, a.wakes to b.wakes, "`Claim`: B displaces A under the same interface")
         handler.wakeOn(Interest.Claim(iface2), third)
         assertEquals(1 to 0, b.wakes to third.wakes, "`Claim`: C displaces B under another interface of the kind")
-        caller.command(IFACE, ORD, bytes(2))
+        caller.command(IFACE, ORD, bytes(2), null)
         assertEquals(listOf(1, 1, 1), listOf(a, b, third).map { it.wakes }, "`Claim`: the call wakes C, the one waker stored")
 
         // A slot, on a new runtime whose table is full.
@@ -307,7 +307,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         assertEquals(1 to 0, a.wakes to b.wakes, "`Slot`: B displaces A")
         rt.forget(calls[0])
         assertEquals(1 to 1, a.wakes to b.wakes, "`Slot`: the reclaim wakes B")
-        caller.command(IFACE, ORD, bytes(1))
+        caller.command(IFACE, ORD, bytes(1), null)
     }
 
     /**
@@ -325,7 +325,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         source.subscribe(IFACE, listOf(ORD))
 
         // An outcome.
-        val c = caller.command(IFACE, ORD, bytes(1))
+        val c = caller.command(IFACE, ORD, bytes(1), null)
         val claim = checkNotNull(handler.nextClaim(out(8)))
         var count = Count()
         caller.wakeOn(Interest.Outcome(c), count)
@@ -340,7 +340,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         source.wakeOn(Interest.Event(iface2), count)
         source.wakeOn(Interest.Event(IFACE), count)
         assertEquals(0, count.wakes, "`Event`: a refresh wakes nothing")
-        rt.raise(IFACE, ORD, bytes(1))
+        rt.raise(IFACE, ORD, bytes(1), null)
         assertEquals(1, count.wakes, "`Event`: the raise wakes the task")
 
         // A claim, refreshed under another interface of the kind.
@@ -348,7 +348,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         handler.wakeOn(Interest.Claim(iface2), count)
         handler.wakeOn(Interest.Claim(IFACE), count)
         assertEquals(0, count.wakes, "`Claim`: a refresh wakes nothing")
-        caller.command(IFACE, ORD, bytes(2))
+        caller.command(IFACE, ORD, bytes(2), null)
         assertEquals(1, count.wakes, "`Claim`: the call wakes the task")
 
         // A slot, on a new runtime whose table is full.
@@ -362,7 +362,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         assertEquals(0, count.wakes, "`Slot`: a refresh wakes nothing")
         rt.forget(calls[0])
         assertEquals(1, count.wakes, "`Slot`: the reclaim wakes the task")
-        caller.command(IFACE, ORD, bytes(1))
+        caller.command(IFACE, ORD, bytes(1), null)
     }
 
     /**
@@ -381,13 +381,13 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         val event = Count()
         source.wakeOn(Interest.Event(IFACE), event)
         assertEquals(0, event.wakes, "nothing has been raised")
-        rt.raise(iface2, ORD, bytes(1))
+        rt.raise(iface2, ORD, bytes(1), null)
         assertEquals(1, event.wakes, "an occurrence on interface 2 wakes it")
 
         val claim = Count()
         handler.wakeOn(Interest.Claim(IFACE), claim)
         assertEquals(0, claim.wakes, "no call is waiting")
-        rt.command(iface2, ORD, bytes(1))
+        rt.command(iface2, ORD, bytes(1), null)
         assertEquals(1, claim.wakes, "a call on interface 2 wakes it")
     }
 
@@ -450,7 +450,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         handler.serve(IFACE, listOf(ORD))
         var probe = probeOf(rt)
 
-        val c = caller.command(IFACE, ORD, bytes(1))
+        val c = caller.command(IFACE, ORD, bytes(1), null)
         val claim = checkNotNull(handler.nextClaim(out(8)))
         var count = CallsBack(thread, probe)
         caller.wakeOn(Interest.Outcome(c), count)
@@ -460,7 +460,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
         count = CallsBack(thread, probe)
         source.wakeOn(Interest.Event(IFACE), count)
-        rt.raise(IFACE, ORD, bytes(1))
+        rt.raise(IFACE, ORD, bytes(1), null)
         assertCalledBack(count, "a raise")
 
         // Each call is claimed and settled before the next registration, so no
@@ -468,7 +468,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         for (query in listOf(false, true)) {
             count = CallsBack(thread, probe)
             handler.wakeOn(Interest.Claim(IFACE), count)
-            val sent = if (query) caller.query(IFACE, ORD, bytes(1)) else caller.command(IFACE, ORD, bytes(1))
+            val sent = if (query) caller.query(IFACE, ORD, bytes(1), null) else caller.command(IFACE, ORD, bytes(1), null)
             assertCalledBack(count, if (query) "a query" else "a command")
             handler.settle(checkNotNull(handler.nextClaim(out(8))).id, ok())
             caller.forget(sent)
@@ -491,7 +491,7 @@ public class WakeableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         rt.forget(calls[0])
         assertCalledBack(count, "a forget that reclaims a slot")
 
-        val taken = caller.command(IFACE, ORD, bytes(1))
+        val taken = caller.command(IFACE, ORD, bytes(1), null)
         val held = checkNotNull(rt.nextClaim(out(8))) { "the call just sent" }
         // Registered before the forget, so the waker is woken by whichever of
         // the forget and the settlement reclaims the slot.

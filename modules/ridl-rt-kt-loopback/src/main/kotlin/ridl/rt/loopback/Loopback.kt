@@ -18,6 +18,7 @@ import ridl.rt.port.FixedReader
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
 import ridl.rt.port.RawOccurrence
+import ridl.rt.trace.TraceContext
 import ridl.rt.port.RawSample
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SignalWriter
@@ -206,13 +207,14 @@ public class Loopback private constructor(
 
     override fun next(out: ByteBuffer): RawOccurrence? = handles.source.next(out)
 
-    override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer): Unit = handles.sink.raise(iface, ord, bytes)
+    override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?): Unit =
+        handles.sink.raise(iface, ord, bytes, trace)
 
-    override fun command(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer): Correlation =
-        handles.caller.command(iface, ord, args)
+    override fun command(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer, trace: TraceContext?): Correlation =
+        handles.caller.command(iface, ord, args, trace)
 
-    override fun query(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer): Correlation =
-        handles.caller.query(iface, ord, args)
+    override fun query(iface: InterfaceNo, ord: Ordinal, args: ByteBuffer, trace: TraceContext?): Correlation =
+        handles.caller.query(iface, ord, args, trace)
 
     override fun ack(c: Correlation): Result<Unit>? = handles.caller.ack(c)
 
