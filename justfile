@@ -32,6 +32,16 @@ dist:
 publish-local:
     ./gradlew publishToMavenLocal
 
+# The Rust codec verdicts of the conformance module, regenerated from the
+# pinned ridl release and compared with the committed files (#39); needs cargo,
+# git and python3. `just rust-verdicts --write` writes them instead. The test
+# run writes the corpus the Rust programs read; its own verdict is the jvm job's.
+rust-verdicts *args:
+    rm -f modules/conformance/build/spike/*.txt
+    ./gradlew -q :conformance:installRidl
+    -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.SpikeTest
+    python3 scripts/rust-verdicts.py {{args}}
+
 lint-commits base="main":
     @if git show-ref --verify --quiet "refs/remotes/origin/{{base}}"; then \
       base_ref="origin/{{base}}"; \

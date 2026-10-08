@@ -81,209 +81,28 @@ stands), for a consumer in another language.
 
 ## Regenerating the Rust verdicts
 
-`cabin-golden.txt` and `cabin-rust-verdicts.txt` come from a Rust program that
-links the crate `ridl build --emit rust` writes for the cabin corpus package
-against the pinned release's `crates/ridl-rt`. The repository tracks no Rust, so
-the program is here. With `ridl` at the pinned release and a checkout of
-driftsys/ridl at the same tag:
+`just rust-verdicts` regenerates every file the conformance module compares with
+the Rust codec of the pinned release — `cabin-golden.txt`,
+`cabin-rust-verdicts.txt` and each `<package>-codec-rust-verdicts.txt` under
+`modules/conformance/src/test/resources/flatbuffers/` — and fails when one
+differs from the committed file; `just rust-verdicts --write` writes them
+instead. The `rust-verdicts` workflow runs it whenever the pin, the conformance
+tests and their corpus, the plugin, the runtime, or the recipe changes (#39). It
+needs cargo, git and python3 beside the JVM build.
 
-```sh
-ridl build --emit rust --out-dir cabin-rs modules/conformance/src/test/corpus/cabin
-cargo new cabin-vectors   # then Cargo.toml and src/main.rs as below
-cargo run -q -- encode > modules/conformance/src/test/resources/flatbuffers/cabin-golden.txt
-just test                 # writes modules/conformance/build/spike/cabin-corpus.txt
-cargo run -q -- verify < modules/conformance/build/spike/cabin-corpus.txt \
-  > modules/conformance/src/test/resources/flatbuffers/cabin-rust-verdicts.txt
-```
+The recipe runs `CodecTest` and `SpikeTest`, which write the corpus to
+`modules/conformance/build/spike/`, and then `scripts/rust-verdicts.py`, which:
 
-`Cargo.toml`, with the two paths filled in:
-
-```toml
-[package]
-name = "cabin-vectors"
-version = "0.0.0"
-edition = "2024"
-
-[dependencies]
-veh_cabin = { path = "<path to cabin-rs>" }
-ridl-rt = { version = "0.6", features = ["flatbuffers"] }
-
-[patch.crates-io]
-ridl-rt = { path = "<path to driftsys/ridl>/crates/ridl-rt" }
-```
-
-`src/main.rs`:
-
-```rust
-// Golden FlatBuffers vectors for the cabin package, from the Rust codec the
-// pinned ridl release generates. `encode` prints `<type> <value> <hex>` lines;
-// `verify` reads such lines on stdin and prints what the Rust verifier says.
-use ridl_rt::encoding::FlatBuffers;
-use ridl_rt::payload::{Payload, Ref};
-use std::io::BufRead;
-use veh_cabin::veh::cabin::*;
-
-fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02x}")).collect() }
-fn unhex(s: &str) -> Vec<u8> { (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect() }
-
-fn enc<T: Payload<FlatBuffers>>(name: &str, shown: String, v: &T) {
-    let mut out = [0u8; 128];
-    let r = Ref::<T, FlatBuffers>::encode(v, &mut out).expect("encode");
-    println!("{name} {shown} {}", hex(r.bytes()));
-}
-
-fn check<T: Payload<FlatBuffers> + std::fmt::Debug>(buf: &[u8]) -> String {
-    match Ref::<T, FlatBuffers>::verify(buf) {
-        Ok(r) => format!("ok {:?}", r.decode()),
-        Err(e) => format!("err {e:?}"),
-    }
-}
-
-fn main() {
-    match std::env::args().nth(1).as_deref() {
-        Some("encode") => {
-            for v in [-40i64, 0, 85] { enc("Temperature", v.to_string(), &Temperature::new(v).unwrap()); }
-            for v in [0i64, 42, 100] { enc("Level", v.to_string(), &Level::new(v).unwrap()); }
-            for v in [0i64, 1, 100000] { enc("Window", v.to_string(), &Window::new(v).unwrap()); }
-            for v in [0i64, 1000] { enc("Average", v.to_string(), &Average::new(v).unwrap()); }
-            for (n, v) in [("OK", Health::Ok), ("WARN", Health::Warn), ("FAIL", Health::Fail)] { enc("Health", n.into(), &v); }
-            enc("Warning", "7,FAIL".into(), &Warning { code: Level::new(7).unwrap(), health: Health::Fail });
-            enc("Warning", "100,OK".into(), &Warning { code: Level::new(100).unwrap(), health: Health::Ok });
-        }
-        Some("verify") => {
-            for line in std::io::stdin().lock().lines() {
-                let line = line.unwrap();
-                let mut parts = line.split_whitespace();
-                let (ty, label, h) = (parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap_or(""));
-                let b = unhex(h);
-                let out = match ty {
-                    "Temperature" => check::<Temperature>(&b),
-                    "Level" => check::<Level>(&b),
-                    "Window" => check::<Window>(&b),
-                    "Average" => check::<Average>(&b),
-                    "Health" => check::<Health>(&b),
-                    "Warning" => check::<Warning>(&b),
-                    _ => "unknown type".into(),
-                };
-                println!("{ty} {label} {out}");
-            }
-        }
-        _ => eprintln!("usage: encode | verify"),
-    }
-}
-```
-
-## Regenerating the codec verdicts (K2c)
-
-`CodecTest` compares the generated `Codec.kt` with the Rust codec over every
-corpus package. Its Rust side is one round-trip program per package, written by
-the script below over the crate `ridl build --emit rust` writes for that corpus
-package: each `pkg.Type label hex` line of the corpus is verified, decoded and
-re-encoded, and printed with its verdict. For each package, with the paths
-filled in:
-
-```sh
-ridl build --emit rust --out-dir <crate> modules/conformance/src/test/corpus/<package>
-python3 gen.py <crate> <program> <path to driftsys/ridl>
-cargo build --manifest-path <program>/Cargo.toml
-just test   # writes modules/conformance/build/spike/<package>-codec-corpus.txt
-<program>/target/debug/roundtrip < modules/conformance/build/spike/<package>-codec-corpus.txt \
-  | python3 compact.py > modules/conformance/src/test/resources/flatbuffers/<package>-codec-rust-verdicts.txt
-```
-
-`ridl build` takes a package directory, so run it from inside the package. In
-`gen.py`'s `Cargo.toml`, and in the spike's, the `ridl-rt` version must match
-the release's (`0.2` for `editor-v0.2.2`, `0.3` for `v0.3.0`, `0.4` for
-`editor-v0.4.0`, `0.5` for `editor-v0.5.0` and `editor-v0.5.1`, `0.6` for
-`editor-v0.6.0`), or the path patch does not apply. Before driftsys/ridl#581,
-the Rust face `kt-values` emits does not compile: its `Names` interface has a
-parameter named `claim`, which the Rust `dispatch` shadows. The codec does not
-depend on the interfaces, so delete `Names` from a copy of `probe.ridl` and emit
-from that copy.
-
-`gen.py`:
-
-```python
-# Writes a Rust round-trip program for one generated crate: every line
-# `pkg.Type label hex` on stdin is verified, decoded and re-encoded by the
-# Rust codec, and printed as `pkg.Type label ok <hex>` or `... err <error>`.
-import re, sys, pathlib
-crate = pathlib.Path(sys.argv[1]); prog = pathlib.Path(sys.argv[2]); ridl = sys.argv[3]
-name = re.search(r'^name = "([^"]+)"', crate.joinpath('Cargo.toml').read_text(), re.M).group(1)
-arms = []
-for f in sorted(crate.glob('*.rs')):
-    if f.name == 'lib.rs': continue
-    pkg = f.stem
-    path = '::'.join(pkg.split('.'))
-    text = f.read_text()
-    for t in re.findall(r'Payload<::ridl_rt::encoding::FlatBuffers>\s+for\s+([A-Za-z0-9_]+)', text):
-        # An internal declaration is `pub(crate)`: unreachable from this program.
-        if re.search(r'pub\(crate\) (struct|enum) ' + t + r'\b', text): continue
-        arms.append(f'        "{pkg}.{t}" => roundtrip::<veh_crate::{path}::{t}>(&b),')
-prog.joinpath('src').mkdir(parents=True, exist_ok=True)
-prog.joinpath('Cargo.toml').write_text(f'''[package]
-name = "roundtrip"
-version = "0.0.0"
-edition = "2024"
-
-[dependencies]
-veh_crate = {{ path = "{crate}", package = "{name}" }}
-ridl-rt = {{ version = "0.6", features = ["flatbuffers"] }}
-
-[patch.crates-io]
-ridl-rt = {{ path = "{ridl}/crates/ridl-rt" }}
-''')
-prog.joinpath('src/main.rs').write_text('''// Verifies, decodes and re-encodes each buffer with the Rust codec.
-use ridl_rt::encoding::FlatBuffers;
-use ridl_rt::payload::{Payload, Ref};
-use std::io::BufRead;
-
-fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02x}")).collect() }
-fn unhex(s: &str) -> Vec<u8> { (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect() }
-
-fn roundtrip<T: Payload<FlatBuffers>>(buf: &[u8]) -> String {
-    match Ref::<T, FlatBuffers>::verify(buf) {
-        Err(e) => format!("err {e:?}"),
-        Ok(r) => {
-            let value = r.decode();
-            let mut out = vec![0u8; 1 << 16];
-            match Ref::<T, FlatBuffers>::encode(&value, &mut out) {
-                Ok(e) => format!("ok {}", hex(e.bytes())),
-                Err(e) => format!("reencode-failed {e:?}"),
-            }
-        }
-    }
-}
-
-fn main() {
-    for line in std::io::stdin().lock().lines() {
-        let line = line.unwrap();
-        let mut parts = line.split_whitespace();
-        let (ty, label, h) = (parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap_or(""));
-        let b = unhex(h);
-        let out = match ty {
-''' + '\n'.join(arms) + '''
-        _ => "unknown-type".to_string(),
-        };
-        println!("{ty} {label} {out}");
-    }
-}
-''')
-print(len(arms), 'types')
-```
-
-`compact.py`:
-
-```python
-# Compacts the Rust round trip's output to the verdicts CodecTest compares:
-# `ok:<first 16 hex of SHA-256 of the re-encoded hex>` or `err:<error>`.
-import hashlib, sys
-for line in sys.stdin:
-    ty, label, rest = line.rstrip('\n').split(' ', 2)
-    if rest.startswith('ok '):
-        print('ok:' + hashlib.sha256(rest[3:].encode()).hexdigest()[:16])
-    elif rest.startswith('err '):
-        print('err:' + rest[4:])
-    else:
-        print('?:' + rest)
-```
+1. clones driftsys/ridl at the tag in `modules/conformance/ridl-release`
+   (`--ridl-checkout` names an existing checkout instead);
+2. writes each corpus package's crate with `ridl build --emit rust`;
+3. writes, under `modules/conformance/build/rust-verdicts/`, one round-trip
+   program per package — each `pkg.Type label hex` corpus line is verified,
+   decoded and re-encoded by the Rust codec — and the cabin spike's program,
+   which encodes the golden values and verifies the spike's corpus. The
+   repository tracks no Rust (D-K9), so the script writes them at each run. Each
+   depends on `ridl-rt` at the release's minor version, `0.6` for
+   `editor-v0.6.0`, patched to the tag's `crates/ridl-rt`;
+4. builds them with cargo, runs them over the corpus, and compacts a round
+   trip's output to the verdicts `CodecTest` compares: `ok:` and the first 16
+   hex digits of the SHA-256 of the re-encoded hex, or `err:` and the error.

@@ -42,8 +42,10 @@ by hand over `ridl.rt.flatbuffers`, encode the bytes the Rust codec of the
 pinned release encodes (`resources/flatbuffers/cabin-golden.txt`), and a corpus
 of 1,385 mutants of those bytes is refused or decoded exactly as the Rust
 verifier refuses or decodes it (`cabin-rust-verdicts.txt`), never by an
-exception of the JVM's own. How to regenerate both files is in
-[`docs/k1b-flatbuffers-spike.md`](../../docs/k1b-flatbuffers-spike.md).
+exception of the JVM's own. `just rust-verdicts` regenerates both files and
+every codec verdict file below from the pinned release and fails when one
+differs from the committed file, and the `rust-verdicts` workflow runs it (#39);
+[`docs/k1b-flatbuffers-spike.md`](../../docs/k1b-flatbuffers-spike.md) says how.
 
 The test of stage K2c, `CodecTest`: for every corpus package, the generated
 `Codec.kt` encodes sample values of every public root, written from the model
