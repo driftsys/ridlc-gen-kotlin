@@ -166,8 +166,11 @@ to that over 15,780 buffers (`CodecTest`).
   verifier does since ridl 0.5.1 (driftsys/ridl#654), comparing the keys as
   their backings compare: a float by IEEE equality, so 0.0 and -0.0 are one key
   and a NaN equals no key, and bytes by content. A Kotlin `Map` holds 0.0 and
-  -0.0 apart, so `encode` can write a map `verify` refuses, as a Rust `Vec` of
-  pairs can hold any duplicate.
+  -0.0 apart, and two `ByteArray` keys of one content, so a struct's constructor
+  refuses such a map with the same rule `Unique` (#38): every map it accepts is
+  one `verify` accepts, and `encode` never writes a duplicate. The other way
+  round, a Kotlin `Map` holds one NaN key, so a buffer with two NaN keys, which
+  `verify` accepts, decodes to one entry.
 - **The helpers are `internal`**, and a codec reaches another package's helpers
   by name: the packages of one `ridl build` are compiled into one module, as the
   Rust backend writes them into one crate.

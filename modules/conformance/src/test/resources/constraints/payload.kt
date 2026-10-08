@@ -115,6 +115,7 @@ fun probe(): List<String> {
     constructors()
     inlineConstraints()
     mapKeys()
+    constructedKeys()
     wireSteps()
     patterns()
     decimalCompensation()
@@ -189,9 +190,11 @@ private fun mapKeys() {
         verdict(KeysCodec, patched(number, le(distinct), le(Long.MAX_VALUE))))
 
     expectEqual("no floating key verifies", null, verdict(FloatingKeysCodec, bytes(FloatingKeysCodec, FloatingKeys(emptyMap()))))
-    // A Kotlin map holds 0.0 and -0.0 apart; the verifier compares them as floats.
+    // A Kotlin map holds 0.0 and -0.0 apart, and the constructor refuses them
+    // as the verifier does (#38); the duplicate is patched in past it.
+    val signed = bytes(FloatingKeysCodec, FloatingKeys(mapOf(0.0 to Whole(1), 1.5 to Whole(1))))
     expectEqual("0.0 and -0.0 are one key", Rule.Unique,
-        verdict(FloatingKeysCodec, bytes(FloatingKeysCodec, FloatingKeys(mapOf(0.0 to Whole(1), -0.0 to Whole(1))))))
+        verdict(FloatingKeysCodec, patched(signed, le(java.lang.Double.doubleToRawLongBits(1.5)), le(java.lang.Double.doubleToRawLongBits(-0.0)))))
     // A Kotlin map holds one NaN key; the second is patched in.
     val nan = bytes(FloatingKeysCodec, FloatingKeys(mapOf(Double.NaN to Whole(1), 1.5 to Whole(1))))
     val nanBits = java.lang.Double.doubleToRawLongBits(Double.NaN)
@@ -200,8 +203,34 @@ private fun mapKeys() {
 
     expectEqual("distinct byte keys verify", null,
         verdict(ByteKeysCodec, bytes(ByteKeysCodec, ByteKeys(mapOf(byteArrayOf(1) to Whole(1), byteArrayOf(2) to Whole(1))))))
+    val distinctBytes = bytes(ByteKeysCodec, ByteKeys(mapOf(byteArrayOf(1) to Whole(1), byteArrayOf(2) to Whole(1))))
     expectEqual("equal byte keys are one key", Rule.Unique,
-        verdict(ByteKeysCodec, bytes(ByteKeysCodec, ByteKeys(mapOf(byteArrayOf(1) to Whole(1), byteArrayOf(1) to Whole(1))))))
+        verdict(ByteKeysCodec, patched(distinctBytes, byteArrayOf(1, 0, 0, 0, 2), byteArrayOf(1, 0, 0, 0, 1))))
+}
+
+/**
+ * #38: a map the constructor accepts is one `verify` accepts. A Kotlin map
+ * holds keys apart that ridl's rule makes one — 0.0 and -0.0, two byte arrays
+ * of one content — so the constructor refuses them with `Unique`, the rule
+ * `verify` reports, and every map it accepts survives its own round trip.
+ */
+private fun constructedKeys() {
+    refused("0.0 and -0.0 are one key at construction", Rule.Unique) {
+        FloatingKeys(mapOf(0.0 to Whole(1), -0.0 to Whole(2)))
+    }
+    refused("equal byte keys are one key at construction", Rule.Unique) {
+        ByteKeys(mapOf(byteArrayOf(1, 2) to Whole(1), byteArrayOf(1, 2) to Whole(2)))
+    }
+    val accepted = listOf(
+        "0.0 and NaN" to FloatingKeys(mapOf(0.0 to Whole(1), Double.NaN to Whole(2))),
+        "-0.0 alone" to FloatingKeys(mapOf(-0.0 to Whole(1))),
+        "1.5 and -1.5" to FloatingKeys(mapOf(1.5 to Whole(1), -1.5 to Whole(2))),
+    )
+    for ((label, value) in accepted) {
+        expectEqual("$label verifies once encoded", null, verdict(FloatingKeysCodec, bytes(FloatingKeysCodec, value)))
+    }
+    expectEqual("distinct byte keys verify once encoded", null,
+        verdict(ByteKeysCodec, bytes(ByteKeysCodec, ByteKeys(mapOf(byteArrayOf(1, 2) to Whole(1), byteArrayOf(2, 1) to Whole(2))))))
 }
 
 /** `verified_decimal_wire_values_satisfy_the_named_scalar_check`. */
