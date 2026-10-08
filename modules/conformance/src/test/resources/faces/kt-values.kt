@@ -262,8 +262,12 @@ private fun clash() {
     val serving = thread { while (running.get()) Clash.serve(rt.handler(), provider, 100.milliseconds) }
     client.timeout = 5.seconds
     client.setTimeout(Even.of(1))
-    expectEqual("a command named set_timeout is served", listOf(Even.of(1)), synchronized(provider) { provider.timeouts.toList() })
     expectEqual("a query named new is served", Even.of(-4), client.new(Even.of(4)))
+    // `dispatch` settles a command before its provider method runs, so the
+    // command's acknowledgment can come back before `setTimeout` has run. The
+    // one serving thread runs it before it takes the query's claim, so once
+    // the query is answered, the command has been recorded.
+    expectEqual("a command named set_timeout is served", listOf(Even.of(1)), synchronized(provider) { provider.timeouts.toList() })
     running.set(false)
     serving.join()
 }
