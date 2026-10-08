@@ -155,9 +155,11 @@ public abstract class Contract<R>(protected val factory: Factory<R>)
         public val OTHER: Ordinal = Ordinal(2u)
 
         /**
-         * The catalog every test attaches to. The hash is all zeros, the
-         * placeholder the descriptor emitter writes until story E16.2
-         * computes a real one.
+         * The catalog every test attaches to. The hash is all zeros, which
+         * is enough here: the runtime carries the catalog without examining
+         * it. The generated clients, publisher and `serve` compare the
+         * catalogs (ADR-0023 decision 8), but these tests do not run
+         * generated code.
          */
         public val catalog: CatalogRef = CatalogRef("face.demo", CatalogHash(ByteArray(32)))
 

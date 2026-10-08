@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import ridl.codegen.kotlin.types.FacesEmitter
+import com.google.protobuf.ByteString
+import ridl.codegen.v1.ModelOuterClass.Catalog
 import ridl.codegen.v1.ModelOuterClass.Clause
 import ridl.codegen.v1.ModelOuterClass.Constraint
 import ridl.codegen.v1.ModelOuterClass.DeclKind
@@ -33,13 +35,20 @@ import ridl.codegen.v1.Plugin
 class FacesEmitterTest {
     private val options = Options("kt.demo", WireEncoding.FlatBuffers)
 
+    /** A catalog hash no placeholder spells: bytes 1 to 32. */
+    private val hash = ByteArray(32) { (it + 1).toByte() }
+
+    /** Package `kt.demo`, with its catalog. */
+    private fun demo() = Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo"))
+        .setCatalog(Catalog.newBuilder().setPackage("kt.demo").setHash(ByteString.copyFrom(hash)))
+
     private fun spelled(name: String) = Spellings.newBuilder().setDeclared(name).setCamel(name.replaceFirstChar(Char::uppercaseChar)).build()
 
     private fun model(command: CommandShape): Model {
         val interaction = Interaction.newBuilder().setName(spelled("go")).setCommand(command)
         val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
             .addSlots(InteractionSlot.newBuilder().setOrdinal(1).setInteraction(interaction))
-        return Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo")).addInterfaces(iface).build()
+        return demo().addInterfaces(iface).build()
     }
 
     @Test
@@ -73,6 +82,27 @@ class FacesEmitterTest {
     }
 
     @Test
+    fun `the descriptor's catalog is the model's, hash included`() {
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
+        val text = checkNotNull(faces("Level", iface = iface).text)
+        assertTrue("CatalogRef(\"kt.demo\", CatalogHash(byteArrayOf(${hash.joinToString()})))" in text, text)
+    }
+
+    @Test
+    fun `a catalog hash that is not 32 bytes refuses the package`() {
+        for (size in listOf(0, 31, 33)) {
+            val model = demo().setCatalog(Catalog.newBuilder().setPackage("kt.demo").setHash(ByteString.copyFrom(ByteArray(size))))
+            val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(model).build()
+            val response = Generator.generate(request)
+            assertEquals(0, response.filesCount, "no file for a $size-byte hash")
+            assertEquals(
+                listOf("$PLUGIN: malformed codegen model: `Catalog.hash` is $size bytes, not 32"),
+                response.diagnosticsList.map { it.message },
+            )
+        }
+    }
+
+    @Test
     fun `a skipped interface leaves the package generated, with the warning in the response`() {
         val command = CommandShape.newBuilder().addParams(Param.newBuilder().setName(spelled("a"))).addParams(Param.newBuilder().setName(spelled("b"))).build()
         val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(model(command)).build()
@@ -97,7 +127,7 @@ class FacesEmitterTest {
     )
 
     private fun faces(vararg declarations: String, iface: Interface.Builder) = FacesEmitter(
-        Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo"))
+        demo()
             .addAllDeclarations(declarations.map { scalar(it).build() }).addInterfaces(iface).build(),
         options,
     ).emit()
@@ -105,7 +135,7 @@ class FacesEmitterTest {
     /** The error diagnostics of the whole plugin over [declarations] and [iface]. */
     private fun refusals(vararg declarations: String, iface: Interface.Builder): List<String> = Generator.generate(
         Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(
-            Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo"))
+            demo()
                 .addAllDeclarations(declarations.map { scalar(it).build() }).addInterfaces(iface),
         ).build(),
     ).diagnosticsList.filter { it.severity == Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_ERROR }.map { it.message }
@@ -157,7 +187,7 @@ class FacesEmitterTest {
             .addSlots(command(4, "set_timeout", "SetTimeout"))
         val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
         val emitted = FacesEmitter(
-            Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.demo")).addDeclarations(level).addInterfaces(iface).build(),
+            demo().addDeclarations(level).addInterfaces(iface).build(),
             options,
         ).emit()
         assertEquals(emptyList<String>(), emitted.warnings)
