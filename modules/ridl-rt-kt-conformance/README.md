@@ -7,8 +7,9 @@ This module is the port contract suite of
 a runtime does behind each port, generic over a runtime, so any Kotlin runtime
 runs them from its own tests. It is the Kotlin spelling of
 `crates/ridl-rt-conformance` (story E11.20), a JVM library in the package
-`ridl.rt.conformance` over `ridl-rt-kt` and the JUnit Jupiter API. It is not
-published, as the Rust crate is not. The repository is licensed under the root
+`ridl.rt.conformance` over `ridl-rt-kt` and the JUnit Jupiter API, published as
+`io.github.driftsys.ridl:ridl-rt-kt-conformance` so that a runtime in another
+repository runs it. The repository is licensed under the root
 [MIT License](../../LICENSE).
 
 A runtime writes one `Factory<R>` — how to build a runtime `R` implementing
@@ -23,6 +24,28 @@ a `@TestFactory`:
 @TestFactory fun coherent() = coherentSuite(MyFactory)
 @TestFactory fun trace() = traceSuite(MyFactory)
 ```
+
+A runtime in another repository takes the suite from Maven. Until the libraries
+reach a remote repository, `just publish-local` here puts them in the local
+Maven repository, and the runtime's build declares `mavenLocal()` and the suite
+in its test source set, with the JUnit engine that runs it:
+
+```kotlin
+dependencies {
+    implementation("io.github.driftsys.ridl:ridl-rt-kt:0.1.0-SNAPSHOT")
+    testImplementation("io.github.driftsys.ridl:ridl-rt-kt-conformance:0.1.0-SNAPSHOT")
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test { useJUnitPlatform() }
+```
+
+The suite's version follows `ridl-rt-kt`'s: a runtime takes the suite of the
+`ridl-rt-kt` it implements, because the suite's surface changes with the port
+contract. Run only the suites of the extensions the runtime implements, and
+`traceSuite` only when it carries the trace context.
 
 ## Status
 
@@ -80,6 +103,11 @@ does to a call no handler has claimed beyond giving its slot back, and the close
 of a handle.
 
 ## Where the code departs from the Rust crate and docs/design.md
+
+- **Published.** `crates/ridl-rt-conformance` is not published: a Rust runtime
+  depends on it by path or git. A JVM build cannot, so this module publishes a
+  Maven artifact, as the other three libraries do, for a runtime outside this
+  repository.
 
 - **Dynamic tests, not a macro.** `suite!(F; scannable, coherent)` writes one
   `#[test]` per function; here `suite`, `scannableSuite` and `coherentSuite`
