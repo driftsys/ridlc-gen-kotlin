@@ -125,7 +125,9 @@ public class Builder(private val out: ByteBuffer) {
         val bytes = value.toByteArray(Charsets.UTF_8)
         val (position, first) = reserve(OFFSET_SIZE + bytes.size + 1, OFFSET_SIZE)
         buf.putInt(first, bytes.size)
-        buf.duplicate().position(first + OFFSET_SIZE).put(bytes)
+        val destination = buf.duplicate()
+        destination.position(first + OFFSET_SIZE)
+        destination.put(bytes)
         return position
     }
 
@@ -138,7 +140,9 @@ public class Builder(private val out: ByteBuffer) {
         val (align, skew) = if (stride > OFFSET_SIZE) stride to OFFSET_SIZE else OFFSET_SIZE to 0
         val (position, first) = reserve(OFFSET_SIZE + elements.size, align, skew)
         buf.putInt(first, elements.size / stride)
-        buf.duplicate().position(first + OFFSET_SIZE).put(elements)
+        val destination = buf.duplicate()
+        destination.position(first + OFFSET_SIZE)
+        destination.put(elements)
         return position
     }
 
@@ -201,7 +205,10 @@ public class Builder(private val out: ByteBuffer) {
     public fun finish(root: Pos, align: Int): Int {
         val (position, first) = reserve(OFFSET_SIZE, maxOf(align, OFFSET_SIZE))
         buf.putInt(first, delta(position, root))
-        val bytes = ByteArray(used).also { buf.duplicate().position(end - used).get(it) }
+        val bytes = ByteArray(used)
+        val source = buf.duplicate()
+        source.position(end - used)
+        source.get(bytes)
         out.put(bytes)
         return used
     }

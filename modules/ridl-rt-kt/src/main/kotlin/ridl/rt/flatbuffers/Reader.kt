@@ -122,7 +122,9 @@ public class Reader(source: ByteBuffer) {
         if (len > Int.MAX_VALUE - OFFSET_SIZE - 1) malformed(Malformed.OutOfBounds)
         val first = at(start + OFFSET_SIZE, len.toInt())
         if (u8(first + len.toInt()) != 0) malformed(Malformed.OutOfBounds)
-        val bytes = buf.duplicate().position(first).limit(first + len.toInt())
+        val bytes = buf.duplicate()
+        bytes.position(first)
+        bytes.limit(first + len.toInt())
         return try {
             Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
@@ -150,7 +152,11 @@ public class Reader(source: ByteBuffer) {
     /** The bytes the `uoffset_t` at [from] names, as a `[ubyte]` vector. */
     public fun bytes(from: Int): ByteArray {
         val vector = vector(from, 1)
-        return ByteArray(vector.len).also { buf.duplicate().position(vector.first).get(it) }
+        val bytes = ByteArray(vector.len)
+        val source = buf.duplicate()
+        source.position(vector.first)
+        source.get(bytes)
+        return bytes
     }
 }
 

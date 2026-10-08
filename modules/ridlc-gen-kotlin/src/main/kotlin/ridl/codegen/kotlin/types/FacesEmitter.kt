@@ -191,7 +191,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addParameter("codec", codec).addParameter("value", t).returns(BYTE_BUFFER)
                 .addStatement("val out = %T.allocate(codec.maxSize)", BYTE_BUFFER)
                 .addStatement("codec.encode(value, out)")
-                .addStatement("return out.flip()")
+                .addStatement("out.flip()")
+                .addStatement("return out")
                 .build(),
         )
         file.addFunction(
@@ -811,7 +812,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 read.addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, reply.codec)
                     .addStatement("val outcome = try { port.reply(c, buf) } catch (e: %T) { throw %T.Read(e) } ?: return null", READ_ERROR, CLIENT_ERROR)
                     .addStatement("outcome.onFailure { throw %T.Call(it as %T) }", CLIENT_ERROR, CALL_ERROR)
-                    .addStatement("return callOutcome(%T, buf.flip()).getOrElse { throw %T.Call(it as %T) }", reply.codec, CLIENT_ERROR, CALL_ERROR)
+                    .addStatement("buf.flip()")
+                    .addStatement("return callOutcome(%T, buf).getOrElse { throw %T.Call(it as %T) }", reply.codec, CLIENT_ERROR, CALL_ERROR)
             } else {
                 read.addStatement("return port.ack(c)?.getOrElse { throw %T.Call(it as %T) }", CLIENT_ERROR, CALL_ERROR)
             }
@@ -878,7 +880,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         )
                         .addStatement("return %T(%T.init(), raw.provenance, raw.freshness, raw.envelope)", SAMPLE, m.descriptor)
                         .endControlFlow()
-                        .addStatement("return checked(%T, buf.flip()).fold(", payload.codec)
+                        .addStatement("buf.flip()")
+                        .addStatement("return checked(%T, buf).fold(", payload.codec)
                         .addStatement("  { %T(it, raw.provenance, raw.freshness, raw.envelope) },", SAMPLE)
                         .addStatement(
                             "  { %T(%T.init(), %T.Invalid(%T.Detected(it as %T)), raw.freshness, raw.envelope) },",
@@ -921,7 +924,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         )
                         .addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, reply.codec)
                         .addStatement("val outcome = port.reply(correlation.correlation, buf) ?: return null")
-                        .addStatement("return outcome.fold({ callOutcome(%T, buf.flip()) }, { %T.failure(it) })", reply.codec, RESULT)
+                        .addStatement("buf.flip()")
+                        .addStatement("return outcome.fold({ callOutcome(%T, buf) }, { %T.failure(it) })", reply.codec, RESULT)
                         .build(),
                 )
             }
@@ -1300,7 +1304,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .endControlFlow()
                 .addStatement("if (claim == null) return settled")
                 .addStatement("left -= 1")
-                .addStatement("val args = buffer.duplicate().flip()")
+                .addStatement("val args = buffer.duplicate()")
+                .addStatement("args.flip()")
                 .beginControlFlow("val accepted = if (claim.iface != number)")
                 .addStatement("settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)
                 .nextControlFlow("else when (claim.ord)")
@@ -1341,7 +1346,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .nextControlFlow("else")
                     .addStatement("buffer.clear()")
                     .addStatement("%T.encode(reply, buffer)", reply.codec)
-                    .addStatement("settle(handler, claim.id, %T.success(buffer.flip()))", RESULT)
+                    .addStatement("buffer.flip()")
+                    .addStatement("settle(handler, claim.id, %T.success(buffer))", RESULT)
                     .endControlFlow()
                     .endControlFlow()
                     .endControlFlow()
