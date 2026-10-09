@@ -85,9 +85,10 @@ public class SignalStates(
  *   envelope or its staleness differs from the last one emitted: every
  *   publication, a `touch` included, and a turn to stale or back. The age of a
  *   stale sample is not compared, so a stale value is emitted once.
- * - **[value].** While polling, the last sample polled, at most one [period]
- *   old, with the freshness of that poll; otherwise a fresh read of the port.
- *   [read] always reads the port.
+ * - **[value].** While polling, the last sample polled, with the freshness of
+ *   that poll: at most one [period] old while the poller keeps its slots, older
+ *   if its dispatcher starves it, as no clock is read to check (#78).
+ *   Otherwise a fresh read of the port. [read] always reads the port.
  * - **Cost.** A read copies the channel into one buffer the state keeps, and
  *   decodes it only when its bytes, envelope or provenance changed since the
  *   last read: an unchanged publication is not decoded again.
