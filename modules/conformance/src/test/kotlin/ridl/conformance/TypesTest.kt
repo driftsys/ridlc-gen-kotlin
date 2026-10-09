@@ -48,6 +48,28 @@ class TypesTest {
         }
     }
 
+    /**
+     * #51: ridl strips the doc tags `@see` and `@since` before the model
+     * reaches the plugin (driftsys/ridl#703), and the emitters copy a doc as
+     * it is. `kt-values` documents `Offset` with both tags, so this fails as
+     * soon as a ridl release leaves one in the doc.
+     */
+    @TestFactory
+    fun `no doc tag reaches the generated KDoc`(): List<DynamicTest> = Harness.packages().map { name ->
+        DynamicTest.dynamicTest(name) {
+            val generated = generate(name)
+            for ((path, text) in generated.sources) {
+                for (tag in listOf("@see", "@since")) {
+                    assertTrue(tag !in text, "$path carries `$tag`")
+                }
+            }
+            if (name == "kt-values") {
+                // The documented declaration is generated with its doc, so the check is not vacuous.
+                assertTrue(" * An offset, in quarter steps." in generated.sources.getValue("kt/values/Types.kt"))
+            }
+        }
+    }
+
     @TestFactory
     fun `the value objects refuse invalid values`(): List<DynamicTest> = Harness.packages().map { name ->
         DynamicTest.dynamicTest(name) {
