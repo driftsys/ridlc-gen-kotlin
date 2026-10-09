@@ -55,13 +55,14 @@ public class CatalogHash(bytes: ByteArray) {
 }
 
 /**
- * A catalog: one package's interfaces. `ridl_rt::contract::CatalogRef`.
+ * A catalog: the interfaces of one unit, one package manifest and the source
+ * packages in its directory tree. `ridl_rt::contract::CatalogRef`.
  *
  * Two catalog refs are equal only when both the names and the hashes are
- * equal, because two packages with the same contents can have the same hash.
+ * equal, because two units with the same contents can have the same hash.
  */
 public data class CatalogRef(
-    /** The package name. */
+    /** The unit name. */
     public val name: String,
     /** The catalog hash. */
     public val hash: CatalogHash,

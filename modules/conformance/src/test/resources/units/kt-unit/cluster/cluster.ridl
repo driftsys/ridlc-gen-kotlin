@@ -1,0 +1,11 @@
+// A subpackage of unit `kt.unit`: its interfaces are in the unit's catalog.
+package kt.unit.cluster
+
+/// A speed, in km/h.
+type Speed: integer [0..300]
+
+/// An interface of the subpackage, keyed `cluster.SpeedDisplay` in the unit's lock.
+interface SpeedDisplay {
+  /// The displayed speed.
+  signal speed: Speed @10ms
+}
