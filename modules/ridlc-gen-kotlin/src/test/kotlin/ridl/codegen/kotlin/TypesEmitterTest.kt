@@ -9,7 +9,9 @@ import ridl.codegen.v1.ModelOuterClass.ArrayType
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.DottedName
 import ridl.codegen.v1.ModelOuterClass.Field
+import ridl.codegen.v1.ModelOuterClass.MapType
 import ridl.codegen.v1.ModelOuterClass.Model
+import ridl.codegen.v1.ModelOuterClass.PrimitiveType
 import ridl.codegen.v1.ModelOuterClass.Slot
 import ridl.codegen.v1.ModelOuterClass.Spellings
 import ridl.codegen.v1.ModelOuterClass.StreamType
@@ -65,6 +67,22 @@ class TypesEmitterTest {
         val stream = Type.newBuilder().setStream(StreamType.getDefaultInstance()).build()
         val emitted = TypesEmitter(model(struct("A", "s" to stream), struct("B", "s" to stream)).build(), options).emit()
         assertEquals(2, emitted.errors.size)
+    }
+
+    @Test
+    fun `a bare bytes map key is compared by content, as verify compares it`() {
+        // #50: ridl gives a `bytes` key as an inline type today, but the model
+        // allows a bare one, whose two keys of one content `verify` refuses.
+        fun primitive(p: PrimitiveType) = Type.newBuilder().setPrimitive(p).build()
+        val map = Type.newBuilder().setMap(
+            MapType.newBuilder()
+                .setKey(primitive(PrimitiveType.PRIMITIVE_TYPE_BYTES))
+                .setValue(primitive(PrimitiveType.PRIMITIVE_TYPE_BOOLEAN))
+                .setMax(4),
+        ).build()
+        val text = checkNotNull(TypesEmitter(model(struct("Flags", "flags" to map)).build(), options).emit().text)
+        assertTrue("keys0[j0].contentEquals(keys0[i0])" in text, text)
+        assertTrue("Rule.Unique" in text, text)
     }
 
     @Test

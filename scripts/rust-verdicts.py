@@ -17,6 +17,10 @@ from the pinned tag, as `docs/k1b-flatbuffers-spike.md` describes:
    `modules/conformance/build/spike/`, and its output is compared with the
    committed file, or written over it with `--write`.
 
+The packages are the corpus's, as `CodecTest` lists them: a corpus package
+with no committed verdict file fails the check, and `--write` creates it. A
+verdict file with no corpus package fails both.
+
 It expects `ridl` at the pinned release (`RIDL_BIN`, or the one `installRidl`
 installs) and the corpus of a conformance test run; `just rust-verdicts` runs
 both first. A checkout of driftsys/ridl at the tag is cloned unless
@@ -146,7 +150,7 @@ def run(command, **kwargs):
 
 
 def release():
-    """The pinned tag and the `ridl-rt` version requirement it carries: `0.6` for `editor-v0.6.0`."""
+    """The pinned tag and the `ridl-rt` version requirement it carries: `0.7` for `editor-v0.7.0`."""
     tag = (CONFORMANCE / "ridl-release").read_text().strip()
     match = re.fullmatch(r"editor-v(\d+)\.(\d+)\.\d+", tag)
     if not match:
@@ -262,7 +266,10 @@ def compare(name, regenerated, write):
     if write:
         committed.write_text(regenerated)
         return True
-    current = committed.read_text() if committed.exists() else ""
+    if not committed.exists():
+        print(f"  {name}: not committed; `just rust-verdicts --write` creates it")
+        return False
+    current = committed.read_text()
     if current == regenerated:
         print(f"  {name}: unchanged")
         return True
@@ -291,7 +298,13 @@ def main():
     print(f"Rust verdicts of {tag} (ridl-rt {rt_version}), from {source}")
 
     agree = True
-    packages = sorted(p.name.removesuffix("-codec-rust-verdicts.txt") for p in VERDICTS.glob("*-codec-rust-verdicts.txt"))
+    # Every corpus package, as `CodecTest` lists them (#49): a package with no
+    # committed verdict file fails the check, and `--write` creates its file.
+    packages = sorted(p.parent.name for p in CORPUS.glob("*/ridl.toml"))
+    for stray in sorted(VERDICTS.glob("*-codec-rust-verdicts.txt")):
+        if stray.name.removesuffix("-codec-rust-verdicts.txt") not in packages:
+            print(f"  {stray.name}: no corpus package; delete it")
+            agree = False
     for package in packages:
         crate_dir = crate(ridl, package)
         binary = program(f"roundtrip-{package}", crate_dir, rt_version, source, roundtrip_main(crate_dir))
@@ -304,10 +317,12 @@ def main():
     verdicts = run([spike, "verify"], input=corpus("cabin-corpus.txt"), capture_output=True, text=True).stdout
     agree &= compare("cabin-rust-verdicts.txt", verdicts, args.write)
 
-    if args.write:
+    if args.write and not agree:
+        sys.exit("a committed verdict file has no corpus package: delete it")
+    elif args.write:
         print("written; review the diff, then run just test")
     elif not agree:
-        sys.exit("the committed Rust verdicts differ from the pinned release's: run `just rust-verdicts --write`")
+        sys.exit("the committed Rust verdicts differ from the corpus and the pinned release's, as each line above says")
 
 
 if __name__ == "__main__":

@@ -18,6 +18,12 @@ Kotlin value objects, codecs and faces over `ridl-rt-kt`.
   the corpus, and the tests that run the plugin from outside.
 - [`samples/cabin`](samples/cabin/README.md) — the JVM demonstration.
 
+## Using the plugin
+
+[`docs/guide.md`](docs/guide.md) takes a `.ridl` package to a running Kotlin
+client and provider: setup, the code generated for the cabin sample beside its
+`.ridl` source, the blocking and the coroutine flows, and the errors.
+
 ## Design
 
 The design of the plugin, the runtime contract, the value objects, the codec and
