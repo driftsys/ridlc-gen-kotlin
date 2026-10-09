@@ -63,12 +63,16 @@ never fails each turns it red.
 Since ridl 0.6.0, the model carries the real catalog hash (driftsys/ridl#676),
 so every generated descriptor of the corpus carries it; the faces tests attach
 their loopbacks to the generated `<Iface>.catalog`, so they did not change, and
-the cabin hash the plugin writes is the one the Rust backend writes. Untimed
-commands and queries take a default response bound of 1 s and 3 s, which the
-model states as their timing. The Rust codec and `ridl-rt`'s FlatBuffers code
-differ from 0.5.1's in comments only, so no golden file or Rust verdict changed.
-The corpus copies of `cabin` (doc comments and a `service` declaration),
-`fb-demo` and `veh-cruise` (comments) were taken again from the tag.
+pass with any hash. `CatalogTest` checks the hash itself (#48): for every corpus
+package, one `ridl build --emit rust --plugin kotlin` writes both sides, and the
+`CatalogRef` literals of the plugin's descriptors, name and hash, are those of
+the Rust crate, none of 32 zero bytes. A zero hash or one wrong byte turns it
+red. Untimed commands and queries take a default response bound of 1 s and 3 s,
+which the model states as their timing. The Rust codec and `ridl-rt`'s
+FlatBuffers code differ from 0.5.1's in comments only, so no golden file or Rust
+verdict changed. The corpus copies of `cabin` (doc comments and a `service`
+declaration), `fb-demo` and `veh-cruise` (comments) were taken again from the
+tag.
 
 Since ridl 0.5.1 (driftsys/ridl#654), the Rust verifier checks every float step,
 every non-finite float under a range and every inline constraint, which Kotlin
