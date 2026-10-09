@@ -262,7 +262,10 @@ private fun blocking() {
             override fun setLevel(level: Level) = Unit
             override fun average(window: Window): Average = throw IllegalStateException("the provider's own failure")
         }
-        rt.query(Cabin.number, Ordinal(4u), ByteBuffer.allocate(veh.cabin.WindowCodec.maxSize).also { veh.cabin.WindowCodec.encode(Window.of(10), it) }.flip(), null)
+        val window = ByteBuffer.allocate(veh.cabin.WindowCodec.maxSize)
+        veh.cabin.WindowCodec.encode(Window.of(10), window)
+        window.flip()
+        rt.query(Cabin.number, Ordinal(4u), window, null)
         expectThrows<IllegalStateException>("a provider's exception leaves serve unchanged") { Cabin.serve(rt, broken, 1.seconds) }
     }
 }
