@@ -2,7 +2,7 @@
 
 |              | `CabinClient`                                                                         | `CabinAsyncClient`                                                                    |
 | ------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| A signal     | `temperature()`: the current sample, without waiting                                  | `temperature()`, and `temperatureFlow()`: each new sample as it is published          |
+| A signal     | `temperature()`: the current sample, without waiting                                  | `temperature`: a shared `StateFlow` of samples, polled while collected                |
 | A call       | blocks the calling thread until its outcome                                           | suspends until its outcome                                                            |
 | Timeout      | `timeout` on the client, for every call and `nextEvent`; `null` waits without a bound | none of its own: wrap the call in `withTimeout`                                       |
 | Cancellation | none: a call ends with its outcome, its timeout or the member's deadline              | cancelling the coroutine forgets the call                                             |

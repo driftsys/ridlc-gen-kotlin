@@ -7,25 +7,30 @@ calls that wait again, with `CabinAsyncClient` and `Cabin.serveAsync`:
 
 ```kotlin
 val port = Loopback(Cabin.catalog)
-val client = CabinAsyncClient(port)
+val client = CabinAsyncClient(port, signals)
 val service = CabinService(average = 7)
 val handler = port.handler()
 val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, service) }
 ```
 
+`signals` is the scope the client's signal states poll in. The sample makes one
+on `Dispatchers.Default` and cancels it once it is done; an application passes a
+scope that lives as long as the client, never the main thread's.
+
 `serveAsync` suspends between claims and never returns normally: it ends by
 throwing, or when its coroutine is cancelled. The sample stops it with
 `provider.cancelAndJoin()`.
 
-## A signal as a flow
+## A signal as a state
 
-The suspending client reads a signal as a `Flow` of samples. The flow emits the
-current sample at once, then each sample that differs from the last one emitted:
+The suspending client has each signal as a `SignalState`: a `StateFlow` of its
+samples, shared by every collector. Collecting it emits the current sample at
+once, then each sample that differs from the last one emitted:
 
 <!-- excerpt: src/main/kotlin/ridl/sample/cabin/CoroutineDemo.kt -->
 
 ```kotlin
-val temperatures = client.temperatureFlow()
+val temperatures = client.temperature
     .onEach {
         if (it.value == Temperature.of(21)) {
             publisher.temperature(Temperature.of(22))
@@ -36,17 +41,33 @@ val temperatures = client.temperatureFlow()
     .toList()
 ```
 
-The flow reads the signal at its declared rate: every 10 ms for `temperature`,
-declared `@10ms`. For a range, it reads at the lower bound, the rate floor under
-which faster updates are coalesced, so no update is missed. A signal with no
-lower bound is read at its staleness bound, and one with no timing at all at
-ridl's default floor of 100 ms.
+The state polls the port while it has a collector, and stops 3 s after the last
+one left; while nothing collects it, nothing runs. It reads at the signal's rate
+floor, the lower bound under which faster updates are coalesced: every 10 ms for
+`temperature`, declared `@10ms`. The floor is rounded up to a multiple of 10 ms
+and capped at the staleness bound. A signal with no floor is read at half its
+staleness bound, and one with no timing at all at ridl's default floor of 100
+ms. Every state polls at the multiples of its period on one grid shared by the
+process, so states of compatible periods, 100 ms and 300 ms say, read in the
+same slot.
 
 A sample is emitted when its value, its provenance or its envelope changes, so
 every publication is emitted, a `touch` that re-affirms the same value included.
 A sample is also emitted when it turns stale, once, and when it turns fresh
-again. Apply `distinctUntilChangedBy { it.value }` to see only changes of the
-value. The flow never completes; cancelling the collecting coroutine stops it.
+again. A publication already decoded is not decoded again.
+
+The rest of the state:
+
+- `client.temperature.value` is the last sample polled while the state polls,
+  and a fresh read of the port otherwise. `client.temperature.read()` always
+  reads the port.
+- `client.temperature.every(1.seconds)` is the same signal polled every second:
+  another shared state. A period faster than the rate floor is the floor, so
+  `every(1.milliseconds)` is `client.temperature` itself.
+- `client.temperature.values` is a `StateFlow` of the values alone, which emits
+  only when the value changes, over the same polling.
+
+The blocking `CabinClient` keeps `temperature()`, a read of the port.
 
 ## The calls
 
