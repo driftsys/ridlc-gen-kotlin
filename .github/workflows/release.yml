@@ -1,6 +1,6 @@
 # The release: a `v<version>` tag, pushed after the `chore(release): <version>`
 # commit (CONTRIBUTING.md, "Releasing"), runs the whole gate and the Rust codec
-# verdicts on the tagged commit, then publishes three things:
+# verdicts on the tagged commit, then publishes:
 #
 # - the four JVM libraries, `ridl-rt-kt-conformance` among them, to GitHub
 #   Packages (`just publish`);
@@ -8,9 +8,11 @@
 #   and `install.sh`, which installs it;
 # - the runtime sources as an Android tree vendors them, with an Android.bp
 #   (`just vendor-package`, packaging/android/README.md);
-# - the conformance results (`just compliance`).
+# - the conformance results (`just compliance`);
+# - the book, docs/book, to GitHub Pages (the `pages` job).
 #
-# All but the first are assets of a GitHub release named after the tag, with a
+# The distribution, the installer, the Android package and the conformance
+# results are assets of a GitHub release named after the tag, with a
 # SHA256SUMS file over them, and the release notes are the tag's section of
 # CHANGELOG.md. The installer is run on the assets before anything is
 # published.
@@ -32,6 +34,8 @@ concurrency:
 env:
   JUST_VERSION: 1.38.0
   JUST_SHA256: c803e67fd7b0af01667bd537197bc3df319938eacf9e8d51a441c71d03035bb5
+  MDBOOK_VERSION: 0.4.40
+  MDBOOK_SHA256: 9ef07fd288ba58ff3b99d1c94e6d414d431c9a61fdb20348e5beb74b823d546b
 
 jobs:
   release:
@@ -153,3 +157,47 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "$GITHUB_REF_NAME" --draft=false
+
+  # The book (docs/book) at the released commit, published to GitHub Pages
+  # once the release is out, so the site always describes the latest release.
+  # The repository's Pages source is GitHub Actions, and the github-pages
+  # environment must allow deployments from `v*` tags.
+  pages:
+    name: pages
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: install just
+        run: |
+          tarball="just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/casey/just/releases/download/${JUST_VERSION}/$tarball"
+          echo "${JUST_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$HOME/.local/bin" just
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: install mdbook
+        run: |
+          tarball="mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/$tarball"
+          echo "${MDBOOK_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: just book-check
+      - run: just book-build
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: book
+      - id: deploy
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

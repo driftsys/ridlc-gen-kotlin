@@ -6,3 +6,4 @@ build/
 out/
 .kotlin/
 .gradle-home/
+/book/

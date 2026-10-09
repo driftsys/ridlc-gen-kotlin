@@ -20,9 +20,18 @@ Kotlin value objects, codecs and faces over `ridl-rt-kt`.
 
 ## Using the plugin
 
-[`docs/guide.md`](docs/guide.md) takes a `.ridl` package to a running Kotlin
-client and provider: setup, the code generated for the cabin sample beside its
-`.ridl` source, the blocking and the coroutine flows, and the errors.
+The book,
+[driftsys.github.io/ridlc-gen-kotlin](https://driftsys.github.io/ridlc-gen-kotlin/),
+covers installing `ridl`, the plugin and the runtime libraries, for Gradle and
+for an Android tree. It then runs the plugin and puts the code generated for the
+cabin sample beside its `.ridl` source, through the blocking and the coroutine
+flows and the errors. Its source is [`docs/book`](docs/book/SUMMARY.md), and
+each release publishes it. The quickest install:
+
+```sh
+curl -fsSL https://github.com/driftsys/ridlc-gen-kotlin/releases/latest/download/install.sh | bash
+ridl build --plugin kotlin   # runs ridlc-gen-kotlin from PATH
+```
 
 ## Design
 
@@ -42,22 +51,6 @@ disposition of O-K1), the in-process loopback runtime, the plugin's reader and
 launcher, and the value objects the plugin generates into `Types.kt`. Each
 module README states its own stage and where its code departs from the design.
 
-## Installing the plugin
-
-Each release carries `install.sh`, which installs that release. It downloads the
-plugin distribution, checks it against the release's `SHA256SUMS`, unpacks it
-under `~/.local/share/ridlc-gen-kotlin`, and links `ridlc-gen-kotlin` into
-`~/.local/bin`. The plugin needs a JDK or JRE 17 or later to run.
-
-```sh
-curl -fsSL https://github.com/driftsys/ridlc-gen-kotlin/releases/latest/download/install.sh | bash
-ridl build --plugin kotlin   # runs ridlc-gen-kotlin from PATH
-```
-
-`RIDLC_GEN_KOTLIN_VERSION=v<version>` installs another release, and
-`RIDLC_GEN_KOTLIN_HOME` and `RIDLC_GEN_KOTLIN_INSTALL_DIR` move the two
-directories. The script's header lists every setting.
-
 ## Building
 
 A JDK 17 or later, [Just](https://just.systems), Prim and Git-std.
@@ -73,59 +66,20 @@ just publish-local  # the four JVM libraries into the local Maven repository
 just install-check  # install.sh against a fixture release
 just vendor-package # the runtime sources for an Android tree, under build/vendor
 just compliance     # the conformance results, packed under build/compliance
+just book           # serve the book locally; just book-check is its gate
 ```
 
 The conformance tests download the pinned `ridl` release on first run; set
 `RIDL_BIN` to an installed `ridl` to run them offline.
 
-## Consuming the libraries
+## Releases
 
-The four JVM libraries publish to Maven as `io.github.driftsys.ridl`, each with
-its sources jar, to this repository's GitHub Packages registry. Each push to
-`main` publishes the `-SNAPSHOT` version, and each `v<version>` tag publishes
-that release. A consumer outside this repository — the Binder runtime depends on
-`ridl-rt-kt` ([`docs/design.md`](docs/design.md) §6) — declares the registry
-with a GitHub token that can read packages, since GitHub Packages asks for one
-even for a public package. `just publish-local` still puts the libraries in the
-local Maven repository, for a consumer built against an unpushed change.
-
-A runtime implemented there runs the port contract suite of
-`ridl-rt-kt-conformance` from its own tests
-([its README](modules/ridl-rt-kt-conformance/README.md) shows how):
-
-```kotlin
-repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/driftsys/ridlc-gen-kotlin")
-        credentials {
-            username = providers.gradleProperty("gpr.user").get()
-            password = providers.gradleProperty("gpr.key").get()
-        }
-    }
-}
-
-dependencies {
-    implementation("io.github.driftsys.ridl:ridl-rt-kt:0.1.0-SNAPSHOT")
-    testImplementation("io.github.driftsys.ridl:ridl-rt-kt-loopback:0.1.0-SNAPSHOT")
-    testImplementation("io.github.driftsys.ridl:ridl-rt-kt-coroutines:0.1.0-SNAPSHOT")
-    testImplementation("io.github.driftsys.ridl:ridl-rt-kt-conformance:0.1.0-SNAPSHOT")
-}
-```
-
-An Android tree that builds with Soong cannot read Maven. Each release attaches
-`ridl-rt-kt-<version>-android.tar.gz` for it instead: the sources of
-`ridl-rt-kt`, `ridl-rt-kt-coroutines` and `ridl-rt-kt-loopback` with an
-`Android.bp`, `METADATA` and the license files, to unpack at a path such as
-`external/ridl-rt-kt`.
-[`packaging/android/README.md`](packaging/android/README.md) says what the tree
-must provide.
-
-The plugin itself is not a Maven artifact: it ships as the `application`
-distribution `just dist` builds. Each release attaches it to the GitHub release
-as a `.zip` and a `.tar` with the `install.sh` above, beside a `SHA256SUMS` file
-and the conformance results `just compliance` packs: the test results of the
-plugin against the pinned `ridl` release and of the port contract suite over the
-loopback, with the Rust codec verdicts they matched.
+A `v<version>` tag runs the release workflow (CONTRIBUTING.md, "Releasing"). It
+publishes the four JVM libraries to this repository's GitHub Packages registry,
+creates a GitHub release with the plugin distribution, `install.sh`, the Android
+vendor package of the runtime and the conformance results, and publishes the
+book to Pages. Each push to `main` publishes the libraries' `-SNAPSHOT` version.
+The book's [Installing](docs/book/install.md) chapter shows how to consume each.
 
 The repository is licensed under the root [MIT License](LICENSE). Module READMEs
 refer to this license rather than adding another license file.
