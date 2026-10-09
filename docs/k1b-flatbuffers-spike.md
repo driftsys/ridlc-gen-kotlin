@@ -94,8 +94,10 @@ differs from the committed file; `just rust-verdicts --write` writes them
 instead. The packages are those of the corpus, so a new corpus package with no
 verdict file fails the check until `--write` creates its file (#49). The
 `rust-verdicts` workflow runs it whenever the pin, the conformance tests and
-their corpus, the plugin, the runtime, or the recipe changes (#39). It needs
-cargo, git and python3 beside the JVM build.
+their corpus, the plugin, the runtime, a Gradle build file or the version
+catalog, or the recipe changes (#39, #53). It needs cargo, git and python3
+beside the JVM build. A program that fails has its standard error printed, and
+`--ridl-checkout` is refused unless it is at the pinned tag.
 
 The recipe runs `CodecTest` and `SpikeTest`, which write the corpus to
 `modules/conformance/build/spike/`, and then `scripts/rust-verdicts.py`, which:
