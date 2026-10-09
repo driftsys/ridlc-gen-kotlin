@@ -59,7 +59,7 @@ repositories {
 
 dependencies {
     implementation("io.github.driftsys.ridl:ridl-rt-kt:0.1.0-SNAPSHOT")
-    // Faces.kt's suspending client and serveAsync.
+    // Faces.kt's suspending client, its signal flows and serveAsync.
     implementation("io.github.driftsys.ridl:ridl-rt-kt-coroutines:0.1.0-SNAPSHOT")
     // An in-process runtime, for tests and demos.
     implementation("io.github.driftsys.ridl:ridl-rt-kt-loopback:0.1.0-SNAPSHOT")
