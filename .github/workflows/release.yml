@@ -4,12 +4,14 @@
 #
 # - the four JVM libraries, `ridl-rt-kt-conformance` among them, to GitHub
 #   Packages (`just publish`);
-# - the plugin distribution, `.zip` and `.tar` (`just dist`, docs/design.md §2);
+# - the plugin distribution, `.zip` and `.tar` (`just dist`, docs/design.md §2),
+#   and `install.sh`, which installs it;
 # - the conformance results (`just compliance`).
 #
-# The last two are assets of a GitHub release named after the tag, with a
+# All but the first are assets of a GitHub release named after the tag, with a
 # SHA256SUMS file over them, and the release notes are the tag's section of
-# CHANGELOG.md.
+# CHANGELOG.md. The installer is run on the assets before anything is
+# published.
 name: release
 
 on:
@@ -81,6 +83,28 @@ jobs:
       - run: just rust-verdicts
       - run: just dist
       - run: just compliance
+      - name: stage the release assets
+        run: |
+          stage="$RUNNER_TEMP/release/$GITHUB_REF_NAME"
+          mkdir -p "$stage"
+          cp modules/ridlc-gen-kotlin/build/distributions/*.zip \
+             modules/ridlc-gen-kotlin/build/distributions/*.tar \
+             build/compliance/*.tar.gz "$stage"/
+          # The installer this release carries installs this release.
+          sed 's/^RELEASE_VERSION=""$/RELEASE_VERSION="'"$GITHUB_REF_NAME"'"/' install.sh > "$stage/install.sh"
+          grep -qx "RELEASE_VERSION=\"$GITHUB_REF_NAME\"" "$stage/install.sh"
+          # One SHA-256 per asset, which the installer checks its download against.
+          (cd "$stage" && sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS" && mv "$RUNNER_TEMP/SHA256SUMS" .)
+          echo "STAGE=$stage" >> "$GITHUB_ENV"
+      # The staged installer, run against the staged assets, before anything
+      # is published: the distribution's name and layout are what it expects.
+      - name: check the installer on the release assets
+        run: |
+          RIDLC_GEN_KOTLIN_BASE_URL="file://$RUNNER_TEMP/release" \
+            RIDLC_GEN_KOTLIN_HOME="$RUNNER_TEMP/home" RIDLC_GEN_KOTLIN_INSTALL_DIR="$RUNNER_TEMP/bin" \
+            bash "$STAGE/install.sh"
+          test -f "$RUNNER_TEMP/home/$GITHUB_REF_NAME/lib/ridlc-gen-kotlin-all.jar"
+          test -x "$RUNNER_TEMP/bin/ridlc-gen-kotlin"
       - run: just publish
         env:
           ORG_GRADLE_PROJECT_GitHubPackagesUsername: ${{ github.actor }}
@@ -102,13 +126,4 @@ jobs:
           else
             set -- --generate-notes
           fi
-          assets=(modules/ridlc-gen-kotlin/build/distributions/*.zip
-                  modules/ridlc-gen-kotlin/build/distributions/*.tar
-                  build/compliance/*.tar.gz)
-          # One SHA-256 per asset, so an installer can check what it downloads.
-          sums="$RUNNER_TEMP/SHA256SUMS"
-          for asset in "${assets[@]}"; do
-            (cd "$(dirname "$asset")" && sha256sum "$(basename "$asset")")
-          done > "$sums"
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" "$@" \
-            "${assets[@]}" "$sums"
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" "$@" "$STAGE"/*
