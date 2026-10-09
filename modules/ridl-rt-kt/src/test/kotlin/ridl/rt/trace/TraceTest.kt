@@ -3,12 +3,10 @@ package ridl.rt.trace
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-/** `crates/ridl-rt/tests/trace.rs`, `propagation.rs` and `propagation_unset.rs`. */
+/** `crates/ridl-rt/tests/trace.rs`. The hook is [PropagationTest]'s. */
 class TraceTest {
     private fun context(byte: Int) = TraceContext(ByteArray(16) { byte.toByte() }, ByteArray(8) { byte.toByte() }, byte.toUByte())
 
@@ -34,25 +32,5 @@ class TraceTest {
             "TraceContext(traceId=01010101010101010101010101010101, spanId=0101010101010101, flags=01)",
             ctx.toString(),
         )
-    }
-
-    /** The hook is the process's, so one test covers its whole life. */
-    @Test
-    fun `the hook is unset, then set once, and the second attempt is refused`() {
-        val a = Marker(1)
-        assertNull(propagation())
-        setPropagation(a)
-        assertSame(a, propagation())
-        val refused = assertThrows<AlreadySet> { setPropagation(Marker(2)) }
-        assertEquals("a trace propagation hook is already registered", refused.message)
-        assertEquals(context(1), propagation()?.current(), "the first hook is kept")
-    }
-
-    private inner class Marker(private val byte: Int) : Propagation {
-        override fun current(): TraceContext = context(byte)
-
-        override fun enter(received: TraceContext?) {}
-
-        override fun leave() {}
     }
 }
