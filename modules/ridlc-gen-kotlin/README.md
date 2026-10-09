@@ -37,11 +37,11 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.6.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.7.0` (`modules/conformance/ridl-release`).
 
-The plugin ignores two parts of ridl 0.6.0's schema (#31). The request's
-deployment section (`CodegenRequest.deployment`) is for a backend that lays out
-memory for one deployment, and this one lays out none. The model's size states
+The plugin ignores two parts of ridl's schema (#31). The request's deployment
+section (`CodegenRequest.deployment`) is for a backend that lays out memory for
+one deployment, and this one lays out none. The model's size states
 (`Payload.sizes`, `request_sizes`, `reply_sizes`, `reservation` and
 `table_budget`) are not read either: a `PayloadInfo` takes its FlatBuffers size
 from `Payload.flatbuffers_max_size`, which ridl keeps writing, equal to the
