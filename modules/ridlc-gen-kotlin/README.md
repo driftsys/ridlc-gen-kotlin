@@ -209,9 +209,19 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   its `…Ack` and `…Reply` methods and `dispatch` are internal. A call returns
   its reply and throws `ClientError` for anything else; `serve` throws
   `ProviderError`. A signal-only interface has one plain `<Iface>Client` beside
-  its descriptors and publisher, and no async client, poll face or `serve`.
-  `serve(timeout)` takes no claim past its timeout, and the async client's
-  `nextEvent` takes occurrences one at a time.
+  its descriptors and publisher, an `<Iface>AsyncClient` holding the same reads
+  for the flows below, and no poll face or `serve`.
+- **Each signal is a `Flow` on the suspending client** (#72): the extension
+  `<signal>Flow(): Flow<Sample<T>>`, over `ridl-rt-kt-coroutines`' `signalFlow`.
+  It reads the signal at its declared rate, the rate floor, under which ridl §9
+  coalesces faster updates, or the staleness bound without one, or ridl's
+  default floor of 100 ms without either, and emits each sample that differs
+  from the last one emitted. The runtime has no wake-up for a signal change, so
+  the flow polls; a later version can wait on a commit without changing its
+  signature. The blocking client keeps the single read. A package with a signal
+  therefore depends on `kotlinx-coroutines-core`, as one with an event or a call
+  already did. `serve(timeout)` takes no claim past its timeout, and the async
+  client's `nextEvent` takes occurrences one at a time.
 - **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
   ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
   `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking

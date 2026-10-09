@@ -205,13 +205,29 @@ public class CabinAsyncClient<P>(
   internal val port: P,
 ) where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable {
 // ...
+  public fun temperature(): Sample<Temperature> = poll.temperature()
+// ...
   public suspend fun setLevel(level: Level) {
 // ...
   public suspend fun average(window: Window): Average = this.calls.withLock { CabinAverageCall(this.port, window).await() }
 }
 ```
 
+A signal read such as `temperature()` does not wait, so it is the same plain
+function on both clients. The suspending client also has a flow of each signal,
+`temperatureFlow()`, described in [the coroutine flow](coroutine-flow.md):
+
+<!-- excerpt: build/generated/ridl/veh/cabin/Faces.kt -->
+
+```kotlin
+public fun <P> CabinAsyncClient<P>.temperatureFlow(): Flow<Sample<Temperature>> where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable = signalFlow(10_000.microseconds) { temperature() }
+```
+
+An interface with signals alone, such as cabin's `Horn`, has a blocking client
+and a suspending one, `HornAsyncClient`, which holds the reads and the flows.
+
 Some operations are extension functions in the same package rather than members:
 `nextEvent`, `subscribe<Event>` and `unsubscribe<Event>` on the clients, the
-blocking client's `timeout` property, and `commit`, `invalidate<Signal>` and
-`touch<Signal>` on the publisher. Import them by name, or import `veh.cabin.*`.
+blocking client's `timeout` property, each signal's flow on the suspending
+client, and `commit`, `invalidate<Signal>` and `touch<Signal>` on the publisher.
+Import them by name, or import `veh.cabin.*`.

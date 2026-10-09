@@ -35,6 +35,14 @@ also covers a client: when its outcome or event lands while its own poll runs,
 it reads the value on the next poll, one dispatch later. `AwaitPollTest` pins
 both cases on one thread.
 
+`signalFlow(period, read)` is a signal as a cold `Flow` (#72), what a generated
+`<signal>Flow()` returns. The runtime has no wake-up for a signal change, so it
+reads at once, then every `period`, and emits each sample that differs from the
+last one emitted: a new value, provenance or envelope, so every publication, a
+`touch` included, or a turn to stale or back. The age of a stale sample is not
+compared, so a stale value is emitted once. `SignalFlowTest` pins these on
+virtual time.
+
 ## Status
 
 Stage K5, keyed by driftsys/ridlc-gen-kotlin#5. `AwaitTest` pins the properties
