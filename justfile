@@ -99,6 +99,46 @@ rust-verdicts *args:
     -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.SpikeTest
     python3 scripts/rust-verdicts.py {{args}}
 
+# Serve the book (docs/book) locally, rebuilding on each change.
+book:
+    mdbook serve
+
+# Render the book to ./book: what the release workflow publishes to Pages.
+book-build:
+    mdbook build
+
+# The book's gate, on a copy so it never writes into the tree. mdBook exits 0
+# on an error it only logs and on a relative link to a file that does not
+# exist, so the log is read and every relative link of docs/book is resolved.
+# The excerpts are checked by GuideTest, in `just build`. Needs mdbook.
+book-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v mdbook >/dev/null 2>&1 || { echo "book-check: mdbook is required: cargo install mdbook --locked" >&2; exit 1; }
+    scratch="$(mktemp -d)"
+    trap 'rm -rf "$scratch"' EXIT
+    cp book.toml "$scratch/"
+    mkdir -p "$scratch/docs"
+    cp -R docs/book "$scratch/docs/book"
+    mdbook build "$scratch" 2> "$scratch/mdbook.err" || { cat "$scratch/mdbook.err" >&2; exit 1; }
+    if grep -q ERROR "$scratch/mdbook.err"; then
+      cat "$scratch/mdbook.err" >&2
+      echo "book-check: mdBook reported an error and still exited 0" >&2
+      exit 1
+    fi
+    status=0
+    for page in docs/book/*.md; do
+      while IFS= read -r link; do
+        target="${link%%#*}"
+        [ -z "$target" ] && continue
+        if [ ! -e "docs/book/$target" ]; then
+          echo "book-check: $page links to $link, which does not exist" >&2
+          status=1
+        fi
+      done < <(sed -E 's/`[^`]*`//g' "$page" | grep -oE '\]\([^)]+\)' | sed -E 's/^\]\(//; s/\)$//' | grep -vE '^(https?:|mailto:|#)' || true)
+    done
+    exit "$status"
+
 lint-commits base="main":
     @if git show-ref --verify --quiet "refs/remotes/origin/{{base}}"; then \
       base_ref="origin/{{base}}"; \

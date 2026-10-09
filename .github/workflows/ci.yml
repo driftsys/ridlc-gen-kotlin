@@ -20,6 +20,8 @@ concurrency:
 env:
   JUST_VERSION: 1.38.0
   JUST_SHA256: c803e67fd7b0af01667bd537197bc3df319938eacf9e8d51a441c71d03035bb5
+  MDBOOK_VERSION: 0.4.40
+  MDBOOK_SHA256: 9ef07fd288ba58ff3b99d1c94e6d414d431c9a61fdb20348e5beb74b823d546b
 
 jobs:
   jvm:
@@ -58,6 +60,32 @@ jobs:
           name: compliance
           path: build/compliance/*.tar.gz
           if-no-files-found: error
+
+  # The book (docs/book) builds and its relative links resolve. Its excerpts
+  # are checked by the cabin sample's GuideTest, in the jvm job. The release
+  # workflow publishes the book to Pages.
+  book:
+    name: book
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: install just
+        run: |
+          tarball="just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/casey/just/releases/download/${JUST_VERSION}/$tarball"
+          echo "${JUST_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$HOME/.local/bin" just
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: install mdbook
+        run: |
+          tarball="mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/$tarball"
+          echo "${MDBOOK_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: just book-check
 
   commit-lint:
     name: commit-lint

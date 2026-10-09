@@ -59,11 +59,11 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
-// #47: GuideTest checks the excerpts of docs/guide.md against this sample and
-// its generated code, so the guide is one of the test's inputs.
+// #47: GuideTest checks the excerpts of the book, docs/book, against this
+// sample and its generated code, so the book is one of the test's inputs.
 tasks.test {
-    val guide = rootProject.layout.projectDirectory.file("docs/guide.md")
-    inputs.file(guide)
+    val book = rootProject.layout.projectDirectory.dir("docs/book")
+    inputs.dir(book)
     inputs.file(rootProject.layout.projectDirectory.file("modules/conformance/ridl-release"))
-    systemProperty("guide.file", guide.asFile.absolutePath)
+    systemProperty("book.dir", book.asFile.absolutePath)
 }
