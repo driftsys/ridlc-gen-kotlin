@@ -157,10 +157,10 @@ class SignalStateTest {
         val f = Fixture(this)
         val state = f.state()
         advanceTimeBy(1.seconds)
-        assertEquals(1, f.channel.reads.size, "the one read that created the state")
+        assertEquals(0, f.channel.reads.size, "creating a state reads nothing")
         f.channel.publish(22)
         assertEquals(22, state.value.value, "value reads the port")
-        assertEquals(2, f.channel.reads.size)
+        assertEquals(1, f.channel.reads.size)
     }
 
     @Test
@@ -296,6 +296,7 @@ class SignalStateTest {
     fun `new bytes under the same envelope are decoded, as from a second writer whose count restarted`() = runTest {
         val f = Fixture(this)
         val state = f.state()
+        assertEquals(21, state.read().value)
         f.channel.value = 22
         assertEquals(22, state.read().value, "same stamp, same seq, other bytes")
         assertEquals(2, f.decodes)
@@ -328,6 +329,93 @@ class SignalStateTest {
         assertTrue(sibling.isActive, "the scope's other coroutines do not")
         f.decodeFailure = null
         assertEquals(22, state.value.value, "a later read reads the port again")
+    }
+
+    @Test
+    fun `a failure is not lost to a read made before its collector sees it`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val ended = mutableListOf<Throwable>()
+        backgroundScope.launch { runCatching { state.collect { gate.await() } }.exceptionOrNull()?.let(ended::add) }
+        runCurrent()
+        f.channel.failure = ReadError.Detached
+        advanceTimeBy(150.milliseconds)
+        f.channel.failure = null
+        state.read()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf<Throwable>(ReadError.Detached), ended, "the collector still meets the failure")
+    }
+
+    @Test
+    fun `a subscriber right after a failure starts the polling again`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        backgroundScope.launch { runCatching { state.collect {} } }
+        runCurrent()
+        f.channel.failure = ReadError.Detached
+        advanceTimeBy(150.milliseconds)
+        f.channel.failure = null
+        f.channel.publish(22)
+        val emitted = mutableListOf<Sample<Int>>()
+        subscribe(state, emitted)
+        assertEquals(22, emitted.single().value, "the port now, not the old failure")
+        val reads = f.channel.reads.size
+        advanceTimeBy(500.milliseconds)
+        assertTrue(f.channel.reads.size > reads, "polling again")
+    }
+
+    @Test
+    fun `an Error from a codec ends collectors and stays out of the scope`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        val sibling = backgroundScope.launch { kotlinx.coroutines.awaitCancellation() }
+        val ended = mutableListOf<Throwable>()
+        backgroundScope.launch { runCatching { state.collect {} }.exceptionOrNull()?.let(ended::add) }
+        runCurrent()
+        f.channel.publish(22)
+        f.decodeFailure = NotImplementedError("a codec TODO")
+        advanceTimeBy(150.milliseconds)
+        assertTrue(ended.single() is NotImplementedError)
+        assertTrue(sibling.isActive)
+    }
+
+    @Test
+    fun `a CancellationException a port throws is a failure, not the stop`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        val ended = mutableListOf<Throwable>()
+        backgroundScope.launch { runCatching { state.collect {} }.exceptionOrNull()?.let(ended::add) }
+        runCurrent()
+        f.channel.failure = java.util.concurrent.CancellationException("a future the port waited on")
+        advanceTimeBy(150.milliseconds)
+        assertEquals("a future the port waited on", ended.single().message)
+    }
+
+    @Test
+    fun `a decode that throws leaves the cache as it was`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        assertEquals(21, state.read().value)
+        f.channel.value = 22
+        f.decodeFailure = IllegalStateException("bad bytes")
+        assertTrue(runCatching { state.read() }.isFailure)
+        f.decodeFailure = null
+        assertEquals(22, state.read().value, "the bytes that failed are decoded, not taken for the last ones")
+    }
+
+    @Test
+    fun `the first emission after a stop has the freshness of the port now`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        f.channel.freshness = Freshness.Stale(RidlDuration(1))
+        subscribe(state).cancel()
+        advanceTimeBy(10.seconds)
+        f.channel.freshness = Freshness.Stale(RidlDuration(9))
+        val emitted = mutableListOf<Sample<Int>>()
+        subscribe(state, emitted)
+        assertEquals(Freshness.Stale(RidlDuration(9)), emitted.first().freshness)
     }
 
     @Test
