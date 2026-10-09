@@ -30,7 +30,6 @@ import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
 import ridl.rt.port.RawOccurrence
-import ridl.rt.trace.TraceContext
 import ridl.rt.port.RawSample
 import ridl.rt.port.ReadError
 import ridl.rt.port.SendError
@@ -43,6 +42,7 @@ import ridl.rt.sample.Freshness
 import ridl.rt.sample.Provenance
 import ridl.rt.sample.Timestamp
 import ridl.rt.task.Waker
+import ridl.rt.trace.TraceContext
 import java.nio.ByteBuffer
 import java.util.ArrayDeque
 import java.util.TreeMap

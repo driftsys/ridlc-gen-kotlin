@@ -18,7 +18,6 @@ import ridl.rt.port.FixedReader
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
 import ridl.rt.port.RawOccurrence
-import ridl.rt.trace.TraceContext
 import ridl.rt.port.RawSample
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SignalWriter
@@ -27,6 +26,7 @@ import ridl.rt.port.Watermark
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Timestamp
 import ridl.rt.task.Waker
+import ridl.rt.trace.TraceContext
 import java.nio.ByteBuffer
 
 /** The six role handles of one runtime, as [Loopback.split] hands them out. */
