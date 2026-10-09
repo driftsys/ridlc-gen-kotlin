@@ -1,0 +1,114 @@
+# The release: a `v<version>` tag, pushed after the `chore(release): <version>`
+# commit (CONTRIBUTING.md, "Releasing"), runs the whole gate and the Rust codec
+# verdicts on the tagged commit, then publishes three things:
+#
+# - the four JVM libraries, `ridl-rt-kt-conformance` among them, to GitHub
+#   Packages (`just publish`);
+# - the plugin distribution, `.zip` and `.tar` (`just dist`, docs/design.md §2);
+# - the conformance results (`just compliance`).
+#
+# The last two are assets of a GitHub release named after the tag, with a
+# SHA256SUMS file over them, and the release notes are the tag's section of
+# CHANGELOG.md.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Actions are pinned by commit, each to the release its `v4` tag named when
+# pinned; the `just` tarball is checked against its published SHA-256.
+env:
+  JUST_VERSION: 1.38.0
+  JUST_SHA256: c803e67fd7b0af01667bd537197bc3df319938eacf9e8d51a441c71d03035bb5
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          # A release builds from nothing a pull request could have written.
+          cache-read-only: true
+      - name: install just
+        run: |
+          tarball="just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/casey/just/releases/download/${JUST_VERSION}/$tarball"
+          echo "${JUST_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$HOME/.local/bin" just
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: install prim
+        run: |
+          set -o pipefail
+          curl -fsSL https://raw.githubusercontent.com/driftsys/prim/main/install.sh | bash \
+            || cargo install --git https://github.com/driftsys/prim --locked
+          command -v prim
+        env:
+          PRIM_INSTALL_DIR: /usr/local/bin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: update the Rust toolchain
+        run: rustup update stable --no-self-update && rustup default stable
+      - name: check the tag against gradle.properties
+        run: |
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match version $version in gradle.properties" >&2
+            exit 1
+          fi
+          case "$version" in
+            *-SNAPSHOT) echo "a release version carries no -SNAPSHOT: $version" >&2; exit 1 ;;
+          esac
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - run: just build
+      - run: just rust-verdicts
+      - run: just dist
+      - run: just compliance
+      - run: just publish
+        env:
+          ORG_GRADLE_PROJECT_GitHubPackagesUsername: ${{ github.actor }}
+          ORG_GRADLE_PROJECT_GitHubPackagesPassword: ${{ secrets.GITHUB_TOKEN }}
+      - name: create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The tag's section of CHANGELOG.md: from its heading to the next one.
+          notes="$RUNNER_TEMP/notes.md"
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VERSION" '
+              /^## / { if (found) exit; if (index($0, v)) { found = 1; next } }
+              found { print }
+            ' CHANGELOG.md > "$notes"
+          fi
+          if [ -s "$notes" ]; then
+            set -- --notes-file "$notes"
+          else
+            set -- --generate-notes
+          fi
+          assets=(modules/ridlc-gen-kotlin/build/distributions/*.zip
+                  modules/ridlc-gen-kotlin/build/distributions/*.tar
+                  build/compliance/*.tar.gz)
+          # One SHA-256 per asset, so an installer can check what it downloads.
+          sums="$RUNNER_TEMP/SHA256SUMS"
+          for asset in "${assets[@]}"; do
+            (cd "$(dirname "$asset")" && sha256sum "$(basename "$asset")")
+          done > "$sums"
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" "$@" \
+            "${assets[@]}" "$sums"

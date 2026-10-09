@@ -33,6 +33,21 @@ dist:
 publish-local:
     ./gradlew publishToMavenLocal
 
+# The four JVM libraries to GitHub Packages, at the version gradle.properties
+# names. Needs the Gradle properties GitHubPackagesUsername and
+# GitHubPackagesPassword, a token with write:packages; the ci workflow's snapshot
+# job and the release workflow set them.
+publish:
+    ./gradlew publishAllPublicationsToGitHubPackagesRepository
+
+# The conformance results as one release asset: the plugin's conformance tests
+# against the pinned ridl release and the port contract suite over the
+# loopback, packed by scripts/compliance-report.py into
+# build/compliance/ridlc-gen-kotlin-<version>-compliance.tar.gz.
+compliance:
+    ./gradlew :conformance:test :ridl-rt-kt-conformance:test :ridl-rt-kt-loopback:test
+    python3 scripts/compliance-report.py
+
 # The Rust codec verdicts of the conformance module, regenerated from the
 # pinned ridl release and compared with the committed files (#39); needs cargo,
 # git and python3. `just rust-verdicts --write` writes them instead. The test
