@@ -71,7 +71,11 @@ class WakeableTest {
     private fun ok() = Result.success(bytes())
 
     /** The bytes a port wrote into this buffer: from 0 to its position. */
-    private fun ByteBuffer.written(): ByteArray = ByteArray(position()).also { duplicate().flip().get(it) }
+    private fun ByteBuffer.written(): ByteArray = ByteArray(position()).also {
+        val view = duplicate()
+        view.flip()
+        view.get(it)
+    }
 
     @Test
     fun `each settlement wakes only its own calls waiter`() {

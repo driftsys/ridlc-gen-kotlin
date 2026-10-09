@@ -50,12 +50,28 @@ subprojects {
                 pom {
                     name.set(module.name)
                     description.set(module.provider { module.description })
+                    url.set("https://github.com/driftsys/ridlc-gen-kotlin")
                     licenses {
                         license {
                             name.set("MIT License")
                             url.set("https://opensource.org/licenses/MIT")
                         }
                     }
+                    scm {
+                        url.set("https://github.com/driftsys/ridlc-gen-kotlin")
+                        connection.set("scm:git:https://github.com/driftsys/ridlc-gen-kotlin.git")
+                    }
+                }
+            }
+            // The remote repository `just publish` writes to. Its credentials
+            // are the Gradle properties `GitHubPackagesUsername` and
+            // `GitHubPackagesPassword`, which the publish workflow sets from
+            // the workflow's own token.
+            repositories {
+                maven {
+                    name = "GitHubPackages"
+                    url = uri("https://maven.pkg.github.com/driftsys/ridlc-gen-kotlin")
+                    credentials(PasswordCredentials::class)
                 }
             }
         }

@@ -2,6 +2,7 @@ package ridl.codegen.kotlin.types
 
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.joinToCode
 import java.math.BigDecimal
 
 private val STEPS = ClassName("ridl.rt.payload", "Steps")
@@ -70,9 +71,15 @@ internal object Lattice {
         val exactStep = step.toBigIntegerOrNull()?.takeIf { it.signum() > 0 } ?: return CodeBlock.of("true")
         val exactOrigin = (origin ?: "0").toBigIntegerOrNull() ?: return CodeBlock.of("true")
         if (exactStep.bitLength() >= Long.SIZE_BITS) {
-            // A step past a `Long`: two values a step apart do not both fit, so
-            // only the origin itself is on the lattice.
-            return CodeBlock.of("%L != %L", value, Literals.long(exactOrigin.toString()))
+            // A step of 2^63 or more: `floorMod` cannot take it, and at most two
+            // values of a `Long` are on the lattice, so they are listed exactly,
+            // from the first point at or above `Long.MIN_VALUE` (#54). None is
+            // listed when the lattice misses the `Long` range entirely.
+            val min = Long.MIN_VALUE.toBigInteger()
+            val max = Long.MAX_VALUE.toBigInteger()
+            val points = generateSequence(min + (exactOrigin - min).mod(exactStep)) { it + exactStep }.takeWhile { it <= max }.toList()
+            if (points.isEmpty()) return CodeBlock.of("true")
+            return points.map { CodeBlock.of("%L != %L", value, Literals.long(it.toString())) }.joinToCode(" && ")
         }
         val phase = exactOrigin.mod(exactStep)
         return CodeBlock.of("%T.floorMod(%L, %LL) != %LL", MATH, value, exactStep, phase)
