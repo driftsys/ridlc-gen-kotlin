@@ -58,8 +58,8 @@ changelog by hand, from the list below.
    workflow checks that the tag matches `gradle.properties`, runs `just build`
    and `just rust-verdicts`, publishes the libraries to GitHub Packages, and
    creates the GitHub release with the plugin distribution, `install.sh`, the
-   conformance results and their `SHA256SUMS`. It runs that `install.sh` on the
-   assets before it publishes anything.
+   Android vendor package, the conformance results and their `SHA256SUMS`. It
+   runs that `install.sh` on the assets before it publishes anything.
 6. Set `version` in `gradle.properties` to the next `-SNAPSHOT`, so the
    `snapshot` job of the `ci` workflow publishes `main` again.
 

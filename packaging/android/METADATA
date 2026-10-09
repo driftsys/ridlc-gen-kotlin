@@ -1,0 +1,16 @@
+name: "ridl-rt-kt"
+description: "The RIDL runtime contract for Kotlin, with its coroutine adapter and in-process runtime."
+third_party {
+  identifier {
+    type: "Archive"
+    value: "https://github.com/driftsys/ridlc-gen-kotlin/releases/download/@VERSION@/ridl-rt-kt-@VERSION@-android.tar.gz"
+    version: "@VERSION@"
+  }
+  version: "@VERSION@"
+  last_upgrade_date {
+    year: @YEAR@
+    month: @MONTH@
+    day: @DAY@
+  }
+  license_type: NOTICE
+}

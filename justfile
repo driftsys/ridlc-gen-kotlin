@@ -14,8 +14,13 @@ check:
 test:
     ./gradlew test
 
-build: fmt-check check install-check
+build: fmt-check check install-check vendor-package
     ./gradlew assemble
+
+# The runtime sources as an Android tree vendors them, with an Android.bp
+# (packaging/android/README.md): build/vendor/ridl-rt-kt-<version>-android.tar.gz.
+vendor-package:
+    scripts/vendor-package.sh
 
 # install.sh end to end against a fixture release on the local disk: a fake
 # distribution and its SHA256SUMS, then a second install over the first, then
