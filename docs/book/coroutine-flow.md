@@ -7,15 +7,17 @@ calls that wait again, with `CabinAsyncClient` and `Cabin.serveAsync`:
 
 ```kotlin
 val port = Loopback(Cabin.catalog)
-val client = CabinAsyncClient(port, signals)
+val client = CabinAsyncClient(port)
 val service = CabinService(average = 7)
 val handler = port.handler()
 val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, service) }
 ```
 
-`signals` is the scope the client's signal states poll in. The sample makes one
-on `Dispatchers.Default` and cancels it once it is done; an application passes a
-scope that lives as long as the client, never the main thread's.
+The client's signal states poll in a scope the client owns, on
+`Dispatchers.Default`; a state that nothing collects runs nothing, so the scope
+needs no cancelling. An application that wants the polling tied to a lifecycle
+passes its own, `CabinAsyncClient(port, viewModelScope)` say, never one on the
+main thread.
 
 `serveAsync` suspends between claims and never returns normally: it ends by
 throwing, or when its coroutine is cancelled. The sample stops it with
@@ -62,7 +64,7 @@ The rest of the state:
   and a fresh read of the port otherwise. `client.temperature.read()` always
   reads the port.
 - `client.temperature.every(1.seconds)` is the same signal polled every second:
-  another shared state. A period faster than the rate floor is the floor, so
+  another shared state. A period faster than the default one is the default, so
   `every(1.milliseconds)` is `client.temperature` itself.
 - `client.temperature.values` is a `StateFlow` of the values alone, which emits
   only when the value changes, over the same polling.

@@ -202,20 +202,20 @@ public class CabinClient<P>(
 
 ```kotlin
 public class CabinAsyncClient<P>(
-  internal val port: P,
-  scope: CoroutineScope,
+  port: P,
+  scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
   grid: PollGrid = PollGrid.Default,
 ) where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable {
 // ...
   public suspend fun setLevel(level: Level) {
 // ...
-  public suspend fun average(window: Window): Average = this.calls.withLock { CabinAverageCall(this.port, window).await() }
+  public suspend fun average(window: Window): Average = this._calls.withLock { CabinAverageCall(this._port, window).await() }
 }
 ```
 
 The blocking client reads a signal with `temperature()`, which does not wait.
 The suspending client has each signal as a shared state instead, `temperature`,
-polled in the `scope` it is given, on `grid`; it is described in
+polled in `scope`, by default one the client owns, on `grid`; it is described in
 [the coroutine flow](coroutine-flow.md):
 
 <!-- excerpt: build/generated/ridl/veh/cabin/Faces.kt -->
@@ -223,7 +223,7 @@ polled in the `scope` it is given, on `grid`; it is described in
 ```kotlin
 public val <P> CabinAsyncClient<P>.temperature:
     SignalState<Temperature> where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable
-  get() = signalStates.of(CabinTemperature, null, TemperatureCodec.maxSize) { raw, buf -> sampled(TemperatureCodec, CabinTemperature, raw, buf) }
+  get() = _signalStates.of(CabinTemperature, null, TemperatureCodec.maxSize) { raw, buf -> sampled(TemperatureCodec, CabinTemperature, raw, buf) }
 ```
 
 An interface with signals alone, such as cabin's `Horn`, has a blocking client
