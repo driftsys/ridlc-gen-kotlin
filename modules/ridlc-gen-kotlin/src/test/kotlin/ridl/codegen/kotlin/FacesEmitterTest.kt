@@ -89,6 +89,17 @@ class FacesEmitterTest {
     }
 
     @Test
+    fun `the descriptor's catalog is named after the unit, not the source package`() {
+        // ridl 0.7.0: one catalog per unit, so a subpackage's `Catalog.package` is the unit's name.
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(3).addSlots(command(1, "set", "Set"))
+        val model = demo().setName(DottedName.newBuilder().setDotted("kt.demo.cluster"))
+            .addDeclarations(scalar("Level")).addInterfaces(iface).build()
+        val text = checkNotNull(FacesEmitter(model, options).emit().text)
+        assertTrue("CatalogRef(\"kt.demo\", CatalogHash(" in text, text)
+        assertTrue("\"kt.demo.cluster\"" !in text, text)
+    }
+
+    @Test
     fun `a catalog hash that is not 32 bytes refuses the package`() {
         for (size in listOf(0, 31, 33)) {
             val model = demo().setCatalog(Catalog.newBuilder().setPackage("kt.demo").setHash(ByteString.copyFrom(ByteArray(size))))

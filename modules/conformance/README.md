@@ -20,7 +20,7 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.6.0`, the tag that carries ridl 0.6.0's binaries. The tests
+Pinned to `editor-v0.7.0`, the tag that carries ridl 0.7.0's binaries. The tests
 of stage K2a run: a request the pinned `ridl` wrote parses, a request with an
 unknown key parses, a request nested 1,000 levels parses in process and through
 the installed script, a wrong schema is one error diagnostic and exit 0, an
@@ -59,6 +59,17 @@ string off its pattern, which the Rust verifier checks only under its
 `validate-pattern` feature; no buffer of the corpus reaches one. A wrong table
 layout, a missing count check, a wrong union error or a float step check that
 never fails each turns it red.
+
+Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
+`ridl.toml`, and every catalog hash changed. `UnitTest` builds
+`resources/units/kt-unit`, a root package and a subpackage under one manifest
+with the unit's `interfaces.lock`. It checks that both models name catalog
+`kt.unit` with one nonzero hash, and that the two generated descriptors carry
+that `CatalogRef` and the lock's numbers, 1 and 2. The unit is kept out of
+`corpus/` because every corpus package needs Rust codec verdicts. No golden
+holds a catalog hash and no corpus package has a subpackage, so no other test
+changed. The Rust codec and `ridl-rt`'s FlatBuffers code did not change, and the
+corpus copy of `cabin` (two anchor comments) was taken again from the tag.
 
 Since ridl 0.6.0, the model carries the real catalog hash (driftsys/ridl#676),
 so every generated descriptor of the corpus carries it; the faces tests attach
