@@ -55,8 +55,10 @@ unvalidated; and the `Propagation` hook, registered once per process with
 yet. `Caller.command`, `Caller.query` and `EventSink.raise` take a last argument
 `trace: TraceContext?`, and `Claim`, `RawOccurrence` and `ReadError.ShortClaim`
 carry it, under the delivery contract the port interfaces state. `TraceTest` is
-`trace.rs`, `propagation.rs` and `propagation_unset.rs`, where the JVM can spell
-them.
+`trace.rs`, where the JVM can spell it, and `PropagationTest` is
+`propagation.rs` and `propagation_unset.rs`. The hook cannot be cleared, so
+`PropagationTest` runs in a JVM of its own, the `processHookTest` task that
+`test` runs first, as each Rust file is a test binary of its own (#52).
 
 ## Compiling against Android
 

@@ -186,7 +186,8 @@ class NamesTest {
                     if ("class=" !in record(1).toString()) failures += "toString names the field"
                     val buffer = java.nio.ByteBuffer.allocate(RecordCodec.maxSize)
                     RecordCodec.encode(record(1), buffer)
-                    val decoded = RecordCodec.decode(RecordCodec.verify(buffer.flip()))
+                    buffer.flip()
+                    val decoded = RecordCodec.decode(RecordCodec.verify(buffer))
                     if (decoded != record(1)) failures += "the codec does not round-trip: ${'$'}decoded"
                     return failures
                 }
