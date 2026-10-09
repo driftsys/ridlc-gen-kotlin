@@ -33,7 +33,8 @@ interface Names {
 
 // Members named like the face's fixed and derived operations (#9,
 // driftsys/ridl#580): each keeps its plain call, and the operation it is named
-// like stays reachable.
+// like stays reachable. `port` and `events` are named like the async client's
+// state, which no signal shadows (#76).
 interface Clash {
   signal  next_event          : Even @10ms
   signal  timeout             : Even @10ms
@@ -44,6 +45,8 @@ interface Clash {
   signal  touch_level         : Even @10ms
   signal  subscribe_ping      : Even @10ms
   signal  unsubscribe_ping    : Even @10ms
+  signal  port                : Even @10ms
+  signal  events              : Even @10ms
   event   ping                : Mode @[100ms..1s]
   command set_timeout(to: Even) @[..50ms]
   query   new(of: Even): Even @[..200ms]

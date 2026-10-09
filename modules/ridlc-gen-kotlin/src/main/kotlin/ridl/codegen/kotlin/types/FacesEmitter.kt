@@ -98,6 +98,8 @@ private val SIGNAL_STATE = ClassName("$RT.coroutines", "SignalState")
 private val SIGNAL_STATES = ClassName("$RT.coroutines", "SignalStates")
 private val POLL_GRID = ClassName("$RT.coroutines", "PollGrid")
 private val COROUTINE_SCOPE = ClassName("kotlinx.coroutines", "CoroutineScope")
+private val SUPERVISOR_JOB = MemberName("kotlinx.coroutines", "SupervisorJob")
+private val DISPATCHERS = ClassName("kotlinx.coroutines", "Dispatchers")
 private val RAW_SAMPLE = ClassName("$RT.port", "RawSample")
 private val MUTEX = ClassName("kotlinx.coroutines.sync", "Mutex")
 private val WITH_LOCK = MemberName("kotlinx.coroutines.sync", "withLock")
@@ -1008,16 +1010,26 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
         /**
          * The constructor of an async client with signals (#76): the port, the
-         * scope the signal states poll in, and the grid they poll on, which
-         * defaults to the process's.
+         * scope the signal states poll in, by default one the client owns on
+         * `Dispatchers.Default`, and the grid they poll on, by default the
+         * process's. An idle state runs no coroutine, so the default scope
+         * needs no cancelling.
          */
         private fun signalConstructor(p: TypeVariableName): FunSpec = FunSpec.constructorBuilder().addParameter("port", p)
-            .addParameter("scope", COROUTINE_SCOPE)
+            .addParameter(
+                ParameterSpec.builder("scope", COROUTINE_SCOPE)
+                    .defaultValue("%T(%M() + %T.Default)", COROUTINE_SCOPE, SUPERVISOR_JOB, DISPATCHERS).build(),
+            )
             .addParameter(ParameterSpec.builder("grid", POLL_GRID).defaultValue("%T.Default", POLL_GRID).build())
             .build()
 
-        /** The signal states an async client holds (#76), one per signal and period, created on first use. */
-        private fun signalStatesProperty(): PropertySpec = PropertySpec.builder("signalStates", SIGNAL_STATES, KModifier.INTERNAL)
+        /**
+         * The signal states an async client holds (#76), one per signal and
+         * period, created on first use. Its name, as every member name of an
+         * async client, starts with `_`, which no ridl identifier does, so no
+         * signal's extension property is shadowed by a member.
+         */
+        private fun signalStatesProperty(): PropertySpec = PropertySpec.builder("_signalStates", SIGNAL_STATES, KModifier.INTERNAL)
             .initializer("%T(port, scope, grid)", SIGNAL_STATES).build()
 
         /**
@@ -1040,7 +1052,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .getter(
                         FunSpec.getterBuilder()
                             .addStatement(
-                                "return signalStates.of(%T, null, %T.maxSize) { raw, buf -> sampled(%T, %T, raw, buf) }",
+                                "return _signalStates.of(%T, null, %T.maxSize) { raw, buf -> sampled(%T, %T, raw, buf) }",
                                 m.descriptor, payload.codec, payload.codec, m.descriptor,
                             )
                             .build(),
@@ -1067,7 +1079,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(signalConstructor(p))
-                .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
+                .addProperty(PropertySpec.builder("_port", p, KModifier.INTERNAL).initializer("port").build())
                 .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
                 .addProperty(signalStatesProperty())
                 .build()
@@ -1090,7 +1102,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
              * client, whose signals are extension properties (#76).
              */
             private val zeroArgMembers: Set<String> =
-                if (type.simpleName.endsWith("Publisher") || type.simpleName.endsWith("AsyncClient")) emptySet() else signals.map { it.method }.toSet()
+                if (type.simpleName.endsWith("Publisher") || type == ClassName(pkg, "${name}AsyncClient")) emptySet() else signals.map { it.method }.toSet()
 
             fun extension(name: String): FunSpec.Builder = FunSpec.builder(name).addTypeVariable(variable)
                 .receiver(type.parameterizedBy(variable))
@@ -1112,13 +1124,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .apply { if (internalOnly) addModifiers(KModifier.INTERNAL) }
         }
 
-        /** `subscribe<Event>` and `unsubscribe<Event>` of every event, as extensions of [receiver]'s client. */
-        private fun subscriptions(receiver: Receiver) {
+        /**
+         * `subscribe<Event>` and `unsubscribe<Event>` of every event, as
+         * extensions of [receiver]'s client, whose port is its property [port].
+         */
+        private fun subscriptions(receiver: Receiver, port: String = "port") {
             for (m in events) {
                 extensions.functions += receiver.extension("subscribe${m.camel}").addKdoc("Starts delivery of event `%L`.", m.declared)
-                    .addStatement("port.subscribe(%L, listOf(%L))", number(), ordinal(m)).build()
+                    .addStatement("%N.subscribe(%L, listOf(%L))", port, number(), ordinal(m)).build()
                 extensions.functions += receiver.extension("unsubscribe${m.camel}").addKdoc("Stops delivery of event `%L`.", m.declared)
-                    .addStatement("port.unsubscribe(%L, listOf(%L))", number(), ordinal(m)).build()
+                    .addStatement("%N.unsubscribe(%L, listOf(%L))", port, number(), ordinal(m)).build()
             }
         }
 
@@ -1192,29 +1207,30 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(if (signals.isNotEmpty()) signalConstructor(p) else FunSpec.constructorBuilder().addParameter("port", p).build())
-                .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
-                .addProperty(PropertySpec.builder("poll", poll.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", poll).build())
+                // Every member name starts with `_`, which no ridl identifier does: no signal's extension is shadowed (#76).
+                .addProperty(PropertySpec.builder("_port", p, KModifier.INTERNAL).initializer("port").build())
+                .addProperty(PropertySpec.builder("_poll", poll.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", poll).build())
             if (signals.isNotEmpty()) {
                 builder.addProperty(signalStatesProperty())
                 signalStates(Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal))
             }
             if (commands.isNotEmpty() || queries.isNotEmpty()) {
-                builder.addProperty(PropertySpec.builder("calls", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
+                builder.addProperty(PropertySpec.builder("_calls", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
             }
             if (events.isNotEmpty()) {
                 // The port keeps one event waker per handle: two waits at once would displace and wake each other forever.
-                builder.addProperty(PropertySpec.builder("events", MUTEX, KModifier.INTERNAL).initializer("%T()", MUTEX).build())
+                builder.addProperty(PropertySpec.builder("_events", MUTEX, KModifier.INTERNAL).initializer("%T()", MUTEX).build())
                 val receiver = Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal)
-                subscriptions(receiver)
+                subscriptions(receiver, port = "_port")
                 extensions.functions += receiver.extension("nextEvent").addModifiers(KModifier.SUSPEND).returns(self.nestedClass("Event"))
                     .addKdoc(
                         "Suspends until the next occurrence of any subscribed event of `%L`. Concurrent calls take " +
                             "occurrences one at a time.",
                         iface.declared.declared,
                     )
-                    .addStatement("return events.%M { %M({}) { waker ->", WITH_LOCK, AWAIT_POLL)
-                    .addStatement("  port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
-                    .addStatement("  try { %T.takeEvent(port) } catch (e: %T) { throw %T.Read(e) }", self, READ_ERROR, CLIENT_ERROR)
+                    .addStatement("return _events.%M { %M({}) { waker ->", WITH_LOCK, AWAIT_POLL)
+                    .addStatement("  _port.wakeOn(%T.Event(%L), waker)", INTEREST, number())
+                    .addStatement("  try { %T.takeEvent(_port) } catch (e: %T) { throw %T.Read(e) }", self, READ_ERROR, CLIENT_ERROR)
                     .addStatement("} }")
                     .build()
             }
@@ -1224,9 +1240,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val f = FunSpec.builder(m.method).addModifiers(KModifier.SUSPEND).addParameter(value, arg.type)
                     .addKdoc("Calls %L `%L` and suspends until its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
                 if (m.interaction.hasQuery()) {
-                    f.returns(reply(m).type).addStatement("return this.calls.%M { %T(this.port, %N).await() }", WITH_LOCK, callClass(m), value)
+                    f.returns(reply(m).type).addStatement("return this._calls.%M { %T(this._port, %N).await() }", WITH_LOCK, callClass(m), value)
                 } else {
-                    f.addStatement("this.calls.%M { %T(this.port, %N).await() }", WITH_LOCK, callClass(m), value)
+                    f.addStatement("this._calls.%M { %T(this._port, %N).await() }", WITH_LOCK, callClass(m), value)
                 }
                 builder.addFunction(f.build())
             }

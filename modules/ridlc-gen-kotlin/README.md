@@ -215,19 +215,24 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   extension property `<signal>: SignalState<T>`, a `StateFlow<Sample<T>>` of
   `ridl-rt-kt-coroutines`, replaces both the async client's read `<signal>()`
   and #72's cold `<signal>Flow()`. The async client of an interface with a
-  signal takes the `scope: CoroutineScope` its states poll in and the
-  `grid: PollGrid` they poll on, by default the process's. Each state polls
-  while it has a collector, until 3 s after the last one left, at the signal's
-  rate floor rounded up to the grid's 10 ms and capped at the staleness bound;
-  `every(period)` is a slower one, `value` the last sample polled or a fresh
-  read, `read()` a read of the port. A signal and its decode share one
-  file-private `sampled` helper with the blocking read, so a publication the
-  state has decoded is not decoded again. The runtime has no wake-up for a
-  signal change, so a state polls; a later version can wait on a commit without
-  changing its type. The blocking client keeps the single read. A package with a
-  signal therefore depends on `kotlinx-coroutines-core`, as one with an event or
-  a call already did. `serve(timeout)` takes no claim past its timeout, and the
-  async client's `nextEvent` takes occurrences one at a time.
+  signal takes the `scope: CoroutineScope` its states poll in, by default one it
+  owns on `Dispatchers.Default` under a `SupervisorJob`, and the
+  `grid: PollGrid` they poll on, by default the process's; an idle state runs no
+  coroutine, so the default scope needs no cancelling. Every member name of an
+  async client starts with `_` (`_port`, `_signalStates`, `_events`, `_calls`,
+  `_poll`), which no ridl identifier does, so no member shadows a signal's
+  extension property: `Clash`'s signals `port` and `events` read through the
+  async client. Each state polls while it has a collector, until 3 s after the
+  last one left, at the signal's rate floor rounded up to the grid's 10 ms and
+  capped at the staleness bound; `every(period)` is a slower one, `value` the
+  last sample polled or a fresh read, `read()` a read of the port. A signal and
+  its decode share one file-private `sampled` helper with the blocking read, so
+  a publication the state has decoded is not decoded again. The runtime has no
+  wake-up for a signal change, so a state polls; a later version can wait on a
+  commit without changing its type. The blocking client keeps the single read. A
+  package with a signal therefore depends on `kotlinx-coroutines-core`, as one
+  with an event or a call already did. `serve(timeout)` takes no claim past its
+  timeout, and the async client's `nextEvent` takes occurrences one at a time.
 - **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
   ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
   `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking

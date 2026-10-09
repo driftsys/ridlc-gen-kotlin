@@ -30,9 +30,11 @@ import kt.values.ProbeOffset
 import kt.values.ProbeProvider
 import kt.values.ProbePublisher
 import kt.values.commit
+import kt.values.events
 import kt.values.invalidateLevel
 import kt.values.nextEvent
 import kt.values.offset
+import kt.values.port
 import kt.values.subscribeMoved
 import kt.values.timeout
 import kt.values.touchLevel
@@ -151,7 +153,7 @@ private fun patched(buffer: ByteBuffer, from: Int, to: Int): ByteBuffer {
 private fun async() = runBlocking {
     withTimeout(10_000) {
         Loopback(Probe.catalog).let { rt ->
-            val client = ProbeAsyncClient(rt, this)
+            val client = ProbeAsyncClient(rt)
             ProbePublisher(rt).let { it.offset(Offset.of(0.75)); it.commit() }
             expectEqual("an async client's signal reads", Offset.of(0.75), client.offset.value.value)
 
@@ -171,7 +173,7 @@ private fun async() = runBlocking {
 
         // A query settled by hand with each outcome a provider or a runtime can send.
         Loopback(Probe.catalog).let { rt ->
-            val client = ProbeAsyncClient(rt, this)
+            val client = ProbeAsyncClient(rt)
             val handler = rt.handler()
             suspend fun settledWith(outcome: Result<ByteBuffer>): Result<Even> {
                 val call = async(start = CoroutineStart.UNDISPATCHED) { runCatching { client.half(Even.of(2)) } }
@@ -277,8 +279,10 @@ private fun clash() {
 private fun clashAsync() = runBlocking {
     withTimeout(10_000) {
         val rt = Loopback(Clash.catalog)
-        ClashPublisher(rt).let { it.nextEvent(Even.of(-2)); it.commit() }
-        val client = ClashAsyncClient(rt, this)
+        ClashPublisher(rt).let { it.nextEvent(Even.of(-2)); it.port(Even.of(6)); it.events(Even.of(8)); it.commit() }
+        val client = ClashAsyncClient(rt)
+        expectEqual("an async client's signal named port is its state, not the client's port", Even.of(6), client.port.value.value)
+        expectEqual("an async client's signal named events is its state", Even.of(8), client.events.value.value)
         expectEqual("an async client's signal named next_event is the state nextEvent", Even.of(-2), client.nextEvent.value.value)
         client.fixedSubscribePing()
         ClashPublisher(rt).ping(Mode.RUN)

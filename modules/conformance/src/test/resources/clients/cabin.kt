@@ -124,7 +124,7 @@ private fun catalogs() {
         val rt = Loopback(catalog)
         val of = "a port whose catalog's $differs differs"
         expectMismatch("CabinClient over $of") { CabinClient(rt) }
-        expectMismatch("CabinAsyncClient over $of") { CabinAsyncClient(rt, kotlinx.coroutines.CoroutineScope(Dispatchers.Default)) }
+        expectMismatch("CabinAsyncClient over $of") { CabinAsyncClient(rt) }
         expectMismatch("CabinPublisher over $of") { CabinPublisher(rt) }
         expectMismatch("HornClient over $of") { HornClient(rt) }
         expectMismatch("HornPublisher over $of") { HornPublisher(rt) }
@@ -278,7 +278,7 @@ private fun async() = runBlocking {
             val recorder = Recorder()
             val handler = rt.handler()
             val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, recorder) }
-            val client = CabinAsyncClient(rt, this)
+            val client = CabinAsyncClient(rt)
             CabinPublisher(rt).apply { temperature(Temperature.of(19)); commit() }
             expectEqual("an async signal reads", Temperature.of(19), client.temperature.value.value)
             client.setLevel(Level.of(42))
@@ -292,7 +292,7 @@ private fun async() = runBlocking {
         }
         // A cancelled coroutine forgets its call (#7's Done when).
         Loopback(Cabin.catalog).let { rt ->
-            val call = launch(start = CoroutineStart.UNDISPATCHED) { CabinAsyncClient(rt, this).setLevel(Level.of(1)) }
+            val call = launch(start = CoroutineStart.UNDISPATCHED) { CabinAsyncClient(rt).setLevel(Level.of(1)) }
             // Count the free slots without keeping them: send until Busy, then forget each.
             val counted = mutableListOf<ridl.rt.port.Correlation>()
             try { while (true) counted += rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(0), null) } catch (_: SendError.Busy) {}
@@ -304,14 +304,14 @@ private fun async() = runBlocking {
         // A cancelled call still unsent forgets nothing and ends quietly.
         Loopback(Cabin.catalog).let { rt ->
             fill(rt)
-            val call = launch(start = CoroutineStart.UNDISPATCHED) { CabinAsyncClient(rt, this).setLevel(Level.of(1)) }
+            val call = launch(start = CoroutineStart.UNDISPATCHED) { CabinAsyncClient(rt).setLevel(Level.of(1)) }
             call.cancelAndJoin()
             expect("an unsent call cancelled ends", call.isCancelled)
             expectEqual("and the table is as full as before", 0, sendsUntilBusy(rt))
         }
         // One call at a time per client.
         Loopback(Cabin.catalog).let { rt ->
-            val client = CabinAsyncClient(rt, this)
+            val client = CabinAsyncClient(rt)
             val first = async(start = CoroutineStart.UNDISPATCHED) { client.setLevel(Level.of(1)) }
             val second = async(start = CoroutineStart.UNDISPATCHED) { client.average(Window.of(10)) }
             val handler = rt.handler()
@@ -346,7 +346,7 @@ private fun readErrors() {
         expectEqual("a blocking nextEvent over a detached source", ReadError.Detached,
             expectThrows<ClientError.Read>("a blocking nextEvent throws Read") { CabinClient(Detached(rt)).nextEvent() }?.error)
         expectEqual("an async nextEvent over a detached source", ReadError.Detached,
-            expectThrows<ClientError.Read>("an async nextEvent throws Read") { runBlocking { CabinAsyncClient(Detached(rt), this).nextEvent() } }?.error)
+            expectThrows<ClientError.Read>("an async nextEvent throws Read") { runBlocking { CabinAsyncClient(Detached(rt)).nextEvent() } }?.error)
     }
     Loopback(Cabin.catalog).let { rt ->
         val reading = object : CabinProvider {
@@ -426,7 +426,7 @@ private fun bounds() {
     runBlocking {
         withTimeout(10_000) {
             val port = Counting(Loopback(Cabin.catalog))
-            val client = CabinAsyncClient(port, this)
+            val client = CabinAsyncClient(port)
             client.subscribeWarning()
             val first = async(Dispatchers.Default) { client.nextEvent() }
             val second = async(Dispatchers.Default) { client.nextEvent() }

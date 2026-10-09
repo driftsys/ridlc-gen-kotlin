@@ -221,18 +221,19 @@ class FacesEmitterTest {
         // #76: the timing travels on the descriptor; the runtime turns it into the polling period.
         val text = gauge(timing(TimingMode.TIMING_MODE_RANGE, "20000", "500000"))
         assertTrue("public val <P : SignalReader> GaugeAsyncClient<P>.level: SignalState<Level>" in text, text)
-        assertTrue("get() = signalStates.of(GaugeLevel, null, LevelCodec.maxSize) { raw, buf -> sampled(LevelCodec, GaugeLevel, raw, buf) }" in text, text)
+        assertTrue("get() = _signalStates.of(GaugeLevel, null, LevelCodec.maxSize) { raw, buf -> sampled(LevelCodec, GaugeLevel, raw, buf) }" in text, text)
         assertTrue("return sampled(LevelCodec, GaugeLevel, port.read(Gauge.number, Ordinal(1u), buf), buf)" in text, "the blocking read decodes the same way")
         assertFalse("levelFlow" in text, "the cold flow is gone")
     }
 
     @Test
-    fun `a signal-only interface gets a suspending client of signal states, polled in its scope`() {
+    fun `a signal-only interface gets a suspending client of signal states, polled in a scope it owns by default`() {
         val text = gauge(null)
         assertTrue("public class GaugeAsyncClient<P : SignalReader>(" in text, text)
-        assertTrue("scope: CoroutineScope," in text, text)
+        assertTrue("scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)," in text, text)
         assertTrue("grid: PollGrid = PollGrid.Default," in text, text)
-        assertTrue("internal val signalStates: SignalStates = SignalStates(port, scope, grid)" in text, text)
+        assertTrue("internal val _signalStates: SignalStates = SignalStates(port, scope, grid)" in text, text)
+        assertTrue("internal val _port: P = port" in text, "member names start with _, which no ridl identifier does")
         assertFalse("public fun level(): Sample<Level> = reads.level()" in text, "the async client has no read of its own")
         assertTrue("public fun level(): Sample<Level>" in text, "the blocking client keeps its read")
     }
