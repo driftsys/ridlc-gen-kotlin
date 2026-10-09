@@ -14,13 +14,13 @@ check:
 test:
     ./gradlew test
 
-build: fmt-check check install-check vendor-package
+build: fmt-check check install-check
     ./gradlew assemble
 
 # The runtime sources as an Android tree vendors them, with an Android.bp
 # (packaging/android/README.md): build/vendor/ridl-rt-kt-<version>-android.tar.gz.
 vendor-package:
-    scripts/vendor-package.sh
+    python3 scripts/vendor-package.py
 
 # install.sh end to end against a fixture release on the local disk: a fake
 # distribution and its SHA256SUMS, then a second install over the first, then
@@ -42,7 +42,8 @@ install-check:
     chmod +x "$root/bin/ridlc-gen-kotlin"
     : > "$root/lib/ridlc-gen-kotlin-all.jar"
     tar -cf "$reldir/$tarball" -C "$scratch/dist" "$(basename "$root")"
-    (cd "$reldir" && sha256sum "$tarball" > SHA256SUMS)
+    if command -v sha256sum >/dev/null 2>&1; then sum=(sha256sum); else sum=(shasum -a 256); fi
+    (cd "$reldir" && "${sum[@]}" "$tarball" > SHA256SUMS)
     run() {
       RIDLC_GEN_KOTLIN_VERSION="$version" RIDLC_GEN_KOTLIN_BASE_URL="file://$scratch/release" \
         RIDLC_GEN_KOTLIN_HOME="$scratch/home" RIDLC_GEN_KOTLIN_INSTALL_DIR="$scratch/bin" bash install.sh

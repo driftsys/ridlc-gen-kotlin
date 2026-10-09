@@ -110,6 +110,7 @@ main() {
   mv "$1" "$target.new"
   rm -rf "$target"
   mv "$target.new" "$target"
+  rm -f "$INSTALL_DIR/.$NAME.new"
   ln -s "$target/bin/$NAME" "$INSTALL_DIR/.$NAME.new"
   mv -f "$INSTALL_DIR/.$NAME.new" "$INSTALL_DIR/$NAME"
 

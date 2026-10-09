@@ -113,7 +113,7 @@ dependencies {
 ```
 
 An Android tree that builds with Soong cannot read Maven. Each release attaches
-`ridl-rt-kt-v<version>-android.tar.gz` for it instead: the sources of
+`ridl-rt-kt-<version>-android.tar.gz` for it instead: the sources of
 `ridl-rt-kt`, `ridl-rt-kt-coroutines` and `ridl-rt-kt-loopback` with an
 `Android.bp`, `METADATA` and the license files, to unpack at a path such as
 `external/ridl-rt-kt`.

@@ -7,8 +7,8 @@ builds with Soong: `Android.bp`, `METADATA`, and this README. Each release
 attaches `ridl-rt-kt-<version>-android.tar.gz`, which `just vendor-package`
 builds from these files, the `src/main` sources of `ridl-rt-kt`,
 `ridl-rt-kt-coroutines` and `ridl-rt-kt-loopback`, the root `LICENSE`, and an
-empty `MODULE_LICENSE_MIT`. `@VERSION@` and the date fields are filled in from
-`gradle.properties` and the commit.
+empty `MODULE_LICENSE_MIT`. The version and the date in `Android.bp` and
+`METADATA` are filled in from `gradle.properties` and the commit.
 
 The package unpacks to one directory, `ridl-rt-kt-<version>/`. Put its contents
 at a path of the tree such as `external/ridl-rt-kt`, and depend on the libraries
@@ -28,5 +28,5 @@ it from a Gradle build, from the Maven artifact.
 
 ## Status
 
-`Android.bp` has not been built in an AOSP tree yet. The package itself is
-checked by `just vendor-package` on every build.
+`Android.bp` has not been built in an AOSP tree yet. The package itself is built
+and checked by `just vendor-package` in every run of the `jvm` CI job.

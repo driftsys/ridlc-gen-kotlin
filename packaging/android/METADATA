@@ -3,7 +3,7 @@ description: "The RIDL runtime contract for Kotlin, with its coroutine adapter a
 third_party {
   identifier {
     type: "Archive"
-    value: "https://github.com/driftsys/ridlc-gen-kotlin/releases/download/@VERSION@/ridl-rt-kt-@VERSION@-android.tar.gz"
+    value: "https://github.com/driftsys/ridlc-gen-kotlin/releases/download/@VERSION@/ridl-rt-kt-@VERSION_NUMBER@-android.tar.gz"
     version: "@VERSION@"
   }
   version: "@VERSION@"
