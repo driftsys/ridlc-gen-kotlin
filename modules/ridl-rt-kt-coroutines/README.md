@@ -44,7 +44,8 @@ wake-up for a signal change, so a state polls the port, on these rules:
   rate floor rounded up to the 10 ms quantum and capped at its staleness bound
   rounded down; with no floor, half the staleness bound; with neither, ridl's
   default floor of 100 ms. `every(desired)` asks for another period, never
-  faster than the floor, and returns the state shared for that period.
+  faster than that default one, and returns the state shared for that period; an
+  infinite one saturates at the longest period.
 - **The grid.** Every state polls at the multiples of its period from the epoch
   of one `PollGrid`, by default the process's `PollGrid.Default`, so states of
   compatible periods read in the same slot whenever each started, a poll is
@@ -55,14 +56,21 @@ wake-up for a signal change, so a state polls the port, on these rules:
   runs while it has none and no stop is pending, so a client made with a scope
   that must end, such as `runBlocking`'s, does not hold it unless a state is
   collected.
-- **`value`** is the last sample polled while the state polls, and a fresh read
-  otherwise; `read()` always reads the port.
+- **`value`** is the last sample polled while the state polls, with that poll's
+  freshness, and a fresh read otherwise; `read()` always reads the port. A read
+  and its publication hold one lock, so two reads publish in the order they
+  read.
+- **Failure.** A read or a decode that throws while polling stops the polling,
+  and every collector's `collect` throws it, as a cold flow would; the failure
+  never reaches the scope the state polls in. A later subscriber, `value` or
+  `read()` reads the port again.
 - **Emission.** A sample is emitted when its value, provenance, envelope or
   staleness differs from the last one emitted; the age of a stale sample is not
   compared. `values` is the values alone, emitted when the value changes.
 - **Cost.** A read copies the channel into one buffer the state keeps, and a
-  publication already decoded, the same envelope, provenance and length, is not
-  decoded again.
+  publication already decoded, the same envelope, provenance and bytes, is not
+  decoded again. The bytes are compared because an envelope alone does not name
+  a publication: two writers each count their own sequence numbers.
 
 `SignalStateTest` pins these on virtual time, with a grid over the test
 scheduler's time source.

@@ -5,6 +5,7 @@
 // without changing what a collector sees.
 package ridl.rt.coroutines
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.Job
@@ -75,23 +76,28 @@ public class SignalStates(
  *
  * - **Lifecycle.** Polling starts with the first subscriber, and stops
  *   `linger` (3 s by default) after the last one left; a subscriber that comes
- *   back within that time keeps the same polling. A read at once starts it,
- *   then one at each multiple of [period] on the grid, so states of
- *   compatible periods read in the same slot.
+ *   back within that time keeps the same polling. A subscriber that starts the
+ *   polling reads the port at once, then the state reads at each multiple of
+ *   [period] on the grid, so states of compatible periods read in the same
+ *   slot. No coroutine runs while the state has no subscriber and no stop is
+ *   pending.
  * - **Emission.** A sample is emitted when its value, its provenance, its
  *   envelope or its staleness differs from the last one emitted: every
  *   publication, a `touch` included, and a turn to stale or back. The age of a
  *   stale sample is not compared, so a stale value is emitted once.
  * - **[value].** While polling, the last sample polled, at most one [period]
- *   old; otherwise a fresh read of the port. [read] always reads the port.
+ *   old, with the freshness of that poll; otherwise a fresh read of the port.
+ *   [read] always reads the port.
  * - **Cost.** A read copies the channel into one buffer the state keeps, and
- *   decodes it only when its envelope, provenance or length changed since the
+ *   decodes it only when its bytes, envelope or provenance changed since the
  *   last read: an unchanged publication is not decoded again.
+ * - **Failure.** A read or a decode that throws an `Exception` while polling
+ *   stops the polling, and every collector's `collect` throws it, as a cold
+ *   flow would. It never reaches the scope the state polls in. A later
+ *   subscriber, [value] or [read] reads the port again.
  *
- * A [ReadError] while polling stops the polling; [value] and [read] then
- * throw it again, as the port does. The polling runs in the client's scope:
- * cancelling it stops the polling, and a collector then waits forever, as on
- * any `StateFlow`.
+ * Cancelling the scope the state polls in stops the polling; a collector then
+ * waits forever, as on any `StateFlow`.
  */
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
 public class SignalState<T> internal constructor(
@@ -103,27 +109,78 @@ public class SignalState<T> internal constructor(
     private val maxSize: Int,
     private val decode: (RawSample, ByteBuffer) -> Sample<T>,
 ) : StateFlow<Sample<T>> {
+    /** A failed poll, as the emitted state holds it until a read succeeds. */
+    private class Failed(val error: Throwable)
+
+    // Everything below is guarded by `lock`: a read and its publication, the
+    // subscribers, the polling and the pending stop.
     private val lock = Any()
     private val buf: ByteBuffer = ByteBuffer.allocate(maxSize)
     private var lastRaw: RawSample? = null
-    private var lastSample: Sample<T>? = null
-    private val state = MutableStateFlow(fetch())
-
-    @Volatile
-    private var polling = false
-
-    // The subscribers, the polling and the pending stop, under `lock`. No
-    // coroutine runs while the state has no subscriber and no stop is pending.
+    private var lastBytes = ByteArray(0)
+    private var lastDecoded: Sample<T>? = null
     private var subscribers = 0
     private var poller: Job? = null
     private var stopper: Job? = null
+
+    /** The last sample read, with the freshness of that read: what [value] returns while polling. */
+    @Volatile
+    private var latest: Sample<T> = fetch()
+
+    /** What collectors see: the last sample emitted, or the failure that stopped the polling. */
+    private val state = MutableStateFlow<Any>(latest)
+
+    private val polling: Boolean get() = synchronized(lock) { poller?.isActive == true }
+
+    /**
+     * Reads the port and publishes the sample, under one lock so that two
+     * reads publish in the order they read. Decodes only a publication not
+     * decoded yet.
+     */
+    private fun readLocked(): Sample<T> = synchronized(lock) {
+        val sample = fetch()
+        latest = sample
+        state.update { last -> if (last !is Sample<*> || differs(last, sample)) sample else last }
+        sample
+    }
+
+    private fun fetch(): Sample<T> = synchronized(lock) {
+        buf.clear()
+        val raw = port.read(signal.iface.number, signal.member.ordinal, buf)
+        val last = lastRaw
+        val decoded = lastDecoded
+        val sample = if (decoded != null && last != null && raw.envelope == last.envelope &&
+            raw.provenance == last.provenance && sameBytes(raw.len)
+        ) {
+            decoded.copy(freshness = raw.freshness)
+        } else {
+            remember(raw.len)
+            decode(raw, buf).also { lastDecoded = it }
+        }
+        lastRaw = raw
+        sample
+    }
+
+    private fun sameBytes(len: Int): Boolean {
+        if (len != lastBytes.size) return false
+        for (i in 0 until len) if (buf.get(i) != lastBytes[i]) return false
+        return true
+    }
+
+    private fun remember(len: Int) {
+        lastBytes = ByteArray(len) { buf.get(it) }
+    }
 
     private fun subscribe() {
         synchronized(lock) {
             subscribers++
             stopper?.cancel()
             stopper = null
-            if (poller?.isActive != true) poller = states.scope.launch { poll() }
+            if (poller?.isActive != true) {
+                // A subscriber after a stop sees the port now, not the sample from before the stop.
+                readLocked()
+                poller = states.scope.launch { poll() }
+            }
         }
     }
 
@@ -143,39 +200,17 @@ public class SignalState<T> internal constructor(
     }
 
     private suspend fun poll() {
-        polling = true
         try {
             while (true) {
-                read()
                 delay(states.grid.untilNext(period))
+                readLocked()
             }
-        } catch (_: ReadError) {
-            // The next read, by `value` or `read`, meets the error again.
-        } finally {
-            polling = false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Collectors meet the failure; the scope the state polls in never does.
+            state.value = Failed(e)
         }
-    }
-
-    /** Reads the port, decoding only a publication not decoded yet. */
-    private fun fetch(): Sample<T> = synchronized(lock) {
-        buf.clear()
-        val raw = port.read(signal.iface.number, signal.member.ordinal, buf)
-        val last = lastRaw
-        val cached = lastSample
-        val sample = if (cached != null && last != null && raw.envelope == last.envelope &&
-            raw.provenance == last.provenance && raw.len == last.len
-        ) {
-            cached.copy(freshness = raw.freshness)
-        } else {
-            decode(raw, buf)
-        }
-        lastRaw = raw
-        lastSample = sample
-        sample
-    }
-
-    private fun publish(sample: Sample<T>) {
-        state.update { last -> if (differs(last, sample)) sample else last }
     }
 
     /**
@@ -185,21 +220,23 @@ public class SignalState<T> internal constructor(
      *
      * @throws ReadError as [SignalReader.read] does.
      */
-    public fun read(): Sample<T> = fetch().also(::publish)
+    public fun read(): Sample<T> = readLocked()
 
     /** While polling, the last sample polled; otherwise a fresh [read]. */
     override val value: Sample<T>
-        get() = if (polling) state.value else read()
+        get() = if (polling) latest else read()
 
     override val replayCache: List<Sample<T>>
         get() = listOf(value)
 
     override suspend fun collect(collector: FlowCollector<Sample<T>>): Nothing {
-        subscribe()
         try {
-            // A subscriber after a stop sees the port now, not the sample from before the stop.
-            if (!polling) read()
-            state.collect(collector)
+            subscribe()
+            state.collect {
+                if (it is Failed) throw it.error
+                @Suppress("UNCHECKED_CAST")
+                collector.emit(it as Sample<T>)
+            }
         } finally {
             unsubscribe()
         }
@@ -207,8 +244,8 @@ public class SignalState<T> internal constructor(
 
     /**
      * The state of the same signal polled every [period], never faster than
-     * its rate floor: the client's shared state for that effective period, this
-     * one when it resolves to [this.period].
+     * its default period: the client's shared state for that effective period,
+     * this one when it resolves to [this.period].
      */
     public fun every(period: Duration): SignalState<T> = states.of(signal, period, maxSize, decode)
 

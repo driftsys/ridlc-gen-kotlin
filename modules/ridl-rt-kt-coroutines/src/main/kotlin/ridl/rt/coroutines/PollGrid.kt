@@ -51,16 +51,18 @@ private val DEFAULT_PERIOD = 100.milliseconds
 /**
  * The period a signal of [timing] is polled at on a grid of [quantum] (#76):
  *
- * - [desired] set: `max(desired, timing.min)`, as a faster update than the
- *   rate floor is coalesced (ridl §9) and a faster poll would only read it
- *   again. A [desired] slower than the staleness bound is kept: the sample's
- *   freshness reports the staleness.
- * - [desired] `null`: the rate floor, capped at the staleness bound rounded
- *   down; with no floor, half the staleness bound, rounded down, so a value is
- *   read before it turns stale; with neither, ridl's default floor of 100 ms.
+ * - [desired] `null`, the default period: the rate floor, capped at the
+ *   staleness bound rounded down; with no floor, half the staleness bound,
+ *   rounded down, so a value is read before it turns stale; with neither,
+ *   ridl's default floor of 100 ms.
+ * - [desired] set: [desired], but never faster than the default period, as a
+ *   faster update than the rate floor is coalesced (ridl §9) and a faster poll
+ *   would only read it again. A [desired] slower than the staleness bound is
+ *   kept: the sample's freshness reports the staleness.
  *
  * A period is rounded up to a multiple of [quantum], unless the cap rounds it
- * down, and is never less than one [quantum].
+ * down, and is never less than one [quantum]. A [desired] too long to count in
+ * nanoseconds, `Duration.INFINITE` included, saturates at the longest period.
  */
 public fun effectivePeriod(timing: Timing?, desired: Duration?, quantum: Duration): Duration {
     require(quantum.isPositive()) { "a grid has a positive quantum, not $quantum" }
@@ -68,13 +70,13 @@ public fun effectivePeriod(timing: Timing?, desired: Duration?, quantum: Duratio
     val q = quantum.inWholeNanoseconds
     val min = timing?.min?.micros?.takeIf { it > 0 }?.microseconds
     val max = timing?.max?.micros?.takeIf { it > 0 }?.microseconds
-    fun up(d: Duration): Long = (d.inWholeNanoseconds + q - 1) / q
+    fun up(d: Duration): Long = d.inWholeNanoseconds.let { if (it > Long.MAX_VALUE - q) Long.MAX_VALUE / q else (it + q - 1) / q }
     fun down(d: Duration): Long = d.inWholeNanoseconds / q
-    val slots = when {
-        desired != null -> up(maxOf(desired, min ?: desired))
+    val default = when {
         min != null -> up(min).let { if (max != null) minOf(it, down(max)) else it }
         max != null -> down(max / 2)
         else -> up(DEFAULT_PERIOD)
-    }
-    return (q * slots.coerceAtLeast(1)).nanoseconds
+    }.coerceAtLeast(1)
+    val slots = if (desired != null) maxOf(up(desired), default) else default
+    return (q * slots).nanoseconds
 }

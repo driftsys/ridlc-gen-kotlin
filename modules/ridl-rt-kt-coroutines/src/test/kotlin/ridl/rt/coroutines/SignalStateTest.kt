@@ -23,6 +23,7 @@ import ridl.rt.contract.Signal
 import ridl.rt.contract.Timing
 import ridl.rt.contract.TimingMode
 import ridl.rt.port.RawSample
+import ridl.rt.port.ReadError
 import ridl.rt.port.SignalReader
 import ridl.rt.sample.Cause
 import ridl.rt.sample.Envelope
@@ -46,6 +47,7 @@ class SignalStateTest {
         var seq = 1uL
         var provenance: Provenance = Provenance.Live
         var freshness: Freshness = Freshness.Fresh
+        var failure: Throwable? = null
         val reads = mutableListOf<Long>()
 
         fun publish(value: Int) {
@@ -55,6 +57,7 @@ class SignalStateTest {
 
         override fun read(iface: InterfaceNo, ord: Ordinal, out: ByteBuffer): RawSample {
             reads += now()
+            failure?.let { throw it }
             out.putInt(value)
             return RawSample(provenance, freshness, Envelope(Timestamp(seq.toLong()), seq), 4)
         }
@@ -81,9 +84,11 @@ class SignalStateTest {
         val channel = Channel { scope.currentTime }
         val states = SignalStates(channel, scope.backgroundScope, PollGrid(timeSource = scope.testScheduler.timeSource))
         var decodes = 0
+        var decodeFailure: Throwable? = null
 
         fun state(desired: Duration? = null): SignalState<Int> = states.of(signal, desired, 4) { raw, buf ->
             decodes++
+            decodeFailure?.let { throw it }
             buf.flip()
             Sample(buf.getInt(), raw.provenance, raw.freshness, raw.envelope)
         }
@@ -112,6 +117,23 @@ class SignalStateTest {
         assertEquals(1.seconds, effectivePeriod(range(100, 1000), 1.seconds, q))
         assertEquals(5.seconds, effectivePeriod(range(100, 1000), 5.seconds, q), "not capped")
         assertEquals(260.milliseconds, effectivePeriod(range(100, 1000), 255.milliseconds, q), "rounded up to the grid")
+    }
+
+    @Test
+    fun `a desired period faster than the default is the default, the cap included`() {
+        val q = 10.milliseconds
+        val capped = Timing(TimingMode.Range, RidlDuration(95_000), RidlDuration(99_000))
+        assertEquals(90.milliseconds, effectivePeriod(capped, 10.milliseconds, q), "the capped default, not the floor rounded up")
+        val strict = Timing(TimingMode.StrictPeriodic, RidlDuration(15_000), RidlDuration(15_000))
+        assertEquals(effectivePeriod(strict, null, q), effectivePeriod(strict, 1.milliseconds, q))
+    }
+
+    @Test
+    fun `an infinite desired period saturates at the longest period, not the shortest`() {
+        val q = 10.milliseconds
+        val period = effectivePeriod(range(100, 1000), Duration.INFINITE, q)
+        assertTrue(period.inWholeDays > 36_500, "a century at least, not $period")
+        assertEquals(0L, period.inWholeNanoseconds % q.inWholeNanoseconds, "on the grid")
     }
 
     // -- sharing ---------------------------------------------------------------
@@ -184,6 +206,19 @@ class SignalStateTest {
     }
 
     @Test
+    fun `a restarted polling is seen as polling, whatever the stopped one does late`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        subscribe(state).cancel()
+        advanceTimeBy(10.seconds)
+        subscribe(state)
+        advanceTimeBy(150.milliseconds)
+        val reads = f.channel.reads.size
+        state.value
+        assertEquals(reads, f.channel.reads.size, "value is the last poll, not a read: the new polling is the one seen")
+    }
+
+    @Test
     fun `the first emission after a stop is the port now, not the sample from before`() = runTest {
         val f = Fixture(this)
         val state = f.state()
@@ -243,6 +278,56 @@ class SignalStateTest {
             listOf(false to Provenance.Live, true to Provenance.Live, true to Provenance.Invalid(Cause.Declared)),
             emitted.map { (it.freshness is Freshness.Stale) to it.provenance },
         )
+    }
+
+    @Test
+    fun `while stale and polled, value carries the freshness of the last poll`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        subscribe(state)
+        f.channel.freshness = Freshness.Stale(RidlDuration(1))
+        advanceTimeBy(150.milliseconds)
+        f.channel.freshness = Freshness.Stale(RidlDuration(9))
+        advanceTimeBy(100.milliseconds)
+        assertEquals(Freshness.Stale(RidlDuration(9)), state.value.freshness)
+    }
+
+    @Test
+    fun `new bytes under the same envelope are decoded, as from a second writer whose count restarted`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        f.channel.value = 22
+        assertEquals(22, state.read().value, "same stamp, same seq, other bytes")
+        assertEquals(2, f.decodes)
+    }
+
+    @Test
+    fun `a read error while polling ends every collector with it`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        val ended = mutableListOf<Throwable>()
+        backgroundScope.launch { runCatching { state.collect {} }.exceptionOrNull()?.let(ended::add) }
+        runCurrent()
+        f.channel.failure = ReadError.Detached
+        advanceTimeBy(150.milliseconds)
+        assertEquals(listOf<Throwable>(ReadError.Detached), ended)
+    }
+
+    @Test
+    fun `any failure while polling stays out of the scope the state polls in`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        val sibling = backgroundScope.launch { kotlinx.coroutines.awaitCancellation() }
+        val ended = mutableListOf<Throwable>()
+        backgroundScope.launch { runCatching { state.collect {} }.exceptionOrNull()?.let(ended::add) }
+        runCurrent()
+        f.channel.publish(22)
+        f.decodeFailure = IllegalStateException("a codec bug")
+        advanceTimeBy(150.milliseconds)
+        assertEquals("a codec bug", ended.single().message, "the collector meets it")
+        assertTrue(sibling.isActive, "the scope's other coroutines do not")
+        f.decodeFailure = null
+        assertEquals(22, state.value.value, "a later read reads the port again")
     }
 
     @Test
