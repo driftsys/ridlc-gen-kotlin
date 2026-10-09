@@ -80,9 +80,4 @@ A hand-written line survives every later `git std bump`, which only prepends;
 
 ### Breaking changes the commits do not mark
 
-- **ridl-rt-kt:** `ReadError.ShortClaim` (b748a3d,
-  driftsys/ridlc-gen-kotlin#14). `ReadError` is a sealed class, so an exhaustive
-  `when` over it no longer compiles, and a `Handler` whose `nextClaim` reports
-  an oversized claim with `Short` no longer meets the port contract: it reports
-  `ShortClaim` with the claim's id. Rust's `ReadError` is `#[non_exhaustive]`,
-  so the same change was not breaking there.
+None pending: 0.1.0 took the last ones.
