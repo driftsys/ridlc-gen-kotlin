@@ -32,6 +32,7 @@ import kt.values.ProbePublisher
 import kt.values.commit
 import kt.values.invalidateLevel
 import kt.values.nextEvent
+import kt.values.offset
 import kt.values.subscribeMoved
 import kt.values.timeout
 import kt.values.touchLevel
@@ -150,9 +151,9 @@ private fun patched(buffer: ByteBuffer, from: Int, to: Int): ByteBuffer {
 private fun async() = runBlocking {
     withTimeout(10_000) {
         Loopback(Probe.catalog).let { rt ->
-            val client = ProbeAsyncClient(rt)
+            val client = ProbeAsyncClient(rt, this)
             ProbePublisher(rt).let { it.offset(Offset.of(0.75)); it.commit() }
-            expectEqual("an async client's signal reads", Offset.of(0.75), client.offset().value)
+            expectEqual("an async client's signal reads", Offset.of(0.75), client.offset.value.value)
 
             val provider = Halver()
             val serving = launch(Dispatchers.Default) { Probe.serveAsync(rt.handler(), provider) }
@@ -170,7 +171,7 @@ private fun async() = runBlocking {
 
         // A query settled by hand with each outcome a provider or a runtime can send.
         Loopback(Probe.catalog).let { rt ->
-            val client = ProbeAsyncClient(rt)
+            val client = ProbeAsyncClient(rt, this)
             val handler = rt.handler()
             suspend fun settledWith(outcome: Result<ByteBuffer>): Result<Even> {
                 val call = async(start = CoroutineStart.UNDISPATCHED) { runCatching { client.half(Even.of(2)) } }
@@ -272,13 +273,13 @@ private fun clash() {
     serving.join()
 }
 
-/** The async client of Clash: its `nextEvent()` is the signal's, and the suspending one is reached through its alias. */
+/** The async client of Clash: its signal `next_event` is the state `nextEvent`, beside the suspending `nextEvent()`, also reached through its alias. */
 private fun clashAsync() = runBlocking {
     withTimeout(10_000) {
         val rt = Loopback(Clash.catalog)
         ClashPublisher(rt).let { it.nextEvent(Even.of(-2)); it.commit() }
-        val client = ClashAsyncClient(rt)
-        expectEqual("an async client's signal named next_event keeps nextEvent()", Even.of(-2), client.nextEvent().value)
+        val client = ClashAsyncClient(rt, this)
+        expectEqual("an async client's signal named next_event is the state nextEvent", Even.of(-2), client.nextEvent.value.value)
         client.fixedSubscribePing()
         ClashPublisher(rt).ping(Mode.RUN)
         expectEqual(

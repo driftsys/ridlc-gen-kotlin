@@ -1,6 +1,7 @@
 package ridl.codegen.kotlin
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -216,22 +217,24 @@ class FacesEmitterTest {
         .apply { if (min != null) setMinUs(min) }.apply { if (max != null) setMaxUs(max) }.build()
 
     @Test
-    fun `a signal flow reads at the rate floor, else at the staleness bound, else at ridl's default floor`() {
-        // #72: a faster update than the floor is coalesced (ridl §9), so a read at the floor misses none.
-        val strict = timing(TimingMode.TIMING_MODE_STRICT_PERIODIC, "10000", "10000")
-        val range = timing(TimingMode.TIMING_MODE_RANGE, "20000", "500000")
-        val ceilingOnly = timing(TimingMode.TIMING_MODE_RANGE, null, "250000")
-        for ((t, period) in listOf(strict to "10_000", range to "20_000", ceilingOnly to "250_000", null to "100_000")) {
-            val text = gauge(t)
-            assertTrue("GaugeAsyncClient<P>.levelFlow(): Flow<Sample<Level>> = signalFlow($period.microseconds) { level() }" in text, text)
-        }
+    fun `each signal is a state of the async client, read through one shared decode`() {
+        // #76: the timing travels on the descriptor; the runtime turns it into the polling period.
+        val text = gauge(timing(TimingMode.TIMING_MODE_RANGE, "20000", "500000"))
+        assertTrue("public val <P : SignalReader> GaugeAsyncClient<P>.level: SignalState<Level>" in text, text)
+        assertTrue("get() = signalStates.of(GaugeLevel, null, LevelCodec.maxSize) { raw, buf -> sampled(LevelCodec, GaugeLevel, raw, buf) }" in text, text)
+        assertTrue("return sampled(LevelCodec, GaugeLevel, port.read(Gauge.number, Ordinal(1u), buf), buf)" in text, "the blocking read decodes the same way")
+        assertFalse("levelFlow" in text, "the cold flow is gone")
     }
 
     @Test
-    fun `a signal-only interface gets a suspending client with its reads`() {
+    fun `a signal-only interface gets a suspending client of signal states, polled in its scope`() {
         val text = gauge(null)
         assertTrue("public class GaugeAsyncClient<P : SignalReader>(" in text, text)
-        assertTrue("public fun level(): Sample<Level> = reads.level()" in text, text)
+        assertTrue("scope: CoroutineScope," in text, text)
+        assertTrue("grid: PollGrid = PollGrid.Default," in text, text)
+        assertTrue("internal val signalStates: SignalStates = SignalStates(port, scope, grid)" in text, text)
+        assertFalse("public fun level(): Sample<Level> = reads.level()" in text, "the async client has no read of its own")
+        assertTrue("public fun level(): Sample<Level>" in text, "the blocking client keeps its read")
     }
 
     @Test
@@ -249,6 +252,8 @@ class FacesEmitterTest {
         assertEquals(emptyList<String>(), emitted.warnings)
         val text = checkNotNull(emitted.text)
         assertTrue("public fun nextEvent(): Sample<Level>" in text, "the signal keeps its member")
+        assertTrue("public val <P> DriveAsyncClient<P>.nextEvent:\n    SignalState<Level>" in text, "the async client's signal is a state")
+        assertTrue("\npublic suspend fun <P> DriveAsyncClient<P>.nextEvent(): Drive.Event" in text, "no member to shadow it on the async client")
         val shadowed = "@Suppress(\"EXTENSION_SHADOWED_BY_MEMBER\")\npublic fun <P> DriveClient<P>.nextEvent(): Drive.Event?"
         assertTrue(shadowed in text, "the fixed operation is an extension the member shadows")
         assertTrue("@Suppress(\"EXTENSION_SHADOWED_BY_MEMBER\")\npublic fun <P> DriveClient<P>.subscribeWarning()" in text)
