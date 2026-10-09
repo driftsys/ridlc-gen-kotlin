@@ -732,7 +732,9 @@ message Service {
 }
 
 message Catalog {
-  // `CatalogRef.name`.
+  // `CatalogRef.name`: the name of the unit the package belongs to
+  // (`Package.unit`), which names the one catalog of that unit. A plugin
+  // finds its region in the deployment section by this value.
   string package = 1;
   // The 32-byte SHA-256 catalog hash of ADR-0014 decision 15, the value
   // `ridl_ir::catalog_hash::catalog_hash` returns.
