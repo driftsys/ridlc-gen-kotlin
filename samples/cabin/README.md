@@ -33,6 +33,8 @@ just demo
 ## Status
 
 Stages K4 and K5. `just demo` prints `signal ok 21`, `event ok 5`,
-`command ok 42` and `query ok 7`, then `coroutine query ok 7`,
-`coroutine command ok 42` and `coroutine event ok 5`, and `DemoTest` pins those
-seven lines.
+`command ok 42` and `query ok 7`, then `coroutine signal ok 21,22`,
+`coroutine query ok 7`, `coroutine command ok 42` and `coroutine event ok 5`,
+and `DemoTest` pins those eight lines. `coroutine signal ok 21,22` is the signal
+read as a flow (#72): the sample published first, then the one published once
+the first was seen.
