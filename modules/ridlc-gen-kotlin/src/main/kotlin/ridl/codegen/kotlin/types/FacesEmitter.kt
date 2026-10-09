@@ -94,6 +94,12 @@ private val TIMESTAMP = ClassName("$RT.sample", "Timestamp")
 private val WAKER = ClassName("$RT.task", "Waker")
 private val BLOCK_ON = MemberName("$RT.task", "blockOn")
 private val AWAIT_POLL = MemberName("$RT.coroutines", "awaitPoll")
+private val SIGNAL_FLOW = MemberName("$RT.coroutines", "signalFlow")
+private val FLOW = ClassName("kotlinx.coroutines.flow", "Flow")
+private val MICROSECONDS = MemberName("kotlin.time.Duration.Companion", "microseconds")
+
+/** ridl's default rate floor, `@[100ms..1000ms]` (ridl §9.1): the period a signal flow reads at when its timing has no bound. */
+private const val DEFAULT_SIGNAL_PERIOD_US: Long = 100_000
 private val MUTEX = ClassName("kotlinx.coroutines.sync", "Mutex")
 private val WITH_LOCK = MemberName("kotlinx.coroutines.sync", "withLock")
 private val TIME_DURATION = ClassName("kotlin.time", "Duration")
@@ -492,6 +498,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 add(asyncClient(), "the async client of $of")
             } else if (signals.isNotEmpty()) {
                 add(client(ClassName(pkg, "${name}Client"), pollFace = false), "the client of $of")
+                add(signalAsyncClient(), "the async client of $of")
             }
             if (signals.isNotEmpty() || events.isNotEmpty()) add(publisher(), "the publisher of $of")
             if (hasCalls) add(provider(), "the provider of $of")
@@ -967,15 +974,74 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             add(WAKEABLE)
         }
 
-        /** The signal reads, delegated to the poll face, which both clients share. */
-        private fun TypeSpec.Builder.delegatedReads(): TypeSpec.Builder = apply {
+        /** The signal reads, delegated to [face]: the poll face both clients share, or a signal-only interface's client. */
+        private fun TypeSpec.Builder.delegatedReads(face: String = "poll"): TypeSpec.Builder = apply {
             for (m in signals) {
                 addFunction(
                     FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(signalPayload(m).type))
                         .addKdoc("Reads signal `%L`, as the runtime resolved it. It does not wait.", m.declared)
-                        .addStatement("return poll.%N()", m.method).build(),
+                        .addStatement("return %N.%N()", face, m.method).build(),
                 )
             }
+        }
+
+        /**
+         * How often signal [m]'s flow reads it, in microseconds (#72): its rate
+         * floor, under which a faster update is coalesced (ridl §9), so a read at
+         * that period misses no update; a strict periodic signal's floor is its
+         * period. A signal with no floor is read at its staleness bound, and one
+         * with neither at ridl's default floor.
+         */
+        private fun signalPeriod(m: Member): Long {
+            val timing = m.interaction.timing.takeIf { m.interaction.hasTiming() }
+            val bounds = listOfNotNull(
+                timing?.takeIf { it.hasMinUs() }?.minUs,
+                timing?.takeIf { it.hasMaxUs() }?.maxUs,
+            )
+            return bounds.map(::micros).firstOrNull { it > 0 } ?: DEFAULT_SIGNAL_PERIOD_US
+        }
+
+        /** `<signal>Flow` of every signal, as extensions of [receiver]'s suspending client (#72). */
+        private fun signalFlows(receiver: Receiver) {
+            for (m in signals) {
+                val period = signalPeriod(m)
+                extensions.functions += receiver.extension("${m.method}Flow")
+                    .returns(FLOW.parameterizedBy(SAMPLE.parameterizedBy(signalPayload(m).type)))
+                    .addKdoc(
+                        "The samples of signal `%L`, as a cold flow: read at once, then every %L µs, its declared rate, " +
+                            "emitting each sample that differs from the last one emitted, every publication and a turn to " +
+                            "stale included. It never completes; cancelling the collector stops it. See `signalFlow`.",
+                        m.declared, period,
+                    )
+                    .addStatement("return %M(%L.%M) { %N() }", SIGNAL_FLOW, period, MICROSECONDS, m.method)
+                    .build()
+            }
+        }
+
+        /**
+         * The suspending client of a signal-only interface (#72): its signal
+         * reads, delegated to the interface's client, and a flow of each signal.
+         * Nothing in it waits on the port, so it needs no other port than a
+         * `SignalReader`.
+         */
+        private fun signalAsyncClient(): TypeSpec {
+            val p = TypeVariableName("P", SIGNAL_READER)
+            val client = ClassName(pkg, "${name}Client")
+            val type = ClassName(pkg, "${name}AsyncClient")
+            signalFlows(Receiver(type, listOf(SIGNAL_READER), internal))
+            return TypeSpec.classBuilder(type).visibility()
+                .addKdoc(
+                    "The suspending client of interface `%L`: its signal reads, which do not wait, and each signal's " +
+                        "flow, an extension (#9, #72).\n\n%L",
+                    iface.declared.declared,
+                    catalogThrows("port", "the comparison is made once, by the client the constructor builds"),
+                )
+                .addTypeVariable(p)
+                .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
+                .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
+                .addProperty(PropertySpec.builder("reads", client.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", client).build())
+                .delegatedReads("reads")
+                .build()
         }
 
         /**
@@ -1083,7 +1149,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     "The suspending client of interface `%L`: each call suspends until its outcome and throws `ClientError` " +
                         "for a failed one; a cancelled call is forgotten. Calls run one at a time: a second concurrent call " +
                         "waits for the first, so use a second client over a second caller handle for concurrency. " +
-                        "`nextEvent` and the subscriptions are extensions (#9).\n\n%L",
+                        "`nextEvent`, the subscriptions and each signal's flow are extensions (#9, #72).\n\n%L",
                     iface.declared.declared,
                     catalogThrows("port", "the comparison is made once, by the poll client the constructor builds"),
                 )
@@ -1095,6 +1161,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             if (commands.isNotEmpty() || queries.isNotEmpty()) {
                 builder.addProperty(PropertySpec.builder("calls", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
             }
+            signalFlows(Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal))
             if (events.isNotEmpty()) {
                 // The port keeps one event waker per handle: two waits at once would displace and wake each other forever.
                 builder.addProperty(PropertySpec.builder("events", MUTEX, KModifier.INTERNAL).initializer("%T()", MUTEX).build())

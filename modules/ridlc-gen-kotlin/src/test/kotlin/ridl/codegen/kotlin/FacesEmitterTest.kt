@@ -26,6 +26,8 @@ import ridl.codegen.v1.ModelOuterClass.Payload
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
 import ridl.codegen.v1.ModelOuterClass.SignalShape
+import ridl.codegen.v1.ModelOuterClass.Timing
+import ridl.codegen.v1.ModelOuterClass.TimingMode
 import ridl.codegen.v1.ModelOuterClass.Spellings
 import ridl.codegen.v1.ModelOuterClass.Type
 import ridl.codegen.v1.ModelOuterClass.TypeRef
@@ -199,6 +201,38 @@ class FacesEmitterTest {
                 if (signal) setSignal(SignalShape.newBuilder().setPayload(payload)) else setEvent(EventShape.newBuilder().setPayload(payload))
             },
         )
+
+    /** The `Faces.kt` of a signal-only interface `Gauge` whose one signal `level` carries [timing]. */
+    private fun gauge(timing: Timing?): String {
+        val signal = slot(1, "level", "Level", signal = true).apply {
+            if (timing != null) interactionBuilder.setTiming(timing)
+        }
+        val iface = Interface.newBuilder().setDeclared(spelled("Gauge")).setNumber(1).addSlots(signal)
+        val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
+        return checkNotNull(FacesEmitter(demo().addDeclarations(level).addInterfaces(iface).build(), options).emit().text)
+    }
+
+    private fun timing(mode: TimingMode, min: String?, max: String?) = Timing.newBuilder().setMode(mode)
+        .apply { if (min != null) setMinUs(min) }.apply { if (max != null) setMaxUs(max) }.build()
+
+    @Test
+    fun `a signal flow reads at the rate floor, else at the staleness bound, else at ridl's default floor`() {
+        // #72: a faster update than the floor is coalesced (ridl §9), so a read at the floor misses none.
+        val strict = timing(TimingMode.TIMING_MODE_STRICT_PERIODIC, "10000", "10000")
+        val range = timing(TimingMode.TIMING_MODE_RANGE, "20000", "500000")
+        val ceilingOnly = timing(TimingMode.TIMING_MODE_RANGE, null, "250000")
+        for ((t, period) in listOf(strict to "10_000", range to "20_000", ceilingOnly to "250_000", null to "100_000")) {
+            val text = gauge(t)
+            assertTrue("GaugeAsyncClient<P>.levelFlow(): Flow<Sample<Level>> = signalFlow($period.microseconds) { level() }" in text, text)
+        }
+    }
+
+    @Test
+    fun `a signal-only interface gets a suspending client with its reads`() {
+        val text = gauge(null)
+        assertTrue("public class GaugeAsyncClient<P : SignalReader>(" in text, text)
+        assertTrue("public fun level(): Sample<Level> = reads.level()" in text, text)
+    }
 
     @Test
     fun `a member named like a fixed or derived operation keeps its interface and shadows the extension`() {
