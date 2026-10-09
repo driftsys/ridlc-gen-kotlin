@@ -59,6 +59,8 @@ carry it, under the delivery contract the port interfaces state. `TraceTest` is
 `propagation.rs` and `propagation_unset.rs`. The hook cannot be cleared, so
 `PropagationTest` runs in a JVM of its own, the `processHookTest` task that
 `test` runs first, as each Rust file is a test binary of its own (#52).
+`ProcessHookTagTest` fails on a test file that calls `setPropagation` without
+the `process-hook` tag (#65).
 
 ## Compiling against Android
 

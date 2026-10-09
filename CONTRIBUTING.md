@@ -54,6 +54,14 @@ changelog by hand, from the list below.
 3. Add each pending note below to the new section's `### BREAKING CHANGES`, and
    remove it from this list.
 4. Commit as `chore(release): <version>` and tag `v<version>`.
+5. Push the commit through a pull request, then push the tag. The `release`
+   workflow checks that the tag matches `gradle.properties`, runs `just build`
+   and `just rust-verdicts`, publishes the libraries to GitHub Packages, and
+   creates the GitHub release with the plugin distribution, `install.sh`, the
+   Android vendor package, the conformance results and their `SHA256SUMS`. It
+   runs that `install.sh` on the assets before it publishes anything.
+6. Set `version` in `gradle.properties` to the next `-SNAPSHOT`, so the
+   `snapshot` job of the `ci` workflow publishes `main` again.
 
 A hand-written line survives every later `git std bump`, which only prepends;
 `git std changelog --full` regenerates the file from the commits and drops it.
