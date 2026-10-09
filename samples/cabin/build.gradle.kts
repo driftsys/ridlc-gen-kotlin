@@ -58,3 +58,12 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
+
+// #47: GuideTest checks the excerpts of docs/guide.md against this sample and
+// its generated code, so the guide is one of the test's inputs.
+tasks.test {
+    val guide = rootProject.layout.projectDirectory.file("docs/guide.md")
+    inputs.file(guide)
+    inputs.file(rootProject.layout.projectDirectory.file("modules/conformance/ridl-release"))
+    systemProperty("guide.file", guide.asFile.absolutePath)
+}
