@@ -10,6 +10,10 @@ const SERIAL_PATTERN = /^[0-9]+$/
 type Even   : integer [-10..10]
 type Code   : string [2..8 match /^[A-Z]+$/]
 type Serial : string [4 match SERIAL_PATTERN]
+/// An offset, in quarter steps. Its doc tags are the model's, not the text's:
+/// ridl strips them from the doc (#51).
+/// @see Even
+/// @since 1.0
 type Offset : float [-5.0..5.0 step 0.25]
 type Key    : bytes [2..4]
 type Text   : string [0..3]
