@@ -696,9 +696,14 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         val narrow = KeyEquality({ a, b -> "$a.toFloat() == $b.toFloat()" }, { it })
         val content = KeyEquality({ a, b -> "$a.contentEquals($b)" }, { "$it.contentToString()" })
         return when (key.kindCase) {
-            // A bare `float` is carried as f64; a `bytes` key is always inline,
-            // with its default length bound.
-            Type.KindCase.PRIMITIVE -> if (key.primitive == PrimitiveType.PRIMITIVE_TYPE_FLOAT) ieee else null
+            // A bare `float` is carried as f64. ridl gives a `bytes` key as an
+            // inline type, with its default length bound, but the model allows
+            // a bare one (#50).
+            Type.KindCase.PRIMITIVE -> when (key.primitive) {
+                PrimitiveType.PRIMITIVE_TYPE_FLOAT -> ieee
+                PrimitiveType.PRIMITIVE_TYPE_BYTES -> content
+                else -> null
+            }
             Type.KindCase.INLINE -> when (key.inline.class_) {
                 ScalarClass.SCALAR_CLASS_FLOAT, ScalarClass.SCALAR_CLASS_UNSPECIFIED ->
                     if (key.inline.floatWidth == FloatWidth.FLOAT_WIDTH_F32) narrow else ieee

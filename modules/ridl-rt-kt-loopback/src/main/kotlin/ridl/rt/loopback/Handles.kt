@@ -54,7 +54,6 @@ import ridl.rt.port.FixedReader
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
 import ridl.rt.port.RawOccurrence
-import ridl.rt.trace.TraceContext
 import ridl.rt.port.RawSample
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SettleError
@@ -64,6 +63,7 @@ import ridl.rt.port.Wakeable
 import ridl.rt.port.Watermark
 import ridl.rt.sample.Timestamp
 import ridl.rt.task.Waker
+import ridl.rt.trace.TraceContext
 import java.nio.ByteBuffer
 import java.util.TreeMap
 
