@@ -29,6 +29,7 @@ required_root_files=(
   "settings.gradle.kts"
   "gradlew"
   "gradlew.bat"
+  "install.sh"
   "gradle/wrapper/gradle-wrapper.jar"
   "gradle/wrapper/gradle-wrapper.properties"
   "gradle/libs.versions.toml"
