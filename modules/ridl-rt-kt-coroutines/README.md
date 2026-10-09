@@ -59,7 +59,10 @@ wake-up for a signal change, so a state polls the port, on these rules:
 - **`value`** is the last sample polled while the state polls, with that poll's
   freshness, and a fresh read otherwise; `read()` always reads the port. A read
   and its publication hold one lock, so two reads publish in the order they
-  read.
+  read. No clock is read to check the cached sample's age, so a poller its
+  dispatcher starves leaves it older than one period; #78 benchmarks the cache
+  against a read and against an age-guarded cache, as a clock read can cost as
+  much as a seqlock'd read.
 - **Failure.** A read or a decode that throws while polling stops the polling,
   and every collector's `collect` throws it, as a cold flow would; the failure
   never reaches the scope the state polls in. A later subscriber, `value` or
