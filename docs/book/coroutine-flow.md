@@ -16,8 +16,9 @@ val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, service) 
 The client's signal states poll in a scope the client owns, on
 `Dispatchers.Default`; a state that nothing collects runs nothing, so the scope
 needs no cancelling. An application that wants the polling tied to a lifecycle
-passes its own, `CabinAsyncClient(port, viewModelScope)` say, never one on the
-main thread.
+passes its own on a background dispatcher,
+`CabinAsyncClient(port, viewModelScope + Dispatchers.Default)` say: a scope on
+the main thread would poll and decode there.
 
 `serveAsync` suspends between claims and never returns normally: it ends by
 throwing, or when its coroutine is cancelled. The sample stops it with
@@ -54,9 +55,11 @@ process, so states of compatible periods, 100 ms and 300 ms say, read in the
 same slot.
 
 A sample is emitted when its value, its provenance or its envelope changes, so
-every publication is emitted, a `touch` that re-affirms the same value included.
-A sample is also emitted when it turns stale, once, and when it turns fresh
-again. A publication already decoded is not decoded again.
+each publication a poll reads is emitted, a `touch` that re-affirms the same
+value included. A signal is a last-value state: two publications closer together
+than the poll period can be read as the second alone. A sample is also emitted
+when it turns stale, once, and when it turns fresh again. A publication already
+decoded is not decoded again.
 
 The rest of the state:
 
