@@ -385,7 +385,8 @@ class PortsTest {
     @Test
     fun `an input buffer is read from its position and left where it was`() {
         val rt = runtime()
-        val input = ByteBuffer.wrap(array(0, 0, 5, 6)).position(2)
+        val input = ByteBuffer.wrap(array(0, 0, 5, 6))
+        input.position(2)
         rt.set(iface, ord, input)
         rt.commit()
         assertEquals(2, input.position(), "the caller's buffer is not consumed")
@@ -400,7 +401,8 @@ class PortsTest {
         val rt = runtime()
         rt.set(iface, ord, bytes(9, 9))
         rt.commit()
-        val buf = ByteBuffer.allocate(8).position(3)
+        val buf = ByteBuffer.allocate(8)
+        buf.position(3)
         assertEquals(2, rt.read(iface, ord, buf).len)
         assertEquals(5, buf.position())
         assertEquals(9, buf.get(3).toInt())
@@ -459,7 +461,11 @@ class PortsTest {
     private fun ok(vararg values: Int): Result<ByteBuffer> = Result.success(bytes(*values))
 
     /** The bytes a port wrote into this buffer: from 0 to its position. */
-    private fun ByteBuffer.written(): ByteArray = ByteArray(position()).also { duplicate().flip().get(it) }
+    private fun ByteBuffer.written(): ByteArray = ByteArray(position()).also {
+        val view = duplicate()
+        view.flip()
+        view.get(it)
+    }
 
     /** Every occurrence waiting on [source], as its payload. */
     private fun payloads(source: ridl.rt.port.EventSource): List<List<Byte>> =
