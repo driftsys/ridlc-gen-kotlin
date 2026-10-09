@@ -1,0 +1,10 @@
+[book]
+title = "RIDL Kotlin plugin"
+description = "The Kotlin code generator of the RIDL toolchain and its runtime libraries: install, usage and the generated code."
+authors = ["driftsys"]
+language = "en"
+src = "docs/book"
+
+[output.html]
+git-repository-url = "https://github.com/driftsys/ridlc-gen-kotlin"
+edit-url-template = "https://github.com/driftsys/ridlc-gen-kotlin/edit/main/{path}"

@@ -61,29 +61,29 @@ layout, a missing count check, a wrong union error or a float step check that
 never fails each turns it red.
 
 Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
-`ridl.toml`, and every catalog hash changed. `UnitTest` builds
-`resources/units/kt-unit`, a root package and a subpackage under one manifest
-with the unit's `interfaces.lock`. It checks that both models name catalog
-`kt.unit` with one nonzero hash, and that the two generated descriptors carry
-that `CatalogRef` and the lock's numbers, 1 and 2. The unit is kept out of
-`corpus/` because every corpus package needs Rust codec verdicts. No golden
-holds a catalog hash and no corpus package has a subpackage, so no other test
-changed. The Rust codec and `ridl-rt`'s FlatBuffers code did not change, and the
-corpus copy of `cabin` (two anchor comments) was taken again from the tag.
+`ridl.toml`, and every catalog hash changed. `UnitTest` builds the corpus
+package `kt-unit`, a root package and a subpackage under one manifest with the
+unit's `interfaces.lock`. It checks that both models name catalog `kt.unit` with
+one nonzero hash, and that the two generated descriptors carry that `CatalogRef`
+and the lock's numbers, 1 and 2. As a corpus package, it also goes through every
+test over the corpus, with its own Rust codec verdicts (#65). No golden holds a
+catalog hash, so no other test changed. The Rust codec and `ridl-rt`'s
+FlatBuffers code did not change, and the corpus copy of `cabin` (two anchor
+comments) was taken again from the tag.
 
 Since ridl 0.6.0, the model carries the real catalog hash (driftsys/ridl#676),
 so every generated descriptor of the corpus carries it; the faces tests attach
 their loopbacks to the generated `<Iface>.catalog`, so they did not change, and
 pass with any hash. `CatalogTest` checks the hash itself (#48): for every corpus
-package, one `ridl build --emit rust --plugin kotlin` writes both sides, and the
-`CatalogRef` literals of the plugin's descriptors, name and hash, are those of
-the Rust crate, none of 32 zero bytes. A zero hash or one wrong byte turns it
-red. Untimed commands and queries take a default response bound of 1 s and 3 s,
-which the model states as their timing. The Rust codec and `ridl-rt`'s
-FlatBuffers code differ from 0.5.1's in comments only, so no golden file or Rust
-verdict changed. The corpus copies of `cabin` (doc comments and a `service`
-declaration), `fb-demo` and `veh-cruise` (comments) were taken again from the
-tag.
+package, the `CatalogRef` of each generated descriptor is the `Catalog` of the
+model the pinned `ridl` hands the plugin, name and hash, none of 32 zero bytes;
+the Rust backend reads the same model, so no ridl formatting is read (#65). A
+zero hash or one wrong byte turns it red. Untimed commands and queries take a
+default response bound of 1 s and 3 s, which the model states as their timing.
+The Rust codec and `ridl-rt`'s FlatBuffers code differ from 0.5.1's in comments
+only, so no golden file or Rust verdict changed. The corpus copies of `cabin`
+(doc comments and a `service` declaration), `fb-demo` and `veh-cruise`
+(comments) were taken again from the tag.
 
 Since ridl 0.5.1 (driftsys/ridl#654), the Rust verifier checks every float step,
 every non-finite float under a range and every inline constraint, which Kotlin

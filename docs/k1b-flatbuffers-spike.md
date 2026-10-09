@@ -1,13 +1,14 @@
 # K1b: the FlatBuffers verifier spike (O-K1)
 
-**Status:** spike done, for Sebastien's disposition of O-K1. Written 2026-09-24.
-`docs/design.md` §4 recommends option A — FlatBuffers with a verifier in
-`ridl-rt-kt` — "decided by a bounded spike at the start of K1: write the
-verifier for the cabin package's four payload types; if it comes in under the
-size above and passes the malformed-buffer corpus (§7), FlatBuffers stays; if
-not, C, with the frame amended." This is that spike. The design note is not
-edited here (it is the same text as the driftsys/ridl copy); the frame
-specification is untouched, because the answer is not C.
+**Status:** spike done; O-K1 is disposed on its result, FlatBuffers with a
+verifier (driftsys/ridlc-gen-kotlin#65). Written 2026-09-24. `docs/design.md` §4
+recommends option A — FlatBuffers with a verifier in `ridl-rt-kt` — "decided by
+a bounded spike at the start of K1: write the verifier for the cabin package's
+four payload types; if it comes in under the size above and passes the
+malformed-buffer corpus (§7), FlatBuffers stays; if not, C, with the frame
+amended." This is that spike. The design note is not edited here (it is the same
+text as the driftsys/ridl copy); the frame specification is untouched, because
+the answer is not C.
 
 ## What was built
 

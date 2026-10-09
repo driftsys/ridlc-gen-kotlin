@@ -1,0 +1,46 @@
+// ridl-rt-kt @VERSION@, vendored from
+// https://github.com/driftsys/ridlc-gen-kotlin. This file comes from the
+// release's vendor package; change the copy in that repository, not here.
+//
+// The three libraries build from source with the platform's Kotlin compiler,
+// which must be 1.9 or later. The coroutine module names the platform's
+// kotlinx.coroutines module, `kotlinx_coroutines`; a tree that names it
+// differently changes that line.
+
+package {
+    default_applicable_licenses: ["ridl_rt_kt_license"],
+}
+
+license {
+    name: "ridl_rt_kt_license",
+    visibility: [":__subpackages__"],
+    license_kinds: ["SPDX-license-identifier-MIT"],
+    license_text: ["LICENSE"],
+}
+
+// The runtime contract: the vocabulary types, the ports and the codec surface.
+java_library {
+    name: "ridl-rt-kt",
+    srcs: ["ridl-rt-kt/src/main/kotlin/**/*.kt"],
+    static_libs: ["kotlin-stdlib"],
+    sdk_version: "current",
+}
+
+// The suspending adapter over a port.
+java_library {
+    name: "ridl-rt-kt-coroutines",
+    srcs: ["ridl-rt-kt-coroutines/src/main/kotlin/**/*.kt"],
+    static_libs: [
+        "ridl-rt-kt",
+        "kotlinx_coroutines",
+    ],
+    sdk_version: "current",
+}
+
+// The in-process runtime, for tests: every port over a queue and a map.
+java_library {
+    name: "ridl-rt-kt-loopback",
+    srcs: ["ridl-rt-kt-loopback/src/main/kotlin/**/*.kt"],
+    static_libs: ["ridl-rt-kt"],
+    sdk_version: "current",
+}

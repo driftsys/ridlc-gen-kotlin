@@ -41,6 +41,17 @@ Before submitting a change, run `just verify`. This runs commit linting and the
 build gate: formatting, Prim linting, the repository check, every Gradle check
 and the assembly. CI runs the same recipes.
 
+## Writing the book
+
+The book is `docs/book`, rendered with mdBook; `just book` serves it and
+`just
+book-check`, which CI runs, builds it and resolves its relative links. A
+`kotlin` or `ridl` block in a chapter is an excerpt: it follows an
+`<!-- excerpt: <path> -->` line naming a file of `samples/cabin`, its generated
+code included, and the sample's `GuideTest` fails when the excerpt is not in
+that file. A Kotlin block that is not an excerpt, such as a Gradle build, is
+fenced as `kts`.
+
 ## Releasing
 
 `git std bump` writes the changelog from the commit messages. Two things it
@@ -54,6 +65,15 @@ changelog by hand, from the list below.
 3. Add each pending note below to the new section's `### BREAKING CHANGES`, and
    remove it from this list.
 4. Commit as `chore(release): <version>` and tag `v<version>`.
+5. Push the commit through a pull request, then push the tag. The `release`
+   workflow checks that the tag matches `gradle.properties`, runs `just build`
+   and `just rust-verdicts`, publishes the libraries to GitHub Packages, and
+   creates the GitHub release with the plugin distribution, `install.sh`, the
+   Android vendor package, the conformance results and their `SHA256SUMS`. It
+   runs that `install.sh` on the assets before it publishes anything, and then
+   publishes the book to GitHub Pages.
+6. Set `version` in `gradle.properties` to the next `-SNAPSHOT`, so the
+   `snapshot` job of the `ci` workflow publishes `main` again.
 
 A hand-written line survives every later `git std bump`, which only prepends;
 `git std changelog --full` regenerates the file from the commits and drops it.

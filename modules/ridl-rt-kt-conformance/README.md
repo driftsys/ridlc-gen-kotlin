@@ -25,9 +25,11 @@ a `@TestFactory`:
 @TestFactory fun trace() = traceSuite(MyFactory)
 ```
 
-A runtime in another repository takes the suite from Maven. Until the libraries
-reach a remote repository, `just publish-local` here puts them in the local
-Maven repository, and the runtime's build declares `mavenLocal()` and the suite
+A runtime in another repository takes the suite from this repository's GitHub
+Packages registry, which the book's
+[Installing](../../docs/book/install.md#the-runtime-libraries) chapter shows how
+to declare. `just publish-local` here puts it in the local Maven repository
+instead, for a change not yet on `main`. The runtime's build declares the suite
 in its test source set, with the JUnit engine that runs it:
 
 ```kotlin

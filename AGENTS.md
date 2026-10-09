@@ -27,7 +27,6 @@ statement, then use the buffer. CI does not check this
 `modules/ridlc-gen-kotlin/src/main/proto` is that release's copy, and the
 `checkSchema` task fails when they differ.
 
-`docs/design.md` is the same text as
-`docs/wip/2026-09-23-kotlin-plugin-design.md` in driftsys/ridl. Do not edit it
-here alone; record where the code departs from it in the module README that owns
-the departure.
+`docs/design.md` is this repository's only record of the design; driftsys/ridl
+keeps no copy. Edit it here when the design itself changes, and record where the
+code departs from it in the module README that owns the departure.
