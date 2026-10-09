@@ -35,13 +35,42 @@ also covers a client: when its outcome or event lands while its own poll runs,
 it reads the value on the next poll, one dispatch later. `AwaitPollTest` pins
 both cases on one thread.
 
-`signalFlow(period, read)` is a signal as a cold `Flow` (#72), what a generated
-`<signal>Flow()` returns. The runtime has no wake-up for a signal change, so it
-reads at once, then every `period`, and emits each sample that differs from the
-last one emitted: a new value, provenance or envelope, so every publication, a
-`touch` included, or a turn to stale or back. The age of a stale sample is not
-compared, so a stale value is emitted once. `SignalFlowTest` pins these on
-virtual time.
+`SignalState<T>` is a signal as a shared `StateFlow` of its samples (#76), what
+a generated `<signal>` property of an async client returns; a client keeps its
+states in one `SignalStates`, one per signal and period. The runtime has no
+wake-up for a signal change, so a state polls the port, on these rules:
+
+- **The period** is `effectivePeriod(timing, desired, quantum)`: the signal's
+  rate floor rounded up to the 10 ms quantum and capped at its staleness bound
+  rounded down; with no floor, half the staleness bound; with neither, ridl's
+  default floor of 100 ms. `every(desired)` asks for another period, never
+  faster than the floor, and returns the state shared for that period.
+- **The grid.** Every state polls at the multiples of its period from the epoch
+  of one `PollGrid`, by default the process's `PollGrid.Default`, so states of
+  compatible periods read in the same slot whenever each started, a poll is
+  scheduled against its slot rather than after a `delay(period)`, and an overrun
+  skips to the next slot.
+- **The lifecycle.** A state polls while it has a collector, and stops `linger`
+  (3 s) after the last one left. It counts its collectors itself: no coroutine
+  runs while it has none and no stop is pending, so a client made with a scope
+  that must end, such as `runBlocking`'s, does not hold it unless a state is
+  collected.
+- **`value`** is the last sample polled while the state polls, and a fresh read
+  otherwise; `read()` always reads the port.
+- **Emission.** A sample is emitted when its value, provenance, envelope or
+  staleness differs from the last one emitted; the age of a stale sample is not
+  compared. `values` is the values alone, emitted when the value changes.
+- **Cost.** A read copies the channel into one buffer the state keeps, and a
+  publication already decoded, the same envelope, provenance and length, is not
+  decoded again.
+
+`SignalStateTest` pins these on virtual time, with a grid over the test
+scheduler's time source.
+
+Implementing `StateFlow` needs the opt-in
+`ExperimentalForInheritanceCoroutinesApi` of kotlinx-coroutines: a later release
+of the library may add members to the interface, which `SignalState` would then
+implement.
 
 ## Status
 
