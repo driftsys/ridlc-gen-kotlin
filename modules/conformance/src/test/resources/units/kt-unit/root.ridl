@@ -1,0 +1,12 @@
+// The root package of a unit that holds a subpackage too, so ridl 0.7.0 writes
+// one catalog for both (driftsys/ridlc-gen-kotlin#55).
+package kt.unit
+
+/// A percentage of full scale.
+type Level: integer [0..100]
+
+/// An interface of the unit's root package, keyed `Climate` in the unit's lock.
+interface Climate {
+  /// Sets the level.
+  command set(level: Level) @[..50ms]
+}
