@@ -1042,8 +1042,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val payload = signalPayload(m)
                 extensions.properties += receiver.extensionVal(m.method, SIGNAL_STATE.parameterizedBy(payload.type))
                     .addKdoc(
-                        "Signal `%L` as a `StateFlow` of its samples, every publication and a turn to stale or invalid " +
-                            "included. It polls the port while it has a subscriber, at the signal's rate floor on the " +
+                        "Signal `%L` as a `StateFlow` of its samples: each publication a poll reads and a turn to stale or " +
+                            "invalid. It polls the port while it has a subscriber, at the signal's rate floor on the " +
                             "client's grid, until 3 s after the last one left; `value` is the last sample polled, or a fresh " +
                             "read while nothing polls, and `read()` always reads the port. `every(period)` is the same " +
                             "signal at a slower rate, `values` its values alone. See `SignalState`.",
@@ -1194,7 +1194,6 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
         private fun asyncClient(): TypeSpec {
             val p = TypeVariableName("P", waitingBounds())
-            val poll = ClassName(pkg, "${name}PollClient")
             val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}AsyncClient")).visibility()
                 .addKdoc(
                     "The suspending client of interface `%L`: each call suspends until its outcome and throws `ClientError` " +
@@ -1203,13 +1202,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "`nextEvent`, the subscriptions and each signal's state are extensions (#9, #76)%L.\n\n%L",
                     iface.declared.declared,
                     if (signals.isNotEmpty()) "; the signal states poll in [scope] on [grid] while they have a subscriber" else "",
-                    catalogThrows("port", "the comparison is made once, by the poll client the constructor builds"),
+                    catalogThrows("port", "the constructor makes the comparison once, before the port is used"),
                 )
                 .addTypeVariable(p)
                 .primaryConstructor(if (signals.isNotEmpty()) signalConstructor(p) else FunSpec.constructorBuilder().addParameter("port", p).build())
                 // Every member name starts with `_`, which no ridl identifier does: no signal's extension is shadowed (#76).
                 .addProperty(PropertySpec.builder("_port", p, KModifier.INTERNAL).initializer("port").build())
-                .addProperty(PropertySpec.builder("_poll", poll.parameterizedBy(p), KModifier.PRIVATE).initializer("%T(port)", poll).build())
+                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
             if (signals.isNotEmpty()) {
                 builder.addProperty(signalStatesProperty())
                 signalStates(Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal))

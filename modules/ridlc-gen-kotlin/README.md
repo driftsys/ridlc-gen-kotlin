@@ -219,15 +219,15 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   owns on `Dispatchers.Default` under a `SupervisorJob`, and the
   `grid: PollGrid` they poll on, by default the process's; an idle state runs no
   coroutine, so the default scope needs no cancelling. Every member name of an
-  async client starts with `_` (`_port`, `_signalStates`, `_events`, `_calls`,
-  `_poll`), which no ridl identifier does, so no member shadows a signal's
-  extension property: `Clash`'s signals `port` and `events` read through the
-  async client. Each state polls while it has a collector, until 3 s after the
-  last one left, at the signal's rate floor rounded up to the grid's 10 ms and
-  capped at the staleness bound; `every(period)` is a slower one, `value` the
-  last sample polled or a fresh read, `read()` a read of the port. A signal and
-  its decode share one file-private `sampled` helper with the blocking read, so
-  a publication the state has decoded is not decoded again. The runtime has no
+  async client starts with `_` (`_port`, `_signalStates`, `_events`, `_calls`),
+  which no ridl identifier does, so no member shadows a signal's extension
+  property: `Clash`'s signals `port` and `events` read through the async client.
+  Each state polls while it has a collector, until 3 s after the last one left,
+  at the signal's rate floor rounded up to the grid's 10 ms and capped at the
+  staleness bound; `every(period)` is a slower one, `value` the last sample
+  polled or a fresh read, `read()` a read of the port. A signal and its decode
+  share one file-private `sampled` helper with the blocking read, so a
+  publication the state has decoded is not decoded again. The runtime has no
   wake-up for a signal change, so a state polls; a later version can wait on a
   commit without changing its type. The blocking client keeps the single read. A
   package with a signal therefore depends on `kotlinx-coroutines-core`, as one

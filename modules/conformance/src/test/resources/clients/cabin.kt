@@ -27,6 +27,7 @@ import veh.cabin.CabinPublisher
 import veh.cabin.CabinSetLevelCall
 import veh.cabin.Health
 import veh.cabin.Horn
+import veh.cabin.HornAsyncClient
 import veh.cabin.HornClient
 import veh.cabin.HornPublisher
 import veh.cabin.Level
@@ -127,6 +128,7 @@ private fun catalogs() {
         expectMismatch("CabinAsyncClient over $of") { CabinAsyncClient(rt) }
         expectMismatch("CabinPublisher over $of") { CabinPublisher(rt) }
         expectMismatch("HornClient over $of") { HornClient(rt) }
+        expectMismatch("HornAsyncClient over $of") { HornAsyncClient(rt) }
         expectMismatch("HornPublisher over $of") { HornPublisher(rt) }
         expectMismatch("serve over $of") { Cabin.serve(rt, Recorder(), 100.milliseconds) }
         // Bounded, so a serveAsync that does not check fails here rather than serving forever.
