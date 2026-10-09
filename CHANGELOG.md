@@ -134,29 +134,28 @@
 
 ### BREAKING CHANGES
 
-- every Caller and EventSink implementation, and every call
-to command, query or raise, takes the trace argument, and every Claim,
-RawOccurrence and ReadError.ShortClaim built by hand takes the trace field.
-- a face generated over ridl 0.6.0 carries the real catalog
-hash, so it refuses a port attached to the all-zero catalog of an earlier
-build, and an untimed command or query now lapses after 1 s or 3 s unless
-the package sets [defaults] command_timing or query_timing.
-- a generated client or publisher constructed over a port
-attached to a catalog other than the one its face was generated from,
-and serve or serveAsync over such a handler, now throws
-IllegalStateException. Attach the runtime to the generated
-<Iface>.catalog, or compare port.catalog with it before binding.
-- ridl.rt.payload.Rule gains Unique, so a `when` over
-Rule with no else must name it. A step-only float scalar now has a
-private constructor and `of`, as the model no longer calls it vacuous,
-and a scalar whose checks are all empty has a public constructor and no
-`of`.
-- a package whose face was skipped with a warning because a
-generated type's name was taken is now refused with an error.
-- `object Constants` is `object Constants_`; a Java caller of
-the face's extensions names `FacesKt_`; an enum value or bit named as above
-is spelled with one more `_`.
-- a consumer outside the generated package imports the extensions it calls, by name or with <package>.*.
+- every Caller and EventSink implementation, and every call to command, query or
+  raise, takes the trace argument, and every Claim, RawOccurrence and
+  ReadError.ShortClaim built by hand takes the trace field.
+- a face generated over ridl 0.6.0 carries the real catalog hash, so it refuses
+  a port attached to the all-zero catalog of an earlier build, and an untimed
+  command or query now lapses after 1 s or 3 s unless the package sets
+  [defaults] command_timing or query_timing.
+- a generated client or publisher constructed over a port attached to a catalog
+  other than the one its face was generated from, and serve or serveAsync over
+  such a handler, now throws IllegalStateException. Attach the runtime to the
+  generated `<Iface>.catalog`, or compare `port.catalog` with it before binding.
+- ridl.rt.payload.Rule gains Unique, so a `when` over Rule with no else must
+  name it. A step-only float scalar now has a private constructor and `of`, as
+  the model no longer calls it vacuous, and a scalar whose checks are all empty
+  has a public constructor and no `of`.
+- a package whose face was skipped with a warning because a generated type's
+  name was taken is now refused with an error.
+- `object Constants` is `object Constants_`; a Java caller of the face's
+  extensions names `FacesKt_`; an enum value or bit named as above is spelled
+  with one more `_`.
+- a consumer outside the generated package imports the extensions it calls, by
+  name or with `<package>.*`.
 - **ridl-rt-kt:** `ReadError.ShortClaim` (b748a3d,
   driftsys/ridlc-gen-kotlin#14). `ReadError` is a sealed class, so an exhaustive
   `when` over it no longer compiles, and a `Handler` whose `nextClaim` reports
