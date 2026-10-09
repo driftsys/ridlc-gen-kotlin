@@ -136,7 +136,13 @@ fn main() {
 
 
 def run(command, **kwargs):
-    return subprocess.run(command, check=True, **kwargs)
+    """Runs [command], and on a failure prints the standard error a capture kept, such as a Rust panic (#53)."""
+    try:
+        return subprocess.run(command, check=True, **kwargs)
+    except subprocess.CalledProcessError as error:
+        if error.stderr:
+            sys.stderr.write(error.stderr if isinstance(error.stderr, str) else error.stderr.decode(errors="replace"))
+        sys.exit(f"{command[0]} exited {error.returncode}")
 
 
 def release():
@@ -150,7 +156,17 @@ def release():
 
 def checkout(tag, given):
     if given:
-        return pathlib.Path(given).resolve()
+        # The programs build against this checkout's `ridl-rt`, so it must be
+        # the pinned tag's commit (#53).
+        given = pathlib.Path(given).resolve()
+        head, pinned = (subprocess.run(["git", "-C", given, "rev-parse", "--verify", "--quiet", ref],
+                                       capture_output=True, text=True).stdout.strip()
+                        for ref in ("HEAD^{commit}", f"refs/tags/{tag}^{{commit}}"))
+        if not pinned:
+            sys.exit(f"--ridl-checkout {given} has no tag {tag}: fetch it, or omit --ridl-checkout")
+        if head != pinned:
+            sys.exit(f"--ridl-checkout {given} is at {head[:12] or 'no commit'}, not at {tag} ({pinned[:12]})")
+        return given
     target = WORK / "ridl"
     if (target / ".git").exists():
         described = subprocess.run(["git", "-C", target, "describe", "--tags", "--exact-match"],

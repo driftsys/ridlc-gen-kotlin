@@ -87,8 +87,10 @@ the Rust codec of the pinned release — `cabin-golden.txt`,
 `modules/conformance/src/test/resources/flatbuffers/` — and fails when one
 differs from the committed file; `just rust-verdicts --write` writes them
 instead. The `rust-verdicts` workflow runs it whenever the pin, the conformance
-tests and their corpus, the plugin, the runtime, or the recipe changes (#39). It
-needs cargo, git and python3 beside the JVM build.
+tests and their corpus, the plugin, the runtime, a Gradle build file or the
+version catalog, or the recipe changes (#39, #53). It needs cargo, git and
+python3 beside the JVM build. A program that fails has its standard error
+printed, and `--ridl-checkout` is refused unless it is at the pinned tag.
 
 The recipe runs `CodecTest` and `SpikeTest`, which write the corpus to
 `modules/conformance/build/spike/`, and then `scripts/rust-verdicts.py`, which:
