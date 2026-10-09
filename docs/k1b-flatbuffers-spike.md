@@ -57,6 +57,10 @@ FlatBuffers code differ from 0.5.1's in comments only, and no cabin type
 changed, so the golden bytes and the verdicts stand as regenerated over
 `editor-v0.5.1`.
 
+**Since ridl 0.7.0** (2026-10-09): the Rust codec emitter and `ridl-rt`'s
+FlatBuffers code are unchanged, so regenerating over `editor-v0.7.0` gives the
+same golden bytes and verdicts.
+
 The corpus covers §7's malformed cases for these types — truncated buffers,
 offsets past the end, a vtable naming a field across its table's end, a missing
 required field, an enum discriminant out of range, a value outside its range, a
@@ -103,8 +107,8 @@ The recipe runs `CodecTest` and `SpikeTest`, which write the corpus to
    decoded and re-encoded by the Rust codec — and the cabin spike's program,
    which encodes the golden values and verifies the spike's corpus. The
    repository tracks no Rust (D-K9), so the script writes them at each run. Each
-   depends on `ridl-rt` at the release's minor version, `0.6` for
-   `editor-v0.6.0`, patched to the tag's `crates/ridl-rt`;
+   depends on `ridl-rt` at the release's minor version, `0.7` for
+   `editor-v0.7.0`, patched to the tag's `crates/ridl-rt`;
 4. builds them with cargo, runs them over the corpus, and compacts a round
    trip's output to the verdicts `CodecTest` compares: `ok:` and the first 16
    hex digits of the SHA-256 of the re-encoded hex, or `err:` and the error.

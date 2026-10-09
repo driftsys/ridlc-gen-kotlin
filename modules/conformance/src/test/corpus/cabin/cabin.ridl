@@ -8,6 +8,7 @@
 // trips. It is the proof that what the CLI writes is a crate an application
 // outside this workspace can link and run, which `ridl build --emit rust` makes
 // true (driftsys/ridl#444).
+// ANCHOR: schema
 package veh.cabin
 
 /// Cabin air temperature, in degrees.
@@ -58,6 +59,8 @@ interface Cabin {
     ensure result >= 0
   ]
 }
+
+// ANCHOR_END: schema
 
 /// A second interface with a signal and nothing else, so the emitted crate
 /// holds more than one interface module and the per-interface buffer bound is
