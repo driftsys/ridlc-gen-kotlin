@@ -257,6 +257,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `Catalog.hash` byte for byte, never a placeholder and never recomputed. Since
   ridl 0.6.0 the model carries the SHA-256 catalog hash of ADR-0014 decision 15
   (driftsys/ridl#676); earlier releases sent 32 zero bytes.
+- **The catalog is the unit's** (ridl 0.7.0, #55). A unit is the source packages
+  under one `ridl.toml`, and ridl writes one catalog per unit. Each source
+  package is still generated on its own, but every descriptor's `catalog` is
+  named by the model's `Catalog.package`, the unit name, as the Rust backend
+  names `CATALOG`, never by `Model.name`. Its `number` is the interface's number
+  in the unit's lock, and its `name` stays the short name, as in Rust. The
+  region lookup and the region interface names #55 asks for do not apply here,
+  because the plugin reads no deployment section (#31).
 - **A binding over a port of another catalog throws `IllegalStateException`**
   (#27, driftsys/ridl#381, ADR-0023 decision 8), where the Rust face panics: in
   Kotlin the matching failure for a defect in how the program was assembled is

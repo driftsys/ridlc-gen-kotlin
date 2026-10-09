@@ -513,6 +513,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         private fun descriptor(): TypeSpec {
             // The model's hash, copied byte for byte: `emit` refused any other size.
             val hashCode = CodeBlock.of("%T(byteArrayOf(%L))", CATALOG_HASH, model.catalog.hash.toByteArray().joinToString())
+            // The model's `Catalog.package`, the name of the unit, as the Rust backend reads it: since ridl 0.7.0 a
+            // unit can hold several source packages, so `Model.name` is not the catalog's name.
+            val catalogName = model.catalog.`package`
             val callSizes = commands.map { argument(it).second.maxSize } +
                 queries.flatMap { listOf(argument(it).second.maxSize, reply(it).maxSize) }
             val eventSizes = events.map { eventPayload(it).maxSize }
@@ -522,7 +525,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addSuperinterface(INTERFACE)
                 .addProperty(
                     PropertySpec.builder("catalog", CATALOG_REF, KModifier.OVERRIDE)
-                        .initializer("%T(%S, %L)", CATALOG_REF, model.catalog.`package`.ifEmpty { model.name.dotted }, hashCode).build(),
+                        .initializer("%T(%S, %L)", CATALOG_REF, catalogName, hashCode).build(),
                 )
                 .addProperty(
                     PropertySpec.builder("number", INTERFACE_NO, KModifier.OVERRIDE)
