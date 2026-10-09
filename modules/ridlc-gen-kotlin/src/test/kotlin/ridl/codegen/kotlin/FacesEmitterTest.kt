@@ -100,6 +100,17 @@ class FacesEmitterTest {
     }
 
     @Test
+    fun `an empty catalog name is written as it is, as the Rust backend writes it`() {
+        // #65: no fallback to `Model.name`, which names the source package, not the unit.
+        // The Rust backend's `catalog_name` reads `Catalog.package` with `unwrap_or_default`.
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
+        val model = demo().setCatalog(Catalog.newBuilder().setHash(ByteString.copyFrom(hash)))
+            .addDeclarations(scalar("Level")).addInterfaces(iface).build()
+        val text = checkNotNull(FacesEmitter(model, options).emit().text)
+        assertTrue("CatalogRef(\"\", CatalogHash(" in text, text)
+    }
+
+    @Test
     fun `a catalog hash that is not 32 bytes refuses the package`() {
         for (size in listOf(0, 31, 33)) {
             val model = demo().setCatalog(Catalog.newBuilder().setPackage("kt.demo").setHash(ByteString.copyFrom(ByteArray(size))))

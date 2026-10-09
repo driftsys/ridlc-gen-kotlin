@@ -1,6 +1,7 @@
 # The repository gate (docs/design.md §6, stage K0): the JVM job runs every
 # check the Gradle `check` task holds, beside the root formatting and
-# repository checks; commit-lint lints the PR's own commits.
+# repository checks; commit-lint lints the PR's own commits; snapshot
+# publishes the libraries from main once the jvm job passes.
 name: ci
 
 on:
@@ -18,6 +19,7 @@ concurrency:
 
 env:
   JUST_VERSION: 1.38.0
+  JUST_SHA256: c803e67fd7b0af01667bd537197bc3df319938eacf9e8d51a441c71d03035bb5
 
 jobs:
   jvm:
@@ -48,6 +50,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: just build
+      - run: just vendor-package
+      # The conformance results as the release packs them, kept with the run.
+      - run: just compliance
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compliance
+          path: build/compliance/*.tar.gz
+          if-no-files-found: error
 
   commit-lint:
     name: commit-lint
@@ -78,3 +88,50 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: just lint-commits ${{ github.base_ref }}
+
+  # Each push to main that passes the jvm job publishes the four JVM libraries,
+  # `ridl-rt-kt-conformance` among them, to GitHub Packages at the -SNAPSHOT
+  # version gradle.properties names, so a runtime in another repository can
+  # build against main with no `just publish-local`. A release version is
+  # published by the release workflow from its tag instead, and skipped here.
+  # Its actions are pinned by commit and its `just` checked, as the release
+  # workflow's are, since it can write packages.
+  snapshot:
+    name: snapshot
+    needs: jvm
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: check for a snapshot version
+        id: version
+        run: |
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          case "$version" in
+            *-SNAPSHOT) echo "snapshot=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "snapshot=false" >> "$GITHUB_OUTPUT"; echo "$version is a release version: the release workflow publishes it" ;;
+          esac
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        if: steps.version.outputs.snapshot == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        if: steps.version.outputs.snapshot == 'true'
+      - name: install just
+        if: steps.version.outputs.snapshot == 'true'
+        run: |
+          tarball="just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/casey/just/releases/download/${JUST_VERSION}/$tarball"
+          echo "${JUST_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$HOME/.local/bin" just
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: just publish
+        if: steps.version.outputs.snapshot == 'true'
+        env:
+          ORG_GRADLE_PROJECT_GitHubPackagesUsername: ${{ github.actor }}
+          ORG_GRADLE_PROJECT_GitHubPackagesPassword: ${{ secrets.GITHUB_TOKEN }}
