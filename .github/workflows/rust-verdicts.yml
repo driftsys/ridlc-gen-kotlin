@@ -5,7 +5,8 @@
 # tests and their corpus, the plugin and the runtime, whose generated codec
 # encodes the corpus the Rust programs read, the build files and the version
 # catalog, whose dependency bumps can change the generated output, or the
-# regeneration itself (#53).
+# regeneration itself (#53). On pull requests and in the merge queue it runs
+# always, since it is a required check (#65).
 name: rust-verdicts
 
 on:
@@ -22,18 +23,10 @@ on:
       - scripts/rust-verdicts.py
       - justfile
       - .github/workflows/rust-verdicts.yml
+  # Not path-filtered: rust-verdicts is a required check, so it must report on
+  # every pull request and in the merge queue, which takes no path filter.
   pull_request:
-    paths:
-      - modules/conformance/ridl-release
-      - modules/conformance/src/test/**
-      - modules/ridlc-gen-kotlin/src/main/**
-      - modules/ridl-rt-kt/src/main/**
-      - "**/build.gradle.kts"
-      - settings.gradle.kts
-      - gradle/libs.versions.toml
-      - scripts/rust-verdicts.py
-      - justfile
-      - .github/workflows/rust-verdicts.yml
+  merge_group:
   workflow_dispatch:
 
 permissions:
