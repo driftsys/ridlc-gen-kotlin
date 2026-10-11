@@ -7,10 +7,11 @@ package ridl.rt.coroutines
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import ridl.rt.contract.Signal
 import ridl.rt.port.RawSample
 import ridl.rt.port.ReadError
@@ -43,8 +45,9 @@ import kotlin.time.TimeMark
  * holds is collected.
  *
  * Every state polls in [scope], on its dispatcher: give it a background one,
- * not the main thread. Cancelling [scope] stops every state's polling. States
- * poll on [grid], and stop polling [linger] after their last subscriber left.
+ * not the main thread. Cancelling [scope] stops every state's polling, and
+ * ends their collectors. States poll on [grid], and stop polling [linger]
+ * after their last subscriber left.
  */
 public class SignalStates(
     private val port: SignalReader,
@@ -76,19 +79,24 @@ public class SignalStates(
     /** How many states the client keeps, the defaults included; the ones it only remembers are not counted. */
     internal val size: Int get() = states.size
 
-    /** Keeps [state] as its polling starts, unless another state of its period is kept already. */
-    internal fun share(state: SignalState<*>) {
+    /**
+     * Keeps [state] as its polling starts. A state of its period kept already
+     * is this one: a state is created only when none of its period is kept or
+     * remembered, under one lock.
+     */
+    internal fun share(state: SignalState<*>): Unit = synchronized(this) {
         val key = state.signal to state.period
         if (states.putIfAbsent(key, state) == null) idle.remove(key)
     }
 
     /** Stops keeping [state] as its polling stops, unless it is its signal's default state; it is remembered instead. */
-    internal fun drop(state: SignalState<*>) {
+    internal fun drop(state: SignalState<*>): Unit = synchronized(this) {
         if (defaults[state.signal] === state) return
         val key = state.signal to state.period
         if (states.remove(key, state)) remember(key, state)
     }
 
+    // Under the lock.
     private fun remember(key: Pair<Signal<*>, Duration>, state: SignalState<*>) {
         idle.values.removeIf { it.get() == null }
         idle[key] = WeakReference(state)
@@ -97,11 +105,13 @@ public class SignalStates(
     /**
      * The state of [signal] polled at `effectivePeriod(signal.member.timing,
      * desired, grid.quantum)`, created the first time that period is asked
-     * for. Two requests that resolve to the same period get the same state.
-     * [decode] turns the bytes a read copied into [maxSize] bytes, and the
-     * read's [RawSample], into a sample; it runs only for a publication the
-     * state has not decoded yet. Creating a state reads nothing: its first
-     * read is its first `value`, `read()` or subscriber.
+     * for. Two requests that resolve to the same period get the same state,
+     * whether or not one of them asked for the default period: a state of the
+     * default period created by a desired one becomes the default. [decode]
+     * turns the bytes a read copied into [maxSize] bytes, and the read's
+     * [RawSample], into a sample; it runs only for a publication the state has
+     * not decoded yet. Creating a state reads nothing: its first read is its
+     * first `value`, `read()` or subscriber.
      */
     @Suppress("UNCHECKED_CAST")
     public fun <T> of(
@@ -113,14 +123,18 @@ public class SignalStates(
         if (desired == null) defaults[signal]?.let { return it as SignalState<T> }
         val period = effectivePeriod(signal.member.timing, desired, grid.quantum)
         val key = signal to period
-        if (desired == null) {
-            val state = states.computeIfAbsent(key) { SignalState(this, port, signal, period, maxSize, decode) }
-            defaults.putIfAbsent(signal, state)
+        synchronized(this) {
+            val state = states[key]
+                ?: idle[key]?.get()
+                ?: SignalState(this, port, signal, period, maxSize, decode).also { remember(key, it) }
+            if (desired == null) {
+                // The default is kept for good, remembered no more.
+                defaults[signal] = state
+                states[key] = state
+                idle.remove(key)
+            }
             return state as SignalState<T>
         }
-        states[key]?.let { return it as SignalState<T> }
-        idle[key]?.get()?.let { return it as SignalState<T> }
-        return SignalState(this, port, signal, period, maxSize, decode).also { remember(key, it) }
     }
 }
 
@@ -129,15 +143,17 @@ public class SignalStates(
  * while it has a subscriber.
  *
  * - **Lifecycle.** Polling starts with the first subscriber, and stops
- *   `linger` (3 s by default) after the last one left; a subscriber that comes
- *   back within that time keeps the same polling. A subscriber that starts the
- *   polling reads the port at once, then the state reads at each multiple of
- *   [period] on the grid, so states of compatible periods read in the same
- *   slot. One coroutine does both the polling and the stop: it sleeps until
- *   the next slot or the end of the linger, whichever comes first, so no
- *   coroutine runs while the state has no subscriber and no stop is pending,
- *   and creating a state reads nothing. A state that stops polling leaves its
- *   client's shared states (#79), unless it is its signal's default one.
+ *   `linger` (3 s by default) after the last one left, whatever the period; a
+ *   subscriber that comes back within that time keeps the same polling. A
+ *   subscriber that starts the polling reads the port at once, on its own
+ *   thread, as [value] does; then the state reads at each multiple of [period]
+ *   on the grid, in the scope, so states of compatible periods read in the
+ *   same slot. One coroutine does both the polling and the stop: it sleeps
+ *   until the next slot or the end of the linger, whichever comes first, and
+ *   the last subscriber's leaving wakes it, so no coroutine runs while the
+ *   state has no subscriber and no stop is pending, and creating a state reads
+ *   nothing. A state that stops polling leaves its client's shared states
+ *   (#79), unless it is its signal's default one.
  * - **Emission.** A sample is emitted when its value, its provenance, its
  *   envelope or its staleness differs from the last one emitted: each
  *   publication a poll reads, a `touch` included, and a turn to stale or back.
@@ -156,10 +172,14 @@ public class SignalStates(
  *   the failure stays what collectors see until a subscriber starts the
  *   polling again. It never reaches the scope the state polls in, except a
  *   `VirtualMachineError` such as `OutOfMemoryError`, which is rethrown after
- *   collectors are told.
+ *   collectors are told. A `CancellationException` a port or a codec throws is
+ *   wrapped in an `IllegalStateException`, so a collector launched in a scope
+ *   does not end as if cancelled. The read a subscriber starts the polling
+ *   with throws on the subscriber, as [value] does.
  *
- * Cancelling the scope the state polls in stops the polling; a collector then
- * waits forever, as on any `StateFlow`.
+ * Cancelling the scope the state polls in stops the polling, and every
+ * collector's `collect` throws an `IllegalStateException`, as does a later
+ * subscriber's: a collector never waits on a state nothing polls.
  */
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
 public class SignalState<T> internal constructor(
@@ -190,6 +210,9 @@ public class SignalState<T> internal constructor(
 
     /** When the last subscriber left, while none is back: the linger counts from here. */
     private var idleSince: TimeMark? = null
+
+    /** Wakes the poller when the last subscriber leaves, so a long period does not keep it past the linger. */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
 
     /** The coroutine polling now, if one does: written under `lock`, read without it by [value]. */
     @Volatile
@@ -232,7 +255,7 @@ public class SignalState<T> internal constructor(
         val sample = if (decoded != null && last != null && raw.envelope == last.envelope &&
             raw.provenance == last.provenance && sameBytes(buf, raw.len)
         ) {
-            decoded.copy(freshness = raw.freshness)
+            if (decoded.freshness == raw.freshness) decoded else decoded.copy(freshness = raw.freshness)
         } else {
             decode(raw, buf).also {
                 lastBytes = ByteArray(raw.len) { i -> buf.get(i) }
@@ -251,22 +274,45 @@ public class SignalState<T> internal constructor(
 
     private fun subscribe() {
         synchronized(lock) {
-            subscribers++
-            idleSince = null
-            // No poller, or one the scope's cancellation ended without a word here.
-            if (poller?.isActive != true) {
+            check(states.scope.isActive) { "the scope the state polls in has ended: nothing would poll" }
+            // A read that throws leaves nothing to undo: the subscriber is counted after it.
+            if (poller == null) {
                 // A subscriber that starts the polling sees the port now, not the sample or the failure from before.
                 readLocked(restart = true)
                 states.share(this)
-                poller = states.scope.launch { poll() }
+                // A wake from the polling before would cut the first wait short for nothing.
+                wake.tryReceive()
+                val job = states.scope.launch(start = CoroutineStart.LAZY) { poll() }
+                poller = job
+                // The scope's end, whether the poller ran or not: a failure is told from `poll` itself.
+                job.invokeOnCompletion { ended(job, it) }
+                job.start()
             }
+            subscribers++
+            idleSince = null
         }
     }
 
     private fun unsubscribe() {
         synchronized(lock) {
-            // The poller sees the mark on its next wake, and stops `linger` after it unless a subscriber is back.
-            if (--subscribers == 0) idleSince = states.grid.timeSource.markNow()
+            if (--subscribers == 0) {
+                idleSince = states.grid.timeSource.markNow()
+                // The poller waits for the end of the linger now, not for a slot that may be far.
+                wake.trySend(Unit)
+            }
+        }
+    }
+
+    /** Stops being polled by [job], which ended: cancelled by the scope, or done. A failure was told already. */
+    private fun ended(job: Job, cause: Throwable?) {
+        synchronized(lock) {
+            if (poller !== job) return
+            poller = null
+            states.drop(this)
+            if (cause is CancellationException) {
+                val message = "the scope the state polls in has ended: nothing polls"
+                state.value = Failed(IllegalStateException(message, cause))
+            }
         }
     }
 
@@ -293,7 +339,8 @@ public class SignalState<T> internal constructor(
      * Polls at each slot of [period] on the grid until the linger after the
      * last subscriber runs out, or a read fails. The slot and the end of the
      * linger are both waited for here, so one coroutine is the whole lifecycle
-     * and none runs while nothing waits on the state.
+     * and none runs while nothing waits on the state; the last subscriber's
+     * leaving cuts a wait short, so the linger is the same for every period.
      */
     private suspend fun poll() {
         val self = currentCoroutineContext()[Job]
@@ -301,28 +348,32 @@ public class SignalState<T> internal constructor(
             while (true) {
                 val toSlot = states.grid.untilNext(period)
                 val toStop = lingerLeft()
-                if (toStop != null && toStop < toSlot) {
-                    delay(toStop)
-                    // A subscriber back meanwhile keeps the poller, which then waits for its next slot.
-                    if (stopIfIdle(self)) return
-                } else {
-                    delay(toSlot)
-                    readLocked()
-                }
+                val stopping = toStop != null && toStop < toSlot
+                // A wake is the last subscriber gone: the wait is measured again, to the end of the linger.
+                val woken = withTimeoutOrNull(if (stopping) toStop else toSlot) { wake.receive() } != null
+                if (woken) continue
+                // A subscriber back during the linger keeps the poller, which then waits for its next slot.
+                if (stopping) { if (stopIfIdle(self)) return } else readLocked()
             }
         } catch (e: Throwable) {
-            // A cancellation of this poller is the scope's end; one a port or a codec throws is a failure.
-            val cancelled = e is CancellationException && !currentCoroutineContext().isActive
+            // A cancellation of this poller is the scope's end, told by `ended`; one the port or the codec
+            // throws is a failure.
+            if (e is CancellationException && !currentCoroutineContext().isActive) throw e
             synchronized(lock) {
                 // A poller already replaced has nothing left to tell.
                 if (self != null && poller === self) {
                     poller = null
                     states.drop(this)
-                    if (!cancelled) state.value = Failed(e)
+                    val wrapped = if (e is CancellationException) {
+                        IllegalStateException("the polling was cancelled from the port or the codec", e)
+                    } else {
+                        e
+                    }
+                    state.value = Failed(wrapped)
                 }
             }
-            // Collectors meet a failure; the scope the state polls in never does, but for its own end and the JVM's.
-            if (cancelled || e is VirtualMachineError) throw e
+            // Collectors meet a failure; the scope the state polls in never does, but for the JVM's end.
+            if (e is VirtualMachineError) throw e
         }
     }
 
@@ -337,14 +388,14 @@ public class SignalState<T> internal constructor(
 
     /** While polling, the last sample polled; otherwise a fresh [read]. */
     override val value: Sample<T>
-        get() = (if (poller?.isActive == true) latest else null) ?: read()
+        get() = (if (poller != null) latest else null) ?: read()
 
     override val replayCache: List<Sample<T>>
         get() = listOf(value)
 
     override suspend fun collect(collector: FlowCollector<Sample<T>>): Nothing {
+        subscribe()
         try {
-            subscribe()
             state.collect {
                 if (it is Failed) throw it.error
                 @Suppress("UNCHECKED_CAST")
