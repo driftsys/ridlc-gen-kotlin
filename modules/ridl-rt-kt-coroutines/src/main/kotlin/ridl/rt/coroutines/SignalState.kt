@@ -107,10 +107,11 @@ public class SignalStates(
      * desired, grid.quantum)`, created the first time that period is asked
      * for. Two requests that resolve to the same period get the same state,
      * whether or not one of them asked for the default period: a state of the
-     * default period created by a desired one becomes the default. [decode] turns the bytes a read copied into [maxSize] bytes, and the
-     * read's [RawSample], into a sample; it runs only for a publication the
-     * state has not decoded yet. Creating a state reads nothing: its first
-     * read is its first `value`, `read()` or subscriber.
+     * default period created by a desired one becomes the default. [decode]
+     * turns the bytes a read copied into [maxSize] bytes, and the read's
+     * [RawSample], into a sample; it runs only for a publication the state has
+     * not decoded yet. Creating a state reads nothing: its first read is its
+     * first `value`, `read()` or subscriber.
      */
     @Suppress("UNCHECKED_CAST")
     public fun <T> of(
@@ -309,7 +310,8 @@ public class SignalState<T> internal constructor(
             poller = null
             states.drop(this)
             if (cause is CancellationException) {
-                state.value = Failed(IllegalStateException("the scope the state polls in has ended: nothing polls", cause))
+                val message = "the scope the state polls in has ended: nothing polls"
+                state.value = Failed(IllegalStateException(message, cause))
             }
         }
     }
@@ -354,14 +356,20 @@ public class SignalState<T> internal constructor(
                 if (stopping) { if (stopIfIdle(self)) return } else readLocked()
             }
         } catch (e: Throwable) {
-            // A cancellation of this poller is the scope's end, told by `ended`; one a port or a codec throws is a failure.
+            // A cancellation of this poller is the scope's end, told by `ended`; one the port or the codec
+            // throws is a failure.
             if (e is CancellationException && !currentCoroutineContext().isActive) throw e
             synchronized(lock) {
                 // A poller already replaced has nothing left to tell.
                 if (self != null && poller === self) {
                     poller = null
                     states.drop(this)
-                    state.value = Failed(if (e is CancellationException) IllegalStateException("the polling was cancelled from the port or the codec", e) else e)
+                    val wrapped = if (e is CancellationException) {
+                        IllegalStateException("the polling was cancelled from the port or the codec", e)
+                    } else {
+                        e
+                    }
+                    state.value = Failed(wrapped)
                 }
             }
             // Collectors meet a failure; the scope the state polls in never does, but for the JVM's end.
