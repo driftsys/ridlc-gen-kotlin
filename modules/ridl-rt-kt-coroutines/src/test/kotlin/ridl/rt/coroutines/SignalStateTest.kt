@@ -1,5 +1,6 @@
 package ridl.rt.coroutines
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -35,6 +36,7 @@ import ridl.rt.sample.Sample
 import ridl.rt.sample.Timestamp
 import java.nio.ByteBuffer
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import ridl.rt.sample.Duration as RidlDuration
@@ -388,7 +390,7 @@ class SignalStateTest {
     }
 
     @Test
-    fun `a CancellationException a port throws is a failure, not the stop`() = runTest {
+    fun `a CancellationException a port throws is a failure, not the stop, and reaches collectors wrapped`() = runTest {
         val f = Fixture(this)
         val state = f.state()
         val ended = mutableListOf<Throwable>()
@@ -396,7 +398,10 @@ class SignalStateTest {
         runCurrent()
         f.channel.failure = java.util.concurrent.CancellationException("a future the port waited on")
         advanceTimeBy(150.milliseconds)
-        assertEquals("a future the port waited on", ended.single().message)
+        // Wrapped, so a collector launched in a scope does not end quietly, as if cancelled.
+        val error = ended.single()
+        assertTrue(error is IllegalStateException, "$error")
+        assertEquals("a future the port waited on", error.cause?.message)
     }
 
     @Test
@@ -509,17 +514,84 @@ class SignalStateTest {
     }
 
     @Test
-    fun `after the polling scope ends, value reads the port and a subscriber does not hang on a dead poller`() = runTest {
+    fun `after the polling scope ends, collectors end with a failure, a new one too, and value reads the port`() = runTest {
         val own = CoroutineScope(coroutineContext + Job())
         val f = Fixture(this, pollScope = own)
         val state = f.state()
-        backgroundScope.launch { runCatching { state.collect {} } }
+        val slow = state.every(1.seconds)
+        val ended = mutableListOf<Throwable>()
+        backgroundScope.launch { runCatching { state.collect {} }.exceptionOrNull()?.let(ended::add) }
+        backgroundScope.launch { runCatching { slow.collect {} }.exceptionOrNull()?.let(ended::add) }
         runCurrent()
         advanceTimeBy(150.milliseconds)
         own.cancel()
         runCurrent()
+        assertEquals(2, ended.size, "no collector waits on a state nothing polls")
+        assertTrue(ended.all { it is IllegalStateException && it.cause is CancellationException }, "$ended")
         f.channel.publish(22)
         assertEquals(22, state.value.value, "no poller runs: value reads the port")
-        assertEquals(1, f.states.size, "the default state is kept")
+        assertEquals(1, f.states.size, "the default state is kept, the slow one is dropped")
+        val late = runCatching { slow.collect {} }.exceptionOrNull()
+        assertTrue(late is IllegalStateException, "a later subscriber fails at once, not forever: $late")
+        assertEquals(1, f.states.size, "and does not put the state back")
+    }
+
+    @Test
+    fun `a long period stops the linger after its last subscriber, not at its next slot`() = runTest {
+        val f = Fixture(this)
+        val slow = f.state().every(1.hours)
+        subscribe(slow).cancel()
+        assertEquals(1, f.channel.reads.size, "the subscriber's read alone")
+        advanceTimeBy(3.seconds + 10.milliseconds)
+        assertEquals(1, f.states.size, "stopped 3 s after the last subscriber left")
+        advanceTimeBy(2.hours)
+        assertEquals(1, f.channel.reads.size, "and no slot was read after it")
+        // The saturated period, the longest there is, stops just the same.
+        subscribe(slow.every(Duration.INFINITE)).cancel()
+        advanceTimeBy(3.seconds + 10.milliseconds)
+        assertEquals(1, f.states.size)
+    }
+
+    @Test
+    fun `a subscriber back during the linger of a long period keeps the polling`() = runTest {
+        val f = Fixture(this)
+        val slow = f.state().every(1.seconds)
+        subscribe(slow).cancel()
+        advanceTimeBy(2.seconds)
+        val emitted = mutableListOf<Sample<Int>>()
+        subscribe(slow, emitted)
+        advanceTimeBy(5.seconds)
+        assertEquals(2, f.states.size, "still polling")
+        f.channel.publish(22)
+        advanceTimeBy(1.seconds)
+        assertEquals(22, emitted.last().value, "on its slots")
+    }
+
+    @Test
+    fun `a desired period that resolves to the default, asked for first, is the default state`() = runTest {
+        val f = Fixture(this)
+        val first = f.state(100.milliseconds)
+        assertEquals(0, f.states.size, "remembered, not kept")
+        val default = f.state()
+        assertSame(first, default, "one state per period, whichever request came first")
+        assertEquals(1, f.states.size, "and it is kept as the default")
+        subscribe(first).cancel()
+        advanceTimeBy(10.seconds)
+        assertEquals(1, f.states.size, "never dropped")
+    }
+
+    @Test
+    fun `a subscriber whose first read fails is not counted`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        f.channel.failure = ReadError.Detached
+        assertTrue(runCatching { state.collect {} }.exceptionOrNull() is ReadError)
+        f.channel.failure = null
+        val emitted = mutableListOf<Sample<Int>>()
+        subscribe(state, emitted).cancel()
+        advanceTimeBy(10.seconds)
+        f.channel.reads.clear()
+        advanceTimeBy(1.seconds)
+        assertEquals(0, f.channel.reads.size, "stopped after its only subscriber left")
     }
 }

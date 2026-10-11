@@ -52,12 +52,16 @@ wake-up for a signal change, so a state polls the port, on these rules:
   scheduled against its slot rather than after a `delay(period)`, and an overrun
   skips to the next slot.
 - **The lifecycle.** A state polls while it has a collector, and stops `linger`
-  (3 s) after the last one left. It counts its collectors itself, and one
-  coroutine is the whole lifecycle: it sleeps until the next slot or the end of
-  the linger, whichever comes first, polls on a slot and stops at the end. So no
-  coroutine runs while a state has no collector and no stop is pending, and a
-  client made with a scope that must end, such as `runBlocking`'s, does not hold
-  it unless a state is collected.
+  (3 s) after the last one left, whatever its period. It counts its collectors
+  itself, and one coroutine is the whole lifecycle: it sleeps until the next
+  slot or the end of the linger, whichever comes first, polls on a slot and
+  stops at the end; the last collector's leaving wakes it, so a state of a long
+  period does not sleep on to its next slot. So no coroutine runs while a state
+  has no collector and no stop is pending, and a client made with a scope that
+  must end, such as `runBlocking`'s, does not hold it unless a state is
+  collected. When the scope ends, every collector's `collect` throws an
+  `IllegalStateException`, as does a later one's: no collector waits on a state
+  nothing polls.
 - **The client's states.** `SignalStates` keeps a signal's default-period state
   for the client's life, so a generated `<signal>` property is one stable
   instance, and a state of another period while it polls: the state leaves the
