@@ -27,6 +27,7 @@ import veh.cabin.CabinPublisher
 import veh.cabin.CabinSetLevelCall
 import veh.cabin.Health
 import veh.cabin.Horn
+import veh.cabin.HornAsyncClient
 import veh.cabin.HornClient
 import veh.cabin.HornPublisher
 import veh.cabin.Level
@@ -36,6 +37,7 @@ import veh.cabin.Window
 import veh.cabin.commit
 import veh.cabin.nextEvent
 import veh.cabin.subscribeWarning
+import veh.cabin.temperature
 import java.nio.ByteBuffer
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -126,6 +128,7 @@ private fun catalogs() {
         expectMismatch("CabinAsyncClient over $of") { CabinAsyncClient(rt) }
         expectMismatch("CabinPublisher over $of") { CabinPublisher(rt) }
         expectMismatch("HornClient over $of") { HornClient(rt) }
+        expectMismatch("HornAsyncClient over $of") { HornAsyncClient(rt) }
         expectMismatch("HornPublisher over $of") { HornPublisher(rt) }
         expectMismatch("serve over $of") { Cabin.serve(rt, Recorder(), 100.milliseconds) }
         // Bounded, so a serveAsync that does not check fails here rather than serving forever.
@@ -279,7 +282,7 @@ private fun async() = runBlocking {
             val provider = launch(Dispatchers.Default) { Cabin.serveAsync(handler, recorder) }
             val client = CabinAsyncClient(rt)
             CabinPublisher(rt).apply { temperature(Temperature.of(19)); commit() }
-            expectEqual("an async signal reads", Temperature.of(19), client.temperature().value)
+            expectEqual("an async signal reads", Temperature.of(19), client.temperature.value.value)
             client.setLevel(Level.of(42))
             expectEqual("a query replies", Average.of(250), client.average(Window.of(10)))
             expectEqual("the command ran", listOf(Level.of(42)), synchronized(recorder) { recorder.levels.toList() })

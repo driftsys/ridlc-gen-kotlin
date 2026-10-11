@@ -30,8 +30,11 @@ import kt.values.ProbeOffset
 import kt.values.ProbeProvider
 import kt.values.ProbePublisher
 import kt.values.commit
+import kt.values.events
 import kt.values.invalidateLevel
 import kt.values.nextEvent
+import kt.values.offset
+import kt.values.port
 import kt.values.subscribeMoved
 import kt.values.timeout
 import kt.values.touchLevel
@@ -152,7 +155,7 @@ private fun async() = runBlocking {
         Loopback(Probe.catalog).let { rt ->
             val client = ProbeAsyncClient(rt)
             ProbePublisher(rt).let { it.offset(Offset.of(0.75)); it.commit() }
-            expectEqual("an async client's signal reads", Offset.of(0.75), client.offset().value)
+            expectEqual("an async client's signal reads", Offset.of(0.75), client.offset.value.value)
 
             val provider = Halver()
             val serving = launch(Dispatchers.Default) { Probe.serveAsync(rt.handler(), provider) }
@@ -272,13 +275,15 @@ private fun clash() {
     serving.join()
 }
 
-/** The async client of Clash: its `nextEvent()` is the signal's, and the suspending one is reached through its alias. */
+/** The async client of Clash: its signal `next_event` is the state `nextEvent`, beside the suspending `nextEvent()`, also reached through its alias. */
 private fun clashAsync() = runBlocking {
     withTimeout(10_000) {
         val rt = Loopback(Clash.catalog)
-        ClashPublisher(rt).let { it.nextEvent(Even.of(-2)); it.commit() }
+        ClashPublisher(rt).let { it.nextEvent(Even.of(-2)); it.port(Even.of(6)); it.events(Even.of(8)); it.commit() }
         val client = ClashAsyncClient(rt)
-        expectEqual("an async client's signal named next_event keeps nextEvent()", Even.of(-2), client.nextEvent().value)
+        expectEqual("an async client's signal named port is its state, not the client's port", Even.of(6), client.port.value.value)
+        expectEqual("an async client's signal named events is its state", Even.of(8), client.events.value.value)
+        expectEqual("an async client's signal named next_event is the state nextEvent", Even.of(-2), client.nextEvent.value.value)
         client.fixedSubscribePing()
         ClashPublisher(rt).ping(Mode.RUN)
         expectEqual(

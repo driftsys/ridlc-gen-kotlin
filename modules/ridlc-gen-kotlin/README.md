@@ -209,19 +209,30 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   its `…Ack` and `…Reply` methods and `dispatch` are internal. A call returns
   its reply and throws `ClientError` for anything else; `serve` throws
   `ProviderError`. A signal-only interface has one plain `<Iface>Client` beside
-  its descriptors and publisher, an `<Iface>AsyncClient` holding the same reads
-  for the flows below, and no poll face or `serve`.
-- **Each signal is a `Flow` on the suspending client** (#72): the extension
-  `<signal>Flow(): Flow<Sample<T>>`, over `ridl-rt-kt-coroutines`' `signalFlow`.
-  It reads the signal at its declared rate, the rate floor, under which ridl §9
-  coalesces faster updates, or the staleness bound without one, or ridl's
-  default floor of 100 ms without either, and emits each sample that differs
-  from the last one emitted. The runtime has no wake-up for a signal change, so
-  the flow polls; a later version can wait on a commit without changing its
-  signature. The blocking client keeps the single read. A package with a signal
-  therefore depends on `kotlinx-coroutines-core`, as one with an event or a call
-  already did. `serve(timeout)` takes no claim past its timeout, and the async
-  client's `nextEvent` takes occurrences one at a time.
+  its descriptors and publisher, an `<Iface>AsyncClient` holding the signal
+  states below, and no poll face or `serve`.
+- **Each signal is a shared state on the suspending client** (#72, #76): the
+  extension property `<signal>: SignalState<T>`, a `StateFlow<Sample<T>>` of
+  `ridl-rt-kt-coroutines`, replaces both the async client's read `<signal>()`
+  and #72's cold `<signal>Flow()`. The async client of an interface with a
+  signal takes the `scope: CoroutineScope` its states poll in, by default one it
+  owns on `Dispatchers.Default` under a `SupervisorJob`, and the
+  `grid: PollGrid` they poll on, by default the process's; an idle state runs no
+  coroutine, so the default scope needs no cancelling. Every member name of an
+  async client starts with `_` (`_port`, `_signalStates`, `_events`, `_calls`),
+  which no ridl identifier does, so no member shadows a signal's extension
+  property: `Clash`'s signals `port` and `events` read through the async client.
+  Each state polls while it has a collector, until 3 s after the last one left,
+  at the signal's rate floor rounded up to the grid's 10 ms and capped at the
+  staleness bound; `every(period)` is a slower one, `value` the last sample
+  polled or a fresh read, `read()` a read of the port. A signal and its decode
+  share one file-private `sampled` helper with the blocking read, so a
+  publication the state has decoded is not decoded again. The runtime has no
+  wake-up for a signal change, so a state polls; a later version can wait on a
+  commit without changing its type. The blocking client keeps the single read. A
+  package with a signal therefore depends on `kotlinx-coroutines-core`, as one
+  with an event or a call already did. `serve(timeout)` takes no claim past its
+  timeout, and the async client's `nextEvent` takes occurrences one at a time.
 - **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
   ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
   `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking
@@ -240,7 +251,10 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   the member always wins, and a property never meets a function of its name.
   `Bind` has no counterpart: a constructor cannot collide with a member. Nothing
   is renamed or refused, and the corpus interface `Clash` compiles and runs each
-  case.
+  case. On the async client a signal is itself an extension property (#76), so a
+  signal named like an operation meets it as a property beside a function:
+  `client.nextEvent` is the signal's state and `client.nextEvent()` the
+  suspending operation.
 - **An interface whose generated types would take a name already taken** refuses
   the package (#18, below): two of its own (members `set` and `set_call` both
   give `<Iface>SetCall`), a declaration's or its codec's, or another

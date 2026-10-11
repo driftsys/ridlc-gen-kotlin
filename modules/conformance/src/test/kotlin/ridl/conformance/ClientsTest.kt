@@ -34,12 +34,12 @@ class ClientsTest {
     }
 
     @Test
-    fun `a signal-only interface has a client, an async client for its flows, and no poll face or serve`() {
+    fun `a signal-only interface has a client, an async client for its states, and no poll face or serve`() {
         val faces = sources().getValue("veh/cabin/Faces.kt")
         assertTrue("public class HornClient<" in faces, "Horn keeps its public client")
-        // #72: the suspending client holds the reads, and each signal's flow extends it.
+        // #76: each signal's state extends the suspending client.
         assertTrue("public class HornAsyncClient<P : SignalReader>(" in faces, "Horn has an async client over a SignalReader alone")
-        assertTrue("HornAsyncClient<P>.activeFlow(): Flow<Sample<Health>>" in faces, "Horn's signal has a flow")
+        assertTrue("HornAsyncClient<P>.active: SignalState<Health>" in faces, "Horn's signal is a state")
         assertFalse("HornPollClient" in faces, "Horn has no poll face")
         val horn = faces.substringAfter("public object Horn : Interface {").substringBefore("\n}\n")
         assertFalse("fun <H> serve(" in horn, "Horn has no serve")

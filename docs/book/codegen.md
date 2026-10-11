@@ -202,32 +202,35 @@ public class CabinClient<P>(
 
 ```kotlin
 public class CabinAsyncClient<P>(
-  internal val port: P,
+  port: P,
+  scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+  grid: PollGrid = PollGrid.Default,
 ) where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable {
-// ...
-  public fun temperature(): Sample<Temperature> = poll.temperature()
 // ...
   public suspend fun setLevel(level: Level) {
 // ...
-  public suspend fun average(window: Window): Average = this.calls.withLock { CabinAverageCall(this.port, window).await() }
+  public suspend fun average(window: Window): Average = this._calls.withLock { CabinAverageCall(this._port, window).await() }
 }
 ```
 
-A signal read such as `temperature()` does not wait, so it is the same plain
-function on both clients. The suspending client also has a flow of each signal,
-`temperatureFlow()`, described in [the coroutine flow](coroutine-flow.md):
+The blocking client reads a signal with `temperature()`, which does not wait.
+The suspending client has each signal as a shared state instead, `temperature`,
+polled in `scope`, by default one the client owns, on `grid`; it is described in
+[the coroutine flow](coroutine-flow.md):
 
 <!-- excerpt: build/generated/ridl/veh/cabin/Faces.kt -->
 
 ```kotlin
-public fun <P> CabinAsyncClient<P>.temperatureFlow(): Flow<Sample<Temperature>> where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable = signalFlow(10_000.microseconds) { temperature() }
+public val <P> CabinAsyncClient<P>.temperature:
+    SignalState<Temperature> where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable
+  get() = _signalStates.of(CabinTemperature, null, TemperatureCodec.maxSize) { raw, buf -> sampled(TemperatureCodec, CabinTemperature, raw, buf) }
 ```
 
 An interface with signals alone, such as cabin's `Horn`, has a blocking client
-and a suspending one, `HornAsyncClient`, which holds the reads and the flows.
+and a suspending one, `HornAsyncClient`, which holds the states.
 
 Some operations are extension functions in the same package rather than members:
 `nextEvent`, `subscribe<Event>` and `unsubscribe<Event>` on the clients, the
-blocking client's `timeout` property, each signal's flow on the suspending
+blocking client's `timeout` property, each signal's state on the suspending
 client, and `commit`, `invalidate<Signal>` and `touch<Signal>` on the publisher.
 Import them by name, or import `veh.cabin.*`.

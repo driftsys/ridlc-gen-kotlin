@@ -3,7 +3,7 @@
 // handle of its own.
 //
 // Every wait is a call of `CabinAsyncClient`, and the signal is read as a
-// flow; the provider is `Cabin.serveAsync`.
+// shared state; the provider is `Cabin.serveAsync`.
 package ridl.sample.cabin
 
 import kotlinx.coroutines.Dispatchers
@@ -26,9 +26,9 @@ import veh.cabin.Window
 import veh.cabin.commit
 import veh.cabin.nextEvent
 import veh.cabin.subscribeWarning
-import veh.cabin.temperatureFlow
+import veh.cabin.temperature
 
-/** A signal read as a flow, then the three round trips a consumer waits on, one line each. */
+/** A signal read as a state, then the three round trips a consumer waits on, one line each. */
 fun coroutineDemo(): List<String> = runBlocking {
     withTimeout(10_000) {
         val port = Loopback(Cabin.catalog)
@@ -39,12 +39,13 @@ fun coroutineDemo(): List<String> = runBlocking {
 
         val lines = mutableListOf<String>()
 
-        // A signal as a flow: the current sample at once, then each new
-        // publication. The second value is published once the first is seen.
+        // A signal as a state: the current sample at once, then each new
+        // publication, polled at its rate floor while it is collected. The
+        // second value is published once the first is seen.
         val publisher = CabinPublisher(port)
         publisher.temperature(Temperature.of(21))
         publisher.commit()
-        val temperatures = client.temperatureFlow()
+        val temperatures = client.temperature
             .onEach {
                 if (it.value == Temperature.of(21)) {
                     publisher.temperature(Temperature.of(22))
