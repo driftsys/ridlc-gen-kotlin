@@ -19,7 +19,8 @@ import kotlin.time.TimeSource
 public class PollGrid(
     /** The granularity of every period on the grid. */
     public val quantum: Duration = 10.milliseconds,
-    timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
+    /** The clock the grid runs on: the epoch's, and the one a state measures its linger with. */
+    internal val timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
 ) {
     init {
         require(quantum.isPositive()) { "a grid has a positive quantum, not $quantum" }

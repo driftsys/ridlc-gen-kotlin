@@ -67,8 +67,10 @@ The rest of the state:
   and a fresh read of the port otherwise. `client.temperature.read()` always
   reads the port.
 - `client.temperature.every(1.seconds)` is the same signal polled every second:
-  another shared state. A period faster than the default one is the default, so
-  `every(1.milliseconds)` is `client.temperature` itself.
+  another shared state, which the client keeps while it polls and drops once it
+  stopped, so a slider's worth of periods does not pile up. A period faster than
+  the default one is the default, so `every(1.milliseconds)` is
+  `client.temperature` itself.
 - `client.temperature.values` is a `StateFlow` of the values alone, which emits
   only when the value changes, over the same polling.
 

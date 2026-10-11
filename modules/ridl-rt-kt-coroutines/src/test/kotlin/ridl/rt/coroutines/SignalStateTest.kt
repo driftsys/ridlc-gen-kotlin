@@ -1,7 +1,9 @@
 package ridl.rt.coroutines
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -80,9 +82,13 @@ class SignalStateTest {
     private fun range(minMs: Long?, maxMs: Long?) =
         Timing(TimingMode.Range, minMs?.let { RidlDuration(it * 1000) }, maxMs?.let { RidlDuration(it * 1000) })
 
-    private class Fixture(scope: TestScope, val signal: Signal<Int> = Level(Timing(TimingMode.Range, RidlDuration(100_000), RidlDuration(1_000_000)))) {
+    private class Fixture(
+        scope: TestScope,
+        val signal: Signal<Int> = Level(Timing(TimingMode.Range, RidlDuration(100_000), RidlDuration(1_000_000))),
+        pollScope: CoroutineScope = scope.backgroundScope,
+    ) {
         val channel = Channel { scope.currentTime }
-        val states = SignalStates(channel, scope.backgroundScope, PollGrid(timeSource = scope.testScheduler.timeSource))
+        val states = SignalStates(channel, pollScope, PollGrid(timeSource = scope.testScheduler.timeSource))
         var decodes = 0
         var decodeFailure: Throwable? = null
 
@@ -445,5 +451,75 @@ class SignalStateTest {
         advanceTimeBy(100.milliseconds)
         assertEquals(listOf(21, 23), values)
         assertEquals(23, state.values.value)
+    }
+
+    // -- the client's states (#79) ---------------------------------------------------
+
+    @Test
+    fun `a state of another period is dropped when its polling stops, the default one is kept`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        // A slider: one period after another, each collected for a moment.
+        for (step in 1..50) subscribe(state.every((100 + 10 * step).milliseconds)).cancel()
+        assertEquals(51, f.states.size, "every period polls, or lingers")
+        subscribe(state).cancel()
+        advanceTimeBy(10.seconds)
+        assertEquals(1, f.states.size, "the default state alone, once every linger ran out")
+        assertSame(state, f.state(), "and it is the same instance")
+        assertEquals(1, f.states.size, "a default state asked for again is not created again")
+    }
+
+    @Test
+    fun `a dropped state a caller holds keeps working, and is shared again when collected again`() = runTest {
+        val f = Fixture(this)
+        val slow = f.state().every(1.seconds)
+        subscribe(slow).cancel()
+        advanceTimeBy(10.seconds)
+        assertEquals(1, f.states.size, "dropped")
+        f.channel.publish(22)
+        val emitted = mutableListOf<Sample<Int>>()
+        subscribe(slow, emitted)
+        assertEquals(22, emitted.single().value, "a held state still polls")
+        assertSame(slow, f.state().every(1.seconds), "and is the shared one again")
+        assertEquals(2, f.states.size)
+    }
+
+    @Test
+    fun `a state that fails while polling is dropped, and one that never polled stays`() = runTest {
+        val f = Fixture(this)
+        val slow = f.state().every(1.seconds)
+        val idle = f.state().every(2.seconds)
+        backgroundScope.launch { runCatching { slow.collect {} } }
+        runCurrent()
+        f.channel.failure = ReadError.Detached
+        advanceTimeBy(1.5.seconds)
+        assertSame(idle, f.state().every(2.seconds), "never collected, still found while held")
+        assertEquals(1, f.states.size, "the default alone is kept: the failed one is gone, the idle one is only remembered")
+    }
+
+    @Test
+    fun `a state created and never collected is not kept, only remembered while held`() = runTest {
+        val f = Fixture(this)
+        // A slider read with `value` instead of collected: fifty periods, none polled.
+        for (step in 1..50) f.state().every((100 + 10 * step).milliseconds).value
+        assertEquals(1, f.states.size, "nothing is kept beside the default")
+        val held = f.state().every(7.seconds)
+        assertSame(held, f.state().every(7.seconds), "while held, two requests share one state")
+        assertEquals(1, f.states.size, "and it is still not kept")
+    }
+
+    @Test
+    fun `after the polling scope ends, value reads the port and a subscriber does not hang on a dead poller`() = runTest {
+        val own = CoroutineScope(coroutineContext + Job())
+        val f = Fixture(this, pollScope = own)
+        val state = f.state()
+        backgroundScope.launch { runCatching { state.collect {} } }
+        runCurrent()
+        advanceTimeBy(150.milliseconds)
+        own.cancel()
+        runCurrent()
+        f.channel.publish(22)
+        assertEquals(22, state.value.value, "no poller runs: value reads the port")
+        assertEquals(1, f.states.size, "the default state is kept")
     }
 }
