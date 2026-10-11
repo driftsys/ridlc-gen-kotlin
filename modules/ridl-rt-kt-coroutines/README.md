@@ -52,10 +52,20 @@ wake-up for a signal change, so a state polls the port, on these rules:
   scheduled against its slot rather than after a `delay(period)`, and an overrun
   skips to the next slot.
 - **The lifecycle.** A state polls while it has a collector, and stops `linger`
-  (3 s) after the last one left. It counts its collectors itself: no coroutine
-  runs while it has none and no stop is pending, so a client made with a scope
-  that must end, such as `runBlocking`'s, does not hold it unless a state is
-  collected.
+  (3 s) after the last one left. It counts its collectors itself, and one
+  coroutine is the whole lifecycle: it sleeps until the next slot or the end of
+  the linger, whichever comes first, polls on a slot and stops at the end. So no
+  coroutine runs while a state has no collector and no stop is pending, and a
+  client made with a scope that must end, such as `runBlocking`'s, does not hold
+  it unless a state is collected.
+- **The client's states.** `SignalStates` keeps a signal's default-period state
+  for the client's life, so a generated `<signal>` property is one stable
+  instance, and a state of another period while it polls: the state leaves the
+  client when its polling stops (#79), so a caller that asks for one period
+  after another, a slider say, does not fill the client with idle states. A
+  dropped state a caller still holds keeps working, and is shared again when
+  collected again, unless another state of its period took its place meanwhile.
+  A state created but never collected stays; one never read holds no buffer.
 - **`value`** is the last sample polled while the state polls, with that poll's
   freshness, and a fresh read otherwise; `read()` always reads the port. A read
   and its publication hold one lock, so two reads publish in the order they
@@ -77,6 +87,18 @@ wake-up for a signal change, so a state polls the port, on these rules:
 
 `SignalStateTest` pins these on virtual time, with a grid over the test
 scheduler's time source.
+
+The lifecycle is hand-written rather than a `shareIn` or `stateIn` over a
+polling flow with `SharingStarted.WhileSubscribed(linger)`, which #80 proposed
+and three of the rules above rule out. The sharing coroutine `shareIn` launches
+waits on the subscription count for the scope's life, so a `runBlocking` scope
+never ends; a `MutableStateFlow` hands a new collector its current value before
+any start command runs, so the restart read could not come first; and
+`WhileSubscribed` issues a start only after a stop, so a collector back within
+the linger after a failure would wait for the linger to run out instead of
+restarting the polling. What was taken from the proposal is the shape: one
+coroutine owns the start, the polls and the stop, in place of the poller, the
+stopper and the polling flag it replaced.
 
 Implementing `StateFlow` needs the opt-in
 `ExperimentalForInheritanceCoroutinesApi` of kotlinx-coroutines: a later release

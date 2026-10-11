@@ -446,4 +446,48 @@ class SignalStateTest {
         assertEquals(listOf(21, 23), values)
         assertEquals(23, state.values.value)
     }
+
+    // -- the client's states (#79) ---------------------------------------------------
+
+    @Test
+    fun `a state of another period is dropped when its polling stops, the default one is kept`() = runTest {
+        val f = Fixture(this)
+        val state = f.state()
+        // A slider: one period after another, each collected for a moment.
+        for (step in 1..50) subscribe(state.every((100 + 10 * step).milliseconds)).cancel()
+        assertEquals(51, f.states.size, "every period polls, or lingers")
+        subscribe(state).cancel()
+        advanceTimeBy(10.seconds)
+        assertEquals(1, f.states.size, "the default state alone, once every linger ran out")
+        assertSame(state, f.state(), "and it is the same instance")
+        assertEquals(1, f.states.size, "a default state asked for again is not created again")
+    }
+
+    @Test
+    fun `a dropped state a caller holds keeps working, and is shared again when collected again`() = runTest {
+        val f = Fixture(this)
+        val slow = f.state().every(1.seconds)
+        subscribe(slow).cancel()
+        advanceTimeBy(10.seconds)
+        assertEquals(1, f.states.size, "dropped")
+        f.channel.publish(22)
+        val emitted = mutableListOf<Sample<Int>>()
+        subscribe(slow, emitted)
+        assertEquals(22, emitted.single().value, "a held state still polls")
+        assertSame(slow, f.state().every(1.seconds), "and is the shared one again")
+        assertEquals(2, f.states.size)
+    }
+
+    @Test
+    fun `a state that fails while polling is dropped, and one that never polled stays`() = runTest {
+        val f = Fixture(this)
+        val slow = f.state().every(1.seconds)
+        val idle = f.state().every(2.seconds)
+        backgroundScope.launch { runCatching { slow.collect {} } }
+        runCurrent()
+        f.channel.failure = ReadError.Detached
+        advanceTimeBy(1.5.seconds)
+        assertSame(idle, f.state().every(2.seconds), "never collected, never dropped")
+        assertEquals(2, f.states.size, "the default and the idle one; the failed one is gone")
+    }
 }
