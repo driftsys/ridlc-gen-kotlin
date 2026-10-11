@@ -18,7 +18,10 @@ The client's signal states poll in a scope the client owns, on
 needs no cancelling. An application that wants the polling tied to a lifecycle
 passes its own on a background dispatcher,
 `CabinAsyncClient(port, viewModelScope + Dispatchers.Default)` say: a scope on
-the main thread would poll and decode there.
+the main thread would poll and decode there. The first read a collector starts
+the polling with runs on the collector's own thread, as `value` does. Once that
+scope ends, every collector ends with an `IllegalStateException`, and so does a
+later one: no collector waits on a state nothing polls.
 
 `serveAsync` suspends between claims and never returns normally: it ends by
 throwing, or when its coroutine is cancelled. The sample stops it with
@@ -45,14 +48,14 @@ val temperatures = client.temperature
 ```
 
 The state polls the port while it has a collector, and stops 3 s after the last
-one left; while nothing collects it, nothing runs. It reads at the signal's rate
-floor, the lower bound under which faster updates are coalesced: every 10 ms for
-`temperature`, declared `@10ms`. The floor is rounded up to a multiple of 10 ms
-and capped at the staleness bound. A signal with no floor is read at half its
-staleness bound, and one with no timing at all at ridl's default floor of 100
-ms. Every state polls at the multiples of its period on one grid shared by the
-process, so states of compatible periods, 100 ms and 300 ms say, read in the
-same slot.
+one left, however slow its period; while nothing collects it, nothing runs. It
+reads at the signal's rate floor, the lower bound under which faster updates are
+coalesced: every 10 ms for `temperature`, declared `@10ms`. The floor is rounded
+up to a multiple of 10 ms and capped at the staleness bound. A signal with no
+floor is read at half its staleness bound, and one with no timing at all at
+ridl's default floor of 100 ms. Every state polls at the multiples of its period
+on one grid shared by the process, so states of compatible periods, 100 ms and
+300 ms say, read in the same slot.
 
 A sample is emitted when its value, its provenance or its envelope changes, so
 each publication a poll reads is emitted, a `touch` that re-affirms the same
