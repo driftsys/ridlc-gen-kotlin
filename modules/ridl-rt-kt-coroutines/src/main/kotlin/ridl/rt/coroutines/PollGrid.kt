@@ -53,7 +53,7 @@ private val DEFAULT_PERIOD = 100.milliseconds
  *
  * - [desired] `null`, the default period: the rate floor, capped at the
  *   staleness bound rounded down; with no floor, half the staleness bound,
- *   rounded down, so a value is read before it turns stale; with neither,
+ *   rounded down, so a value is read before it turns bound; with neither,
  *   ridl's default floor of 100 ms.
  * - [desired] set: [desired], but never faster than the default period, as a
  *   faster update than the rate floor is coalesced (ridl §9) and a faster poll
@@ -73,11 +73,11 @@ public fun effectivePeriod(timing: Timing?, desired: Duration?, quantum: Duratio
     fun up(d: Duration): Long = d.inWholeNanoseconds.let { minOf(it / q + if (it % q == 0L) 0 else 1, longest) }
     fun down(d: Duration): Long = (d.inWholeNanoseconds / q).coerceAtLeast(1)
     val floor = timing?.min?.micros?.takeIf { it > 0 }?.microseconds
-    val stale = timing?.max?.micros?.takeIf { it > 0 }?.microseconds
+    val bound = timing?.max?.micros?.takeIf { it > 0 }?.microseconds
     val default = when {
-        floor != null && stale != null -> minOf(up(floor), down(stale))
+        floor != null && bound != null -> minOf(up(floor), down(bound))
         floor != null -> up(floor)
-        stale != null -> down(stale / 2)
+        bound != null -> down(bound / 2)
         else -> up(DEFAULT_PERIOD)
     }
     val slots = desired?.let { up(it).coerceAtLeast(default) } ?: default
