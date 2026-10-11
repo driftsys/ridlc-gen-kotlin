@@ -68,15 +68,18 @@ public fun effectivePeriod(timing: Timing?, desired: Duration?, quantum: Duratio
     require(quantum.isPositive()) { "a grid has a positive quantum, not $quantum" }
     require(desired == null || desired.isPositive()) { "a desired period is positive, not $desired" }
     val q = quantum.inWholeNanoseconds
-    val min = timing?.min?.micros?.takeIf { it > 0 }?.microseconds
-    val max = timing?.max?.micros?.takeIf { it > 0 }?.microseconds
-    fun up(d: Duration): Long = d.inWholeNanoseconds.let { if (it > Long.MAX_VALUE - q) Long.MAX_VALUE / q else (it + q - 1) / q }
-    fun down(d: Duration): Long = d.inWholeNanoseconds / q
+    val longest = Long.MAX_VALUE / q
+    // Periods as counts of quanta, so every step stays on the grid; a Duration again at the end.
+    fun up(d: Duration): Long = d.inWholeNanoseconds.let { minOf(it / q + if (it % q == 0L) 0 else 1, longest) }
+    fun down(d: Duration): Long = (d.inWholeNanoseconds / q).coerceAtLeast(1)
+    val floor = timing?.min?.micros?.takeIf { it > 0 }?.microseconds
+    val stale = timing?.max?.micros?.takeIf { it > 0 }?.microseconds
     val default = when {
-        min != null -> up(min).let { if (max != null) minOf(it, down(max)) else it }
-        max != null -> down(max / 2)
+        floor != null && stale != null -> minOf(up(floor), down(stale))
+        floor != null -> up(floor)
+        stale != null -> down(stale / 2)
         else -> up(DEFAULT_PERIOD)
-    }.coerceAtLeast(1)
-    val slots = if (desired != null) maxOf(up(desired), default) else default
+    }
+    val slots = desired?.let { up(it).coerceAtLeast(default) } ?: default
     return (q * slots).nanoseconds
 }
