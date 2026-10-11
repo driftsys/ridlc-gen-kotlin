@@ -25,6 +25,7 @@ import ridl.rt.port.ReadError
 import ridl.rt.port.SignalReader
 import ridl.rt.sample.Freshness
 import ridl.rt.sample.Sample
+import java.lang.ref.WeakReference
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
@@ -37,9 +38,9 @@ import kotlin.time.TimeMark
  * kept for the client's life, so a generated `<signal>` property is one stable
  * instance; a state of another period is kept while it polls, and dropped when
  * its polling stops (#79), so a caller that asks for many periods in turn does
- * not fill the client with idle states. A dropped state a caller still holds
- * keeps working, and is shared again when collected again, unless another
- * state of its period took its place meanwhile.
+ * not fill the client with idle states. A state that is not polling is only
+ * remembered weakly: a caller that holds it finds it again, and one nobody
+ * holds is collected.
  *
  * Every state polls in [scope], on its dispatcher: give it a background one,
  * not the main thread. Cancelling [scope] stops every state's polling. States
@@ -55,23 +56,42 @@ public class SignalStates(
         require(!linger.isNegative()) { "a linger is not negative, not $linger" }
     }
 
-    /** The states by signal and period: the shared ones. A state is here from its creation until its polling stops. */
+    /**
+     * The states the client keeps, by signal and period: a signal's default
+     * state for the client's life, and another state while it polls.
+     */
     private val states = ConcurrentHashMap<Pair<Signal<*>, Duration>, SignalState<*>>()
+
+    /**
+     * The states the client only remembers, weakly: a state of another period
+     * that is not polling, created or dropped. A caller that holds it finds it
+     * again, so two requests for one period share one state; one nobody holds
+     * is collected, so a state created and never collected leaks nothing.
+     */
+    private val idle = ConcurrentHashMap<Pair<Signal<*>, Duration>, WeakReference<SignalState<*>>>()
 
     /** Each signal's state at its default period: what a generated property returns on every access. Never dropped. */
     private val defaults = ConcurrentHashMap<Signal<*>, SignalState<*>>()
 
-    /** How many states the client keeps, the defaults included. */
+    /** How many states the client keeps, the defaults included; the ones it only remembers are not counted. */
     internal val size: Int get() = states.size
 
-    /** Puts [state] back among the shared states as its polling starts, unless another state of its period is there. */
+    /** Keeps [state] as its polling starts, unless another state of its period is kept already. */
     internal fun share(state: SignalState<*>) {
-        states.putIfAbsent(state.signal to state.period, state)
+        val key = state.signal to state.period
+        if (states.putIfAbsent(key, state) == null) idle.remove(key)
     }
 
-    /** Drops [state] as its polling stops, unless it is its signal's default state. */
+    /** Stops keeping [state] as its polling stops, unless it is its signal's default state; it is remembered instead. */
     internal fun drop(state: SignalState<*>) {
-        if (defaults[state.signal] !== state) states.remove(state.signal to state.period, state)
+        if (defaults[state.signal] === state) return
+        val key = state.signal to state.period
+        if (states.remove(key, state)) remember(key, state)
+    }
+
+    private fun remember(key: Pair<Signal<*>, Duration>, state: SignalState<*>) {
+        idle.values.removeIf { it.get() == null }
+        idle[key] = WeakReference(state)
     }
 
     /**
@@ -92,9 +112,15 @@ public class SignalStates(
     ): SignalState<T> {
         if (desired == null) defaults[signal]?.let { return it as SignalState<T> }
         val period = effectivePeriod(signal.member.timing, desired, grid.quantum)
-        val state = states.computeIfAbsent(signal to period) { SignalState(this, port, signal, period, maxSize, decode) }
-        if (desired == null) defaults.putIfAbsent(signal, state)
-        return state as SignalState<T>
+        val key = signal to period
+        if (desired == null) {
+            val state = states.computeIfAbsent(key) { SignalState(this, port, signal, period, maxSize, decode) }
+            defaults.putIfAbsent(signal, state)
+            return state as SignalState<T>
+        }
+        states[key]?.let { return it as SignalState<T> }
+        idle[key]?.get()?.let { return it as SignalState<T> }
+        return SignalState(this, port, signal, period, maxSize, decode).also { remember(key, it) }
     }
 }
 
@@ -227,7 +253,8 @@ public class SignalState<T> internal constructor(
         synchronized(lock) {
             subscribers++
             idleSince = null
-            if (poller == null) {
+            // No poller, or one the scope's cancellation ended without a word here.
+            if (poller?.isActive != true) {
                 // A subscriber that starts the polling sees the port now, not the sample or the failure from before.
                 readLocked(restart = true)
                 states.share(this)
@@ -284,18 +311,18 @@ public class SignalState<T> internal constructor(
                 }
             }
         } catch (e: Throwable) {
-            // A cancellation of this poller is the stop; one a port or a codec throws is a failure.
-            if (e is CancellationException && !currentCoroutineContext().isActive) throw e
+            // A cancellation of this poller is the scope's end; one a port or a codec throws is a failure.
+            val cancelled = e is CancellationException && !currentCoroutineContext().isActive
             synchronized(lock) {
                 // A poller already replaced has nothing left to tell.
                 if (self != null && poller === self) {
                     poller = null
-                    state.value = Failed(e)
                     states.drop(this)
+                    if (!cancelled) state.value = Failed(e)
                 }
             }
-            // Collectors meet the failure; the scope the state polls in never does, but for the JVM's own.
-            if (e is VirtualMachineError) throw e
+            // Collectors meet a failure; the scope the state polls in never does, but for its own end and the JVM's.
+            if (cancelled || e is VirtualMachineError) throw e
         }
     }
 
@@ -310,7 +337,7 @@ public class SignalState<T> internal constructor(
 
     /** While polling, the last sample polled; otherwise a fresh [read]. */
     override val value: Sample<T>
-        get() = (if (poller != null) latest else null) ?: read()
+        get() = (if (poller?.isActive == true) latest else null) ?: read()
 
     override val replayCache: List<Sample<T>>
         get() = listOf(value)

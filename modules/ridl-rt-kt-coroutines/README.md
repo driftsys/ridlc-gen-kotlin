@@ -63,9 +63,10 @@ wake-up for a signal change, so a state polls the port, on these rules:
   instance, and a state of another period while it polls: the state leaves the
   client when its polling stops (#79), so a caller that asks for one period
   after another, a slider say, does not fill the client with idle states. A
-  dropped state a caller still holds keeps working, and is shared again when
-  collected again, unless another state of its period took its place meanwhile.
-  A state created but never collected stays; one never read holds no buffer.
+  state of another period that is not polling, created or dropped, is only
+  remembered weakly: a caller that holds it finds it again, so two requests for
+  one period share one state, and one nobody holds is collected, so a state
+  created and never collected leaks nothing. A state never read holds no buffer.
 - **`value`** is the last sample polled while the state polls, with that poll's
   freshness, and a fresh read otherwise; `read()` always reads the port. A read
   and its publication hold one lock, so two reads publish in the order they
