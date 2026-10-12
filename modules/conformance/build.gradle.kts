@@ -69,6 +69,9 @@ tasks.test {
     val corpus = layout.projectDirectory.dir("src/test/corpus")
     val spike = layout.buildDirectory.dir("spike")
     inputs.dir(corpus)
+    // The binary itself, so that a `RIDL_BIN` naming another ridl, or one
+    // rebuilt in place, runs the tests again instead of reusing a result.
+    inputs.file(ridl).withPropertyName("ridl").withPathSensitivity(PathSensitivity.NONE)
     val release = ridlRelease
     inputs.property("release", release)
     jvmArgumentProviders.add(CommandLineArgumentProvider {
