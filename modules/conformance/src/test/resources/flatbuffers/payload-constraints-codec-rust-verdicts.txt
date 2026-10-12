@@ -201,7 +201,7 @@ ok:2ca3abf60dc927d9
 ok:f388b992d2a84f86
 ok:fdf4899376ad424e
 ok:a871a81b0114088c
-err:Contract(Violation { type_name: "Ranged", rule: Range })
+err:Contract(Violation { type_name: Some("Ranged"), rule: Range })
 ok:cbe8cc0645271f50
 ok:9213591ed61adddd
 ok:51595ee9789e1c56
@@ -383,7 +383,7 @@ ok:19a0b374708cbe33
 ok:4cc48edee5d47987
 ok:064fd97b25dbcc48
 ok:edff90d81e70a4b3
-err:Contract(Violation { type_name: "Decimal", rule: Range })
+err:Contract(Violation { type_name: Some("Decimal"), rule: Range })
 ok:ed3ce7441c376ea4
 ok:86c8e7694dc6f51c
 ok:85b0deaeaba50c02
@@ -456,16 +456,16 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Offset", rule: Range })
-err:Contract(Violation { type_name: "Offset", rule: Range })
-err:Contract(Violation { type_name: "Offset", rule: Range })
-err:Contract(Violation { type_name: "Offset", rule: Range })
-err:Contract(Violation { type_name: "Offset", rule: Step })
-err:Contract(Violation { type_name: "Offset", rule: Range })
-err:Contract(Violation { type_name: "Offset", rule: Range })
-err:Contract(Violation { type_name: "Offset", rule: Step })
-err:Contract(Violation { type_name: "Offset", rule: Range })
-err:Contract(Violation { type_name: "Offset", rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Step })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Step })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
+err:Contract(Violation { type_name: Some("Offset"), rule: Range })
 ok:603b9939a88120e4
 ok:8e16f2df50caa837
 err:Structure(OutOfBounds)
@@ -662,7 +662,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(MissingRequired)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Inline", rule: Range })
+err:Contract(Violation { type_name: Some("Inline"), rule: Range })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 ok:b7065e2aef7f7429
@@ -693,8 +693,8 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Inline", rule: Range })
-err:Contract(Violation { type_name: "Inline", rule: Range })
+err:Contract(Violation { type_name: Some("Inline"), rule: Range })
+err:Contract(Violation { type_name: Some("Inline"), rule: Range })
 ok:413d2c5fd4ec4d41
 ok:b7065e2aef7f7429
 ok:b7065e2aef7f7429
@@ -708,9 +708,9 @@ ok:042acc32484d2055
 ok:cb6b6f4f3d798e36
 ok:720ee77aedf8ba8f
 ok:b522d308cc6dcb2e
-err:Contract(Violation { type_name: "Inline", rule: Range })
+err:Contract(Violation { type_name: Some("Inline"), rule: Range })
 ok:3d1f3677a6bc1563
-err:Contract(Violation { type_name: "Inline", rule: Length })
+err:Contract(Violation { type_name: Some("Inline"), rule: Length })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -719,7 +719,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Inline", rule: Length })
+err:Contract(Violation { type_name: Some("Inline"), rule: Length })
 err:Structure(OutOfBounds)
 ok:3797ea87f36016b4
 err:Structure(OutOfBounds)
@@ -741,7 +741,7 @@ ok:b7065e2aef7f7429
 ok:b7065e2aef7f7429
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Inline", rule: Length })
+err:Contract(Violation { type_name: Some("Inline"), rule: Length })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -1567,15 +1567,15 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Pattern", rule: Pattern })
+err:Contract(Violation { type_name: Some("Pattern"), rule: Pattern })
 err:Structure(Utf8)
-err:Contract(Violation { type_name: "Pattern", rule: Pattern })
-err:Contract(Violation { type_name: "Pattern", rule: Pattern })
+err:Contract(Violation { type_name: Some("Pattern"), rule: Pattern })
+err:Contract(Violation { type_name: Some("Pattern"), rule: Pattern })
 err:Structure(Utf8)
-err:Contract(Violation { type_name: "Pattern", rule: Pattern })
-err:Contract(Violation { type_name: "Pattern", rule: Pattern })
+err:Contract(Violation { type_name: Some("Pattern"), rule: Pattern })
+err:Contract(Violation { type_name: Some("Pattern"), rule: Pattern })
 err:Structure(Utf8)
-err:Contract(Violation { type_name: "Pattern", rule: Pattern })
+err:Contract(Violation { type_name: Some("Pattern"), rule: Pattern })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 ok:e85da5ffa228296b
@@ -1665,30 +1665,30 @@ ok:847412456c4c625d
 ok:847412456c4c625d
 ok:847412456c4c625d
 ok:847412456c4c625d
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Step })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
-err:Contract(Violation { type_name: "Corrected", rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Step })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
+err:Contract(Violation { type_name: Some("Corrected"), rule: Range })
 ok:b3eba4ab693979ed
 ok:bc2efc8113d0f352
 err:Structure(OutOfBounds)
@@ -1776,27 +1776,27 @@ ok:bc2efc8113d0f352
 ok:bc2efc8113d0f352
 ok:bc2efc8113d0f352
 ok:bc2efc8113d0f352
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
 ok:5950bfe43dd48f54
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Range })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Range })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Range })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Range })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Range })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Range })
-err:Contract(Violation { type_name: "DenseOrigin", rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Range })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Range })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Range })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Range })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Range })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Range })
+err:Contract(Violation { type_name: Some("DenseOrigin"), rule: Step })
 ok:e5a44e8a7f0308ef
 ok:51595ee9789e1c56
 err:Structure(OutOfBounds)
@@ -1898,7 +1898,7 @@ ok:2ca3abf60dc927d9
 ok:f388b992d2a84f86
 ok:fdf4899376ad424e
 ok:a871a81b0114088c
-err:Contract(Violation { type_name: "Underflow", rule: Range })
+err:Contract(Violation { type_name: Some("Underflow"), rule: Range })
 ok:cbe8cc0645271f50
 ok:51595ee9789e1c56
 ok:51595ee9789e1c56
@@ -2090,22 +2090,22 @@ ok:51595ee9789e1c56
 ok:51595ee9789e1c56
 ok:51595ee9789e1c56
 ok:51595ee9789e1c56
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
-err:Contract(Violation { type_name: "OverflowStep", rule: Range })
-err:Contract(Violation { type_name: "OverflowStep", rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Range })
+err:Contract(Violation { type_name: Some("OverflowStep"), rule: Step })
 ok:51595ee9789e1c56
 ok:51595ee9789e1c56
 err:Structure(OutOfBounds)
@@ -2194,20 +2194,20 @@ ok:51595ee9789e1c56
 ok:51595ee9789e1c56
 ok:51595ee9789e1c56
 ok:3c934c2dbb882ab0
-err:Contract(Violation { type_name: "Subnormal", rule: Step })
+err:Contract(Violation { type_name: Some("Subnormal"), rule: Step })
 ok:b696769627f64c98
-err:Contract(Violation { type_name: "Subnormal", rule: Step })
-err:Contract(Violation { type_name: "Subnormal", rule: Step })
+err:Contract(Violation { type_name: Some("Subnormal"), rule: Step })
+err:Contract(Violation { type_name: Some("Subnormal"), rule: Step })
 ok:664babb88a834884
 ok:2ea33a63454b2bb5
 ok:365d56447521c08b
-err:Contract(Violation { type_name: "Subnormal", rule: Step })
+err:Contract(Violation { type_name: Some("Subnormal"), rule: Step })
 ok:22bfa6aba266b12d
-err:Contract(Violation { type_name: "Subnormal", rule: Step })
-err:Contract(Violation { type_name: "Subnormal", rule: Step })
+err:Contract(Violation { type_name: Some("Subnormal"), rule: Step })
+err:Contract(Violation { type_name: Some("Subnormal"), rule: Step })
 ok:fdf4899376ad424e
 ok:a871a81b0114088c
-err:Contract(Violation { type_name: "Subnormal", rule: Range })
+err:Contract(Violation { type_name: Some("Subnormal"), rule: Range })
 ok:cbe8cc0645271f50
 ok:152829cd84241839
 ok:af6f710ab56cacdb
@@ -2286,7 +2286,7 @@ ok:19a0b374708cbe33
 ok:4cc48edee5d47987
 ok:064fd97b25dbcc48
 ok:edff90d81e70a4b3
-err:Contract(Violation { type_name: "Fine", rule: Range })
+err:Contract(Violation { type_name: Some("Fine"), rule: Range })
 ok:ed3ce7441c376ea4
 ok:37270a559e76c142
 ok:8c4301830883b610
@@ -2398,24 +2398,24 @@ ok:477e3ccc102fbe69
 ok:2de0831446429dc2
 ok:f6fc6680ab7dfa41
 ok:512ec52875928672
-err:Contract(Violation { type_name: "ExtremeInline", rule: Range })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Range })
 ok:be957c54bd42aa10
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Range })
-err:Contract(Violation { type_name: "ExtremeInline", rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Range })
+err:Contract(Violation { type_name: Some("ExtremeInline"), rule: Step })
 ok:8c4301830883b610
 ok:51595ee9789e1c56
 err:Structure(OutOfBounds)
@@ -2517,7 +2517,7 @@ ok:2ca3abf60dc927d9
 ok:f388b992d2a84f86
 ok:fdf4899376ad424e
 ok:a871a81b0114088c
-err:Contract(Violation { type_name: "HalfLower", rule: Range })
+err:Contract(Violation { type_name: Some("HalfLower"), rule: Range })
 ok:cbe8cc0645271f50
 ok:9213591ed61adddd
 ok:51595ee9789e1c56
@@ -2606,22 +2606,22 @@ ok:51595ee9789e1c56
 ok:51595ee9789e1c56
 ok:51595ee9789e1c56
 ok:51595ee9789e1c56
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
 ok:2ca7c6c736064bae
-err:Contract(Violation { type_name: "HalfUpper", rule: Range })
+err:Contract(Violation { type_name: Some("HalfUpper"), rule: Range })
 ok:51595ee9789e1c56
 ok:411e0c1fae953a5e
 err:Structure(OutOfBounds)
@@ -2685,7 +2685,7 @@ ok:411e0c1fae953a5e
 ok:411e0c1fae953a5e
 err:Structure(MissingRequired)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "InlineRange", rule: Range })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Range })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 ok:411e0c1fae953a5e
@@ -2702,15 +2702,15 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "InlineRange", rule: Step })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Step })
 ok:89348fee0b8e6418
-err:Contract(Violation { type_name: "InlineRange", rule: Step })
-err:Contract(Violation { type_name: "InlineRange", rule: Step })
-err:Contract(Violation { type_name: "InlineRange", rule: Range })
-err:Contract(Violation { type_name: "InlineRange", rule: Step })
-err:Contract(Violation { type_name: "InlineRange", rule: Step })
-err:Contract(Violation { type_name: "InlineRange", rule: Range })
-err:Contract(Violation { type_name: "InlineRange", rule: Range })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Step })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Step })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Range })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Step })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Step })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Range })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Range })
 ok:4e345b2e7b950e82
 ok:f5f8502acff6f8c4
 ok:f7e6937941fdfc3a
@@ -2726,6 +2726,6 @@ ok:6c9f18cf8427a1d1
 ok:4900a8cf24ef7ac0
 ok:257ce8bdef1aa097
 ok:4b360dac8f8c14ba
-err:Contract(Violation { type_name: "InlineRange", rule: Range })
+err:Contract(Violation { type_name: Some("InlineRange"), rule: Range })
 ok:9628c5f74dead3df
 ok:9876e3aec78fb188

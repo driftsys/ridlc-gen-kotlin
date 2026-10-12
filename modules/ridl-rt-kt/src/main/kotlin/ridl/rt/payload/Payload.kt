@@ -98,8 +98,13 @@ public enum class Malformed {
 
 /** A value that breaks a typl constraint. `ridl_rt::payload::Violation`. */
 public data class Violation(
-    /** The name of the typl type whose constraint failed. */
-    public val typeName: String,
+    /**
+     * The name of the typl type whose constraint failed, when this side
+     * detected the violation; `null` when a peer reported it, as a frame
+     * carries the [rule] of an `INVALID_VALUE` outcome alone (frame
+     * specification §9.6).
+     */
+    public val typeName: String?,
     /** The kind of constraint that failed. */
     public val rule: Rule,
 )

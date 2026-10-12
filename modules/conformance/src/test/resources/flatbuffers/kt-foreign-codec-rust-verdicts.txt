@@ -118,7 +118,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:8801a0a4d4502db3
 ok:a66a36a7b6b698b0
 ok:a66a36a7b6b698b0
@@ -201,7 +201,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:b7def7335c2a4f3d
 ok:a66a36a7b6b698b0
 ok:a66a36a7b6b698b0
@@ -280,7 +280,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:500cb26d111e2382
 ok:5decf26db9765413
 ok:5decf26db9765413
@@ -360,9 +360,9 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:9059c10aec40cf70
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:91715436f4f88f2c
 ok:339e606ac585755d
 ok:339e606ac585755d
@@ -494,7 +494,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:426ebb46ec92d0e6
 ok:4f968cf011990861
 ok:4f968cf011990861
@@ -629,10 +629,10 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 ok:9f4403836dc5cc06
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:f5c3d9a2426c8787
 ok:6ceec240d00e1033
-err:Contract(Violation { type_name: "Small", rule: Range })
+err:Contract(Violation { type_name: Some("Small"), rule: Range })
 ok:95a2930b50eab0c5
 ok:9c40b5fd2f0f25b5
 ok:9c40b5fd2f0f25b5

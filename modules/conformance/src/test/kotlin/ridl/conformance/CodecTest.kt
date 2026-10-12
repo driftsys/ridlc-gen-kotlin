@@ -103,7 +103,7 @@ class CodecTest {
             // checks only under its `validate-pattern` feature. Since ridl
             // 0.5.1 (driftsys/ridl#654) the Rust verifier checks every step,
             // every non-finite float and every inline constraint, as Kotlin does.
-            val violation = Regex("""err:Contract\(Violation \{ type_name: "([^"]+)", rule: (\w+) \}\)""")
+            val violation = Regex("""err:Contract\(Violation \{ type_name: (Some\("[^"]+"\)|None), rule: (\w+) \}\)""")
             fun kotlinOnly(verdict: String): Boolean = violation.matchEntire(verdict)?.destructured?.component2() == "Pattern"
             val stricter = mutableListOf<String>()
             val disagreements = mutableListOf<String>()

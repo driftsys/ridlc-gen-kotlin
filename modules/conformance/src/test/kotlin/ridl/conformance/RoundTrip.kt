@@ -74,7 +74,7 @@ object RoundTrip {
             |private fun debug(error: VerifyError): String = when (error) {
             |    is VerifyError.Structure -> "Structure(${'$'}{error.malformed.name})"
             |    is VerifyError.Contract ->
-            |        "Contract(Violation { type_name: \"${'$'}{error.violation.typeName}\", rule: ${'$'}{error.violation.rule.name} })"
+            |        "Contract(Violation { type_name: ${'$'}{error.violation.typeName?.let { "Some(\"${'$'}it\")" } ?: "None"}, rule: ${'$'}{error.violation.rule.name} })"
             |}
             |
             |private fun <T> roundTrip(codec: Payload<T, TableView>, hex: String): String {
