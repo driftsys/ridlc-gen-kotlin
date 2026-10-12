@@ -202,7 +202,11 @@ public data class Member(
      * The bytes one in-flight instance of this member reserves in [encoding]:
      * the sum of [PayloadInfo.maxSize] for [encoding] over its [payloads] —
      * one payload for most kinds, two for a `query`, the request and then the
-     * reply. `ridl_rt::contract::Member::reservation`.
+     * reply. A `fixed` reserves `0`, whatever its payload, because a fixed
+     * value is provisioned and never in flight (driftsys/ridl#904): its row
+     * of `ridl_rt::contract::Sizes::RESERVATIONS`, and the codegen model's
+     * `Interaction.reservation`, are `0` as well.
+     * `ridl_rt::contract::Member::reservation`.
      *
      * No specification defines this budget. It is derived from the
      * descriptors alone, so that every runtime sizing a table of calls in
@@ -212,6 +216,7 @@ public data class Member(
      *   [encoding] is `null`: a missing size is reported, never estimated.
      */
     public fun reservation(encoding: Encoding): ULong {
+        if (kind == Kind.Fixed) return 0uL
         var total = 0uL
         for (payload in payloads) {
             val size = encoding.maxSize(payload.maxSize) ?: throw Unsized(ordinal, name, payload.typeName)
@@ -228,7 +233,7 @@ public data class Member(
  * each. `ridl_rt::contract::table_budget`.
  *
  * No specification defines this budget. It is derived from the descriptors
- * alone, and it counts every member it is given, whatever its kind.
+ * alone, and it counts every member it is given, a `fixed` as `0`.
  *
  * @throws Unsized for the first member, in the order given, whose reservation
  *   has a payload with no size for [encoding].

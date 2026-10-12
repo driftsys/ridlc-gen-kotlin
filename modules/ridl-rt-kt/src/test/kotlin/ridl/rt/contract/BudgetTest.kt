@@ -98,11 +98,20 @@ class BudgetTest {
         assertEquals(0uL, temperature.copy(payloads = emptyList()).reservation(Encoding.ReprC))
     }
 
-    /** `Interface.members`: a table budget sums every member, whatever its kind. */
+    /** `Interface.members`: a table budget sums every member, a `fixed` as `0`. */
     @Test
     fun `a table budget sums every member`() {
-        assertEquals((16 + 24 + (32 + 520) + 12 + 10).toULong(), tableBudget(climate, Encoding.FlatBuffers))
-        assertEquals((5 + 7 + (11 + 300) + 3 + 2).toULong(), tableBudget(climate, Encoding.Proto3))
+        assertEquals((16 + 24 + (32 + 520) + 12).toULong(), tableBudget(climate, Encoding.FlatBuffers))
+        assertEquals((5 + 7 + (11 + 300) + 3).toULong(), tableBudget(climate, Encoding.Proto3))
+    }
+
+    /** A `fixed` is never in flight (driftsys/ridl#904): it reserves nothing, even when its payload has no size. */
+    @Test
+    fun `a fixed member reserves nothing`() {
+        assertEquals(0uL, zoneCount.reservation(Encoding.FlatBuffers))
+        val unsized = zoneCount.copy(payloads = listOf(PayloadInfo("Count", EncodedSizes(2u, null, null))))
+        assertEquals(0uL, unsized.reservation(Encoding.FlatBuffers))
+        assertEquals((16 + 24 + (32 + 520) + 12).toULong(), tableBudget(climate - zoneCount + unsized, Encoding.FlatBuffers))
     }
 
     /** `Interface.members` and `EncodedSizes`: the first unsized member in the order given is reported. */
