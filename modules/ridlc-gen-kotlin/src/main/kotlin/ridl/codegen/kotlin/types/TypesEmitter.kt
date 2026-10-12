@@ -49,7 +49,11 @@ class EmittedTypes(val path: String, val text: String?, val errors: List<String>
  * with KotlinPoet (D-K2). One Kotlin declaration per model declaration and
  * per induced tuple, and the constants in one `object Constants_`.
  */
-class TypesEmitter(private val model: Model, private val options: Options) {
+class TypesEmitter internal constructor(
+    private val model: Model,
+    private val options: Options,
+    private val links: Links = Links(model, options.kotlinPackage, emptySet()),
+) {
     private val pkg = options.kotlinPackage
     private val file = FileSpec.builder(pkg, "Types").jvmName("Types")
     private val errors = mutableListOf<String>()
@@ -162,8 +166,9 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         else -> refuse("scalar class `${scalar.class_}` is not one this plugin reads")
     }
 
-    private fun TypeSpec.Builder.header(declaration: Declaration): TypeSpec.Builder = apply {
-        if (declaration.doc.isNotEmpty()) addKdoc("%L", declaration.doc)
+    /** The declaration's KDoc, with [sentence] after its doc text, its visibility and its deprecation. */
+    private fun TypeSpec.Builder.header(declaration: Declaration, sentence: String? = null): TypeSpec.Builder = apply {
+        doc(links.kdoc(DocParts.of(declaration), sentence))
         if (declaration.visibility == Visibility.VISIBILITY_INTERNAL) addModifiers(KModifier.INTERNAL)
         if (declaration.hasDeprecated()) addDeprecation(declaration.deprecated)
     }
@@ -202,13 +207,12 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         }
         val checks = scalarChecks(scalar, "value", pattern) { rule -> CodeBlock.of("return %T.%L\n", RULE, rule) }
         val builder = if (bytes) bytesScalar(self, checks == null) else valueScalar(self, backing, checks == null)
-        builder.header(declaration)
-        if (!scalar.constraint.hasPattern() && scalar.constraint.hasPatternConst()) {
-            builder.addKdoc(
-                "\n\nThe pattern `%L` did not resolve, so it is not checked.",
-                scalar.constraint.patternConst,
-            )
+        val unresolved = if (!scalar.constraint.hasPattern() && scalar.constraint.hasPatternConst()) {
+            "The pattern `${scalar.constraint.patternConst}` did not resolve, so it is not checked."
+        } else {
+            null
         }
+        builder.header(declaration, unresolved)
         if (checks != null) {
             val construct = if (bytes) "%T(value.copyOf())" else "%T(value)"
             companion.addFunction(
@@ -303,6 +307,8 @@ class TypesEmitter(private val model: Model, private val options: Options) {
      * Kotlin spelling and is left out, as the Rust backend leaves it out.
      */
     private fun constant(declaration: Declaration, constant: Constant): PropertySpec? {
+        // The one rule for which constants are spelled, which doc links read too.
+        if (!model.constantEmitted(constant)) return null
         val name = declaration.name.declared
         val property = when (constant.typedCase) {
             Constant.TypedCase.REGEX_BODY ->
@@ -328,7 +334,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             }
             else -> return null
         }
-        if (declaration.doc.isNotEmpty()) property.addKdoc("%L", declaration.doc)
+        property.doc(links.kdoc(DocParts.of(declaration)))
         if (declaration.visibility == Visibility.VISIBILITY_INTERNAL) property.addModifiers(KModifier.INTERNAL)
         if (declaration.hasDeprecated()) {
             deprecated = true
@@ -371,7 +377,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         for (value in enum.valuesList) {
             val constant = TypeSpec.anonymousClassBuilder()
                 .addSuperclassConstructorParameter("%L", Literals.long(value.value.toString()))
-            if (value.doc.isNotEmpty()) constant.addKdoc("%L", value.doc)
+            constant.doc(links.kdoc(DocParts.of(value)))
             builder.addEnumConstant(enumEntry(value.name), constant.build())
         }
         builder.addType(
@@ -406,7 +412,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         for (bit in set.bitsList) {
             if (bit.value !in 0..63) refuse("the bit of `${bit.name.declared}` is ${bit.value}, outside 0..63")
             val property = PropertySpec.builder(enumSetBit(bit.name), self).initializer("%T(1L shl %L)", self, bit.value)
-            if (bit.doc.isNotEmpty()) property.addKdoc("%L", bit.doc)
+            property.doc(links.kdoc(DocParts.of(bit)))
             companion.addProperty(property.build())
         }
         companion
@@ -471,7 +477,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
                 .addSuperinterface(self)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("value", armType).build())
                 .addProperty(PropertySpec.builder("value", armType).initializer("value").build())
-            if (arm.doc.isNotEmpty()) nested.addKdoc("%L", arm.doc)
+            nested.doc(links.kdoc(DocParts.of(arm)))
             builder.addType(nested.build())
         }
         return builder.build()
@@ -484,7 +490,7 @@ class TypesEmitter(private val model: Model, private val options: Options) {
         declared = declaration.name.declared,
         visibility = declaration.visibility,
         fields = struct.slotsList.filter { it.hasField() }.map { it.field },
-        doc = declaration.doc,
+        doc = links.kdoc(DocParts.of(declaration)),
         deprecation = if (declaration.hasDeprecated()) declaration.deprecated else null,
     )
 
@@ -537,9 +543,10 @@ class TypesEmitter(private val model: Model, private val options: Options) {
                 refuse("its fields `$it` and `${field.name.declared}` are both the property `$property`; rename one of them")
             }
             val type = kotlinType(field.type)
+            val fieldDoc = links.kdoc(DocParts.of(field))
             val parameter = ParameterSpec.builder(property, type)
             if (type.isNullable) parameter.defaultValue("null")
-            if (field.doc.isNotEmpty()) parameter.addKdoc("%L", field.doc)
+            parameter.doc(fieldDoc)
             constructor.addParameter(parameter.build())
             val bytes = type.copy(nullable = false) == BYTE_ARRAY
             val stored = if (bytes) "_$property" else property
@@ -547,12 +554,12 @@ class TypesEmitter(private val model: Model, private val options: Options) {
             if (bytes) {
                 builder.addProperty(PropertySpec.builder(stored, type, KModifier.PRIVATE).initializer(copy).build())
                 builder.addProperty(
-                    PropertySpec.builder(property, type).apply { if (field.doc.isNotEmpty()) addKdoc("%L", field.doc) }
+                    PropertySpec.builder(property, type).doc(fieldDoc)
                         .getter(FunSpec.getterBuilder().addStatement("return %L", copyOf("this.$stored", field.type)).build()).build(),
                 )
             } else {
                 val prop = PropertySpec.builder(property, type).initializer(copy)
-                if (field.doc.isNotEmpty()) prop.addKdoc("%L", field.doc)
+                prop.doc(fieldDoc)
                 if (field.hasDeprecated()) {
                     deprecated = true
                     prop.addAnnotation(

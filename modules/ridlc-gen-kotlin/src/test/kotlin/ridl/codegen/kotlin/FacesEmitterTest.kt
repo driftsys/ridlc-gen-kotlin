@@ -207,6 +207,28 @@ class FacesEmitterTest {
         )
     }
 
+    @Test
+    fun `an interaction's doc and rules reach every method a user calls or implements for it, and no internal one`() {
+        // #86, ADR-0028 decisions 6 and 7.
+        val rule = ridl.codegen.v1.ModelOuterClass.Rule.newBuilder().setText("require `level < 100`")
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(
+            command(1, "set", "Set").apply {
+                interactionBuilder.setDoc("Sets the level.").addRules(rule)
+                    .commandBuilder.getParamsBuilder(0).setDoc("The new level.")
+            },
+        )
+        val text = checkNotNull(faces("Level", iface = iface).text)
+        val documented = "   * Sets the level.\n   *\n   * %s\n   *\n   * Rules:\n   * - require `level < 100`\n   *\n   * @param level The new level.\n   */\n"
+        for ((sentence, signature) in listOf(
+            "Calls command `set` and waits for its outcome." to "  public fun `set`(level: Level) {",
+            "Calls command `set` and suspends until its outcome." to "  public suspend fun `set`(level: Level) {",
+        )) {
+            assertTrue(documented.format(sentence) + signature in text, "$signature\n$text")
+        }
+        assertTrue("Serves command `set`." in text && "@param level The new level.\n   */\n  public fun `set`(level: Level)\n" in text, text)
+        assertEquals(3, Regex("Sets the level\\.").findAll(text).count(), "the blocking and suspending clients and the provider, not the poll face")
+    }
+
     /** A signal, or an event, named [declared] and [camel], over one `Level`. */
     private fun slot(ordinal: Int, declared: String, camel: String, signal: Boolean) = InteractionSlot.newBuilder().setOrdinal(ordinal)
         .setInteraction(

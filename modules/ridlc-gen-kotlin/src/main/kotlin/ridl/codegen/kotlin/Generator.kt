@@ -4,6 +4,7 @@ import ridl.codegen.v1.Plugin.CodegenRequest
 import ridl.codegen.v1.Plugin.CodegenResponse
 import ridl.codegen.kotlin.types.CodecEmitter
 import ridl.codegen.kotlin.types.FacesEmitter
+import ridl.codegen.kotlin.types.Links
 import ridl.codegen.kotlin.types.TypesEmitter
 import ridl.codegen.kotlin.types.collisions
 import ridl.codegen.v1.Plugin.Diagnostic
@@ -34,9 +35,12 @@ object Generator {
         }
         // Step 4: the files. An interface the face cannot carry is skipped
         // with a warning, and the rest of the package is still generated.
-        val types = TypesEmitter(request.model, options).emit()
+        // Doc links point at an interface only when it has a face, which a
+        // first pass of the face emitter finds (ADR-0028 decision 6).
+        val links = Links(request.model, options.kotlinPackage, FacesEmitter(request.model, options).faced())
+        val types = TypesEmitter(request.model, options, links).emit()
         val codec = CodecEmitter(request.model, options).emit()
-        val faces = FacesEmitter(request.model, options).emit()
+        val faces = FacesEmitter(request.model, options, links).emit()
         val errors = types.errors + codec.errors + faces.errors
         if (errors.isNotEmpty()) return failure(errors)
         // Two generated types of one name: every file's names are one

@@ -19,6 +19,9 @@ value in range:
 ```kotlin
 /**
  * A percentage of full scale.
+ *
+ * Rules:
+ * - range 0 ..= 100
  */
 @JvmInline
 public value class Level private constructor(
@@ -148,12 +151,31 @@ The provider interface has one method per command and query:
 ```kotlin
 public interface CabinProvider {
   /**
+   * Sets the cabin level, below 100.
+   *
    * Serves command `setLevel`. A command has no failure the application reports (ridl §6.1); arguments that break their constraints or `require` never reach it.
+   *
+   * Rules:
+   * - response within 50000 us
+   * - require `level < 100`
+   *
+   * @param level
+   * - range 0 ..= 100
    */
   public fun setLevel(level: Level)
 
   /**
+   * The average level over the window, in milliseconds.
+   *
    * Serves query `average`. A reply that breaks an `ensure` clause is discarded, and `ContractBroken` settled.
+   *
+   * Rules:
+   * - response within 200000 us
+   * - require `window > 0`
+   * - ensure `result >= 0`
+   *
+   * @param window
+   * - range 0 ..= 100000
    */
   public fun average(window: Window): Average
 }
@@ -234,3 +256,26 @@ Some operations are extension functions in the same package rather than members:
 blocking client's `timeout` property, each signal's state on the suspending
 client, and `commit`, `invalidate<Signal>` and `touch<Signal>` on the publisher.
 Import them by name, or import `veh.cabin.*`.
+
+## Documentation
+
+Each `///` comment of the `.ridl` source becomes the KDoc of what it documents,
+and the generated KDoc adds what the source states about the item:
+
+- **Links.** A `[Name]` link in a comment becomes a KDoc link to the generated
+  Kotlin item: `[Level][veh.cabin.Level]`. A link to an item this package does
+  not generate, an `internal` one, or a constant Kotlin cannot spell, becomes
+  the qualified name in a code span instead, so no link dangles.
+- **Rules.** A `Rules:` list holds every rule the source declares on the item,
+  one per line, in the wording `ridl` itself uses: a range, a step, a unit, a
+  length, a pattern, a timing, a response bound, a `require` or an `ensure`
+  clause. The list states the contract; which of these the generated code checks
+  is described in the sections above.
+- **Interactions.** The comment and rules of a signal, an event, a command or a
+  query go on each method you call or implement for it: the clients' methods,
+  the provider's method and the publisher's method. For an event, that is
+  `subscribe<Event>`. A call's parameter has its own comment and rules under
+  `@param`.
+- **Tags.** `@see` and `@since` become the KDoc tags of the same name, and
+  `@deprecated` becomes Kotlin's `@Deprecated` annotation. `@labels` is not
+  rendered.

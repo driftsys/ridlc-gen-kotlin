@@ -135,7 +135,11 @@ class EmittedFaces(
  * interface takes are its claims, which the generator checks with every other
  * file's.
  */
-class FacesEmitter(private val model: Model, private val options: Options) {
+class FacesEmitter internal constructor(
+    private val model: Model,
+    private val options: Options,
+    private val links: Links = Links(model, options.kotlinPackage, emptySet()),
+) {
     private val pkg = options.kotlinPackage
     private val file = FileSpec.builder(pkg, "Faces").jvmName("Faces")
     private val wires = Wires(model, pkg)
@@ -153,6 +157,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
     /** The top-level types of the interfaces faced so far, and what each is generated for. */
     private val claims = mutableListOf<Claim>()
+
+    /**
+     * The indices into `model.interfaces` of the interfaces [emit] gives a
+     * face: a declared one the face does not refuse. The doc links read it
+     * before any file is written, so this emitter is spent after it.
+     */
+    fun faced(): Set<Int> = model.interfacesList.withIndex().filter { (_, iface) ->
+        iface.hasDeclared() && runCatching { Face(iface, mutableListOf(), mutableListOf(), Extensions()).emit() }
+            .onFailure { if (it !is Refusal) throw it }.isSuccess
+    }.map { it.index }.toSet()
 
     fun emit(): EmittedFaces {
         val path = pkg.replace('.', '/') + "/Faces.kt"
@@ -501,6 +515,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             return Named(payload.type, payload.flatbuffersMaxSize)
         }
 
+        /**
+         * The KDoc of an item a user calls or implements for [m] (ADR-0028
+         * decision 6): the interaction's doc text, [sentence], its rules and
+         * tags, and the `@param` of [param].
+         */
+        private fun memberDoc(m: Member, sentence: String, param: Param? = null): String =
+            links.kdoc(DocParts.of(m.interaction), sentence, listOfNotNull(param?.let { it.name.property to DocParts.of(it) }))
+
+        private fun kind(m: Member): String = if (m.interaction.hasQuery()) "query" else "command"
+
         private fun signalPayload(m: Member) = named(m.interaction.signal.payload, "signal `${m.declared}`'s payload")
         private fun eventPayload(m: Member) = named(m.interaction.event.payload, "event `${m.declared}`'s payload")
 
@@ -565,7 +589,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val eventSizes = events.map { eventPayload(it).maxSize }
             val rows = members.map { row(it) }.joinToCode(",\n")
             val builder = TypeSpec.objectBuilder(self).visibility()
-                .addKdoc("The descriptor of interface `%L`.", iface.declared.declared)
+                .doc(links.kdoc(DocParts.of(iface), "The descriptor of interface `${iface.declared.declared}`."))
                 .addSuperinterface(INTERFACE)
                 .addProperty(
                     PropertySpec.builder("catalog", CATALOG_REF, KModifier.OVERRIDE)
@@ -915,12 +939,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val payload = signalPayload(m)
                 builder.addFunction(
                     FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(payload.type))
-                        .addKdoc(
-                            "Reads signal `%L`, with the provenance, freshness and envelope the runtime resolved. A channel " +
-                                "with no value under `Init` or `Invalid(Declared)` holds its init value; bytes that fail their " +
-                                "check, none under any other provenance included, read as the init value under " +
-                                "`Provenance.Invalid` with what was detected.",
-                            m.declared,
+                        .doc(
+                            "Reads signal `${m.declared}`, with the provenance, freshness and envelope the runtime resolved. " +
+                                "A channel with no value under `Init` or `Invalid(Declared)` holds its init value; bytes that " +
+                                "fail their check, none under any other provenance included, read as the init value under " +
+                                "`Provenance.Invalid` with what was detected."
+                                .let { if (pollFace) it else memberDoc(m, it) },
                         )
                         .addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, payload.codec)
                         .addStatement("return sampled(%T, %T, port.read(%L, %L, buf), buf)", payload.codec, m.descriptor, number(), ordinal(m))
@@ -929,7 +953,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             if (events.isNotEmpty()) {
                 val receiver = Receiver(className, bounds, pollFace || internal)
-                subscriptions(receiver)
+                subscriptions(receiver, facade = !pollFace)
                 extensions.functions += receiver.extension("nextEvent").returns(self.nestedClass("Event").copy(nullable = true))
                     .addKdoc(
                         "Takes the next occurrence of any subscribed event of `%L`, or `null` when none is waiting. An " +
@@ -1002,7 +1026,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             for (m in signals) {
                 addFunction(
                     FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(signalPayload(m).type))
-                        .addKdoc("Reads signal `%L`, as the runtime resolved it. It does not wait.", m.declared)
+                        .doc(memberDoc(m, "Reads signal `${m.declared}`, as the runtime resolved it. It does not wait."))
                         .addStatement("return poll.%N()", m.method).build(),
                 )
             }
@@ -1041,13 +1065,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             for (m in signals) {
                 val payload = signalPayload(m)
                 extensions.properties += receiver.extensionVal(m.method, SIGNAL_STATE.parameterizedBy(payload.type))
-                    .addKdoc(
-                        "Signal `%L` as a `StateFlow` of its samples: each publication a poll reads and a turn to stale or " +
-                            "invalid. It polls the port while it has a subscriber, at the signal's rate floor on the " +
-                            "client's grid, until 3 s after the last one left; `value` is the last sample polled, or a fresh " +
-                            "read while nothing polls, and `read()` always reads the port. `every(period)` is the same " +
-                            "signal at a slower rate, `values` its values alone. See `SignalState`.",
-                        m.declared,
+                    .doc(
+                        memberDoc(
+                            m,
+                            "Signal `${m.declared}` as a `StateFlow` of its samples: each publication a poll reads and a " +
+                                "turn to stale or invalid. It polls the port while it has a subscriber, at the signal's rate " +
+                                "floor on the client's grid, until 3 s after the last one left; `value` is the last sample " +
+                                "polled, or a fresh read while nothing polls, and `read()` always reads the port. " +
+                                "`every(period)` is the same signal at a slower rate, `values` its values alone. See " +
+                                "`SignalState`.",
+                        ),
                     )
                     .getter(
                         FunSpec.getterBuilder()
@@ -1128,9 +1155,10 @@ class FacesEmitter(private val model: Model, private val options: Options) {
          * `subscribe<Event>` and `unsubscribe<Event>` of every event, as
          * extensions of [receiver]'s client, whose port is its property [port].
          */
-        private fun subscriptions(receiver: Receiver, port: String = "port") {
+        private fun subscriptions(receiver: Receiver, port: String = "port", facade: Boolean = true) {
             for (m in events) {
-                extensions.functions += receiver.extension("subscribe${m.camel}").addKdoc("Starts delivery of event `%L`.", m.declared)
+                val sentence = "Starts delivery of event `${m.declared}`."
+                extensions.functions += receiver.extension("subscribe${m.camel}").doc(if (facade) memberDoc(m, sentence) else sentence)
                     .addStatement("%N.subscribe(%L, listOf(%L))", port, number(), ordinal(m)).build()
                 extensions.functions += receiver.extension("unsubscribe${m.camel}").addKdoc("Stops delivery of event `%L`.", m.declared)
                     .addStatement("%N.unsubscribe(%L, listOf(%L))", port, number(), ordinal(m)).build()
@@ -1181,7 +1209,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val (param, arg) = argument(m)
                 val value = param.name.property
                 val f = FunSpec.builder(m.method).addParameter(value, arg.type)
-                    .addKdoc("Calls %L `%L` and waits for its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
+                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and waits for its outcome.", param))
                 if (m.interaction.hasQuery()) {
                     f.returns(reply(m).type).addStatement("return %T(this.port, %N).block(this.timeoutBound)", callClass(m), value)
                 } else {
@@ -1237,7 +1265,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val (param, arg) = argument(m)
                 val value = param.name.property
                 val f = FunSpec.builder(m.method).addModifiers(KModifier.SUSPEND).addParameter(value, arg.type)
-                    .addKdoc("Calls %L `%L` and suspends until its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
+                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and suspends until its outcome.", param))
                 if (m.interaction.hasQuery()) {
                     f.returns(reply(m).type).addStatement("return this._calls.%M { %T(this._port, %N).await() }", WITH_LOCK, callClass(m), value)
                 } else {
@@ -1339,7 +1367,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 val payload = signalPayload(m)
                 builder.addFunction(
                     FunSpec.builder(m.method).addParameter("value", payload.type)
-                        .addKdoc("Stages a new value for signal `%L`, published by `commit`.", m.declared)
+                        .doc(memberDoc(m, "Stages a new value for signal `${m.declared}`, published by `commit`."))
                         .addStatement("port.set(%L, %L, encoded(%T, value))", number(), ordinal(m), payload.codec).build(),
                 )
                 extensions.functions += receiver.extension("invalidate${m.camel}")
@@ -1352,7 +1380,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             for (m in events) {
                 builder.addFunction(
                     FunSpec.builder(m.method).addParameter("value", eventPayload(m).type)
-                        .addKdoc("Raises one occurrence of event `%L`.", m.declared)
+                        .doc(memberDoc(m, "Raises one occurrence of event `${m.declared}`."))
                         .addStatement("port.raise(%L, %L, encoded(%T, value), null)", number(), ordinal(m), eventPayload(m).codec).build(),
                 )
             }
@@ -1371,10 +1399,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 builder.addFunction(
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
                         .addParameter(param.name.property, arg.type)
-                        .addKdoc(
-                            "Serves command `%L`. A command has no failure the application reports (ridl §6.1); arguments " +
-                                "that break their constraints or `require` never reach it.",
-                            m.declared,
+                        .doc(
+                            memberDoc(
+                                m,
+                                "Serves command `${m.declared}`. A command has no failure the application reports (ridl " +
+                                    "§6.1); arguments that break their constraints or `require` never reach it.",
+                                param,
+                            ),
                         ).build(),
                 )
             }
@@ -1384,7 +1415,14 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
                         .addParameter(param.name.property, arg.type)
                         .returns(reply(m).type)
-                        .addKdoc("Serves query `%L`. A reply that breaks an `ensure` clause is discarded, and `ContractBroken` settled.", m.declared)
+                        .doc(
+                            memberDoc(
+                                m,
+                                "Serves query `${m.declared}`. A reply that breaks an `ensure` clause is discarded, and " +
+                                    "`ContractBroken` settled.",
+                                param,
+                            ),
+                        )
                         .build(),
                 )
             }
