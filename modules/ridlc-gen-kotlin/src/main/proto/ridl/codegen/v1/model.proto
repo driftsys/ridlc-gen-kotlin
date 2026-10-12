@@ -533,9 +533,11 @@ message Interaction {
   // Absent for a fixed, and for a call with no declared bound.
   Timing timing = 7;
   // The memory a call table reserves for the member, per wire encoding: the
-  // sum of the sizes of its payloads. A signal, an event and a fixed member
-  // have one payload, a command has its request, and a query has its request
-  // and then its reply.
+  // sum of the sizes of its payloads. A signal and an event have one payload,
+  // a command has its request, and a query has its request and then its
+  // reply. A fixed member counts no payload and is always `bytes` 0, whatever
+  // its payload: a fixed value is provisioned and never in flight, which is
+  // the same number the runtime's size table carries for it.
   Reservation reservation = 8;
   // The family of the interaction (ADR-0012 decision 6), copied from the IR.
   // A plugin that does not read it sees the core kind.
@@ -602,7 +604,10 @@ enum AbsentCause {
   ABSENT_CAUSE_UNSPECIFIED = 0;
   // No codec defines the encoding of the shape.
   ABSENT_CAUSE_ENCODING_UNDEFINED = 1;
-  // proto3 only: the type has no message of its own.
+  // proto3 only: the type has no message of its own. No declaration kind
+  // produces it: a named scalar, an enum and an enum set each have the root
+  // box message `<Name>Box` the proto backend emits for them. The value is
+  // kept so that the codegen protocol keeps its numbering.
   ABSENT_CAUSE_NO_MESSAGE = 2;
   // proto3 only: every failure inside the message other than the depth
   // limit — a member the proto backend refuses, a name inside the message
@@ -638,8 +643,8 @@ message ReservationState {
     //   state is not bounded. `<role>` is `payload`, `request` or `reply`.
     //   `<payload>` is the payload's type reference when it is one named
     //   type, and otherwise what the shape is: the kind word `primitive`,
-    //   `inline scalar`, `tuple`, `map`, `stream`, `array of <element>`,
-    //   `no type` or `no payload`; the parameter list `(a, b)` of a request
+    //   `inline scalar`, `tuple`, `map`, `stream`, `array of <element>` or
+    //   `no type`; the parameter list `(a, b)` of a request
     //   whose parameters are not exactly one named type — zero parameters,
     //   several parameters, or one parameter that is an array, a tuple, a
     //   map, a stream, an inline scalar, a primitive or untyped;
@@ -683,8 +688,11 @@ message CommandShape {
   // The size state of the request under each wire encoding, for every
   // command. Where the request is exactly one named type, the state is that
   // type's own, which may be absent under one encoding and present under the
-  // other: a named scalar is `ABSENT_CAUSE_NO_MESSAGE` under proto3 and
-  // bounded under FlatBuffers. Otherwise it is absent under both encodings:
+  // other: a struct with a member the proto backend refuses, such as an
+  // optional array, is `ABSENT_CAUSE_REFUSED_MEMBER` under proto3 whatever
+  // its FlatBuffers state is. A named scalar, an enum and an enum set are
+  // sized through their proto3 root box message and their FlatBuffers box
+  // table. Otherwise it is absent under both encodings:
   // `ABSENT_CAUSE_ENCODING_UNDEFINED` for no parameter, for several
   // parameters, for an untyped parameter, and for a single parameter that is
   // a tuple, an array, a map, a stream, or a scalar a proto3 leaf bounds —
