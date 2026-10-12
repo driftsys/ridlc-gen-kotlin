@@ -128,11 +128,11 @@ a query sent, dispatched and replied — and `dispatch`'s settlement table is
 reached past the client: a failing `require`, a corrupt argument buffer, an
 argument outside its constraints, an unknown ordinal, another interface's
 number, a settlement the handler refuses, a buffer too short, and, since ridl
-0.4.0, a claim larger than `MAX_BUFFER_SIZE`: settled `Corrupt` with the claim
-behind it served, or ending the pass when that settlement is refused, while a
-`ReadError.Short` from `nextClaim` stays `ProviderError.Claim`. `kt-values`'
-`Probe`, driven through its blocking and async clients with `serve` and
-`serveAsync`, adds a failing `ensure` returned as
+0.4.0, a claim larger than the size table's `maxBufferSize`: settled `Corrupt`
+with the claim behind it served, or ending the pass when that settlement is
+refused, while a `ReadError.Short` from `nextClaim` stays `ProviderError.Claim`.
+`kt-values`' `Probe`, driven through its blocking and async clients with `serve`
+and `serveAsync`, adds a failing `ensure` returned as
 `ClientError.Call(ContractBroken)`, a float clause and a signal's own init, and
 settles a query by hand with every outcome a provider or a runtime can send: a
 corrupt reply is `Call(Corrupt)`, a reply outside its constraint

@@ -2,7 +2,6 @@
 // spelling of `ridl_rt::contract` (docs/design.md §3).
 package ridl.rt.contract
 
-import ridl.rt.RidlError
 import ridl.rt.encoding.Encoding
 import ridl.rt.sample.Duration
 
@@ -111,7 +110,55 @@ public interface Interface {
      * index of a row is not its ordinal minus one.
      */
     public val members: List<Member>
+
+    /**
+     * The interface's size table in [encoding]. `ridl_rt::contract::Sizes<E>`
+     * for the interface.
+     *
+     * @throws IllegalArgumentException when the package carries no codec for
+     *   [encoding], which Rust refuses at compile time (`Cabin: Sizes<Proto3>`
+     *   is not satisfied).
+     */
+    public fun sizes(encoding: Encoding): Sizes
 }
+
+/**
+ * The size table of an interface in one [encoding]: what a face and a runtime
+ * need to hold one table of calls in flight, or one payload whose type is not
+ * known before it is read, in that encoding. `ridl_rt::contract::Sizes<E>`.
+ *
+ * Generated code builds one per interface per codec the package carries, from
+ * each codec's [ridl.rt.payload.Payload.maxSize], the one source of a
+ * payload's bound, so a table cannot drift from its codec. Where Rust has the
+ * `ClaimBuffer` and `EventBuffer` array types, a Kotlin face allocates a
+ * buffer of [maxBufferSize] or [eventSourceBufferSize] bytes.
+ */
+public class Sizes(
+    /** The encoding the table sizes. */
+    public val encoding: Encoding,
+    /**
+     * Row `i` is the bytes one in-flight instance of `members[i]` reserves:
+     * the sum of `maxSize` over the member's payloads — one payload for most
+     * kinds, the request and then the reply for a `query`, none for a
+     * `fixed`, whose row is `0` because a fixed value is never in flight.
+     * The rows are parallel to [Interface.members].
+     * `Sizes::RESERVATIONS`.
+     */
+    public val reservations: List<ULong>,
+    /**
+     * The largest `maxSize` over the argument and reply payloads of the
+     * interface's commands and queries; `0` when it has none: a server's claim
+     * buffer, which receives a call before its member is known, is at least
+     * this large. `Sizes::MAX_BUFFER_SIZE`.
+     */
+    public val maxBufferSize: Int,
+    /**
+     * The largest `maxSize` over the interface's event payloads; `0` when it
+     * has none: the buffer `EventSource.next` fills before the event is known.
+     * `Sizes::EVENT_SOURCE_BUFFER_SIZE`.
+     */
+    public val eventSourceBufferSize: Int,
+)
 
 /** An interaction's descriptor: the part every kind has. `ridl_rt::contract::Interaction`. */
 public interface Interaction {
@@ -120,6 +167,14 @@ public interface Interaction {
 
     /** The interaction's row in [Interface.members]. */
     public val member: Member
+
+    /**
+     * The index of [member] in [Interface.members], which is also the
+     * interaction's row in every size table of the interface
+     * ([Sizes.reservations]), so a row is reached without a scan.
+     * `Interaction::ROW`.
+     */
+    public val row: Int
 }
 
 /** A `signal` (ridl §4). `ridl_rt::contract::Signal`. */
@@ -177,7 +232,8 @@ public data class Member(
     public val timing: Timing?,
     /**
      * One entry per payload: two for a `query` (the request, then the reply),
-     * one for every other kind.
+     * one for every other kind. A `fixed` has its one entry here although its
+     * row of [Sizes.reservations] is `0`.
      */
     public val payloads: List<PayloadInfo>,
 ) {
@@ -197,67 +253,35 @@ public data class Member(
      * of which is a call deadline, so call it on a `command` or a `query`.
      */
     public fun callDeadline(): Duration? = timing?.max
-
-    /**
-     * The bytes one in-flight instance of this member reserves in [encoding]:
-     * the sum of [PayloadInfo.maxSize] for [encoding] over its [payloads] —
-     * one payload for most kinds, two for a `query`, the request and then the
-     * reply. A `fixed` reserves `0`, whatever its payload, because a fixed
-     * value is provisioned and never in flight (driftsys/ridl#904): its row
-     * of `ridl_rt::contract::Sizes::RESERVATIONS`, and the codegen model's
-     * `Interaction.reservation`, are `0` as well.
-     * `ridl_rt::contract::Member::reservation`.
-     *
-     * No specification defines this budget. It is derived from the
-     * descriptors alone, so that every runtime sizing a table of calls in
-     * flight computes the same number.
-     *
-     * @throws Unsized naming this member and the first payload whose size for
-     *   [encoding] is `null`: a missing size is reported, never estimated.
-     */
-    public fun reservation(encoding: Encoding): ULong {
-        if (kind == Kind.Fixed) return 0uL
-        var total = 0uL
-        for (payload in payloads) {
-            val size = encoding.maxSize(payload.maxSize) ?: throw Unsized(ordinal, name, payload.typeName)
-            total = saturatingAdd(total, size.toULong())
-        }
-        return total
-    }
 }
 
 /**
- * The in-flight byte budget of a table of members in [encoding]: the sum of
- * [Member.reservation] over [members]. Pass an interface's
- * [Interface.members]; a table serving several interfaces adds the budget of
- * each. `ridl_rt::contract::table_budget`.
+ * The bytes one in-flight instance of [interaction] reserves in [encoding]:
+ * its row ([Interaction.row]) of the interface's size table
+ * ([Sizes.reservations]). `ridl_rt::contract::reservation`.
  *
- * No specification defines this budget. It is derived from the descriptors
- * alone, and it counts every member it is given, a `fixed` as `0`.
+ * It cannot fail on a package that carries a codec for [encoding], because a
+ * row exists for every member.
  *
- * @throws Unsized for the first member, in the order given, whose reservation
- *   has a payload with no size for [encoding].
+ * @throws IllegalArgumentException when the package carries no codec for
+ *   [encoding], which Rust refuses at compile time.
  */
-public fun tableBudget(members: List<Member>, encoding: Encoding): ULong =
-    members.fold(0uL) { total, member -> saturatingAdd(total, member.reservation(encoding)) }
+public fun reservation(interaction: Interaction, encoding: Encoding): ULong =
+    interaction.iface.sizes(encoding).reservations[interaction.row]
+
+/**
+ * The in-flight byte budget of [iface]'s table in [encoding]: the sum of its
+ * rows ([Sizes.reservations]), saturating. A table serving several
+ * interfaces adds the budget of each. `ridl_rt::contract::table_budget`.
+ *
+ * @throws IllegalArgumentException when the package carries no codec for
+ *   [encoding], which Rust refuses at compile time.
+ */
+public fun tableBudget(iface: Interface, encoding: Encoding): ULong =
+    iface.sizes(encoding).reservations.fold(0uL, ::saturatingAdd)
 
 /** `a + b`, clamped at the largest `ULong`, as Rust's `u64::saturating_add`. */
 private fun saturatingAdd(a: ULong, b: ULong): ULong = if (ULong.MAX_VALUE - a < b) ULong.MAX_VALUE else a + b
-
-/**
- * A payload with no size in the encoding a budget was asked for: its
- * [EncodedSizes] field for that encoding is `null`. The budget is not
- * computed, because a missing size is not estimated.
- * `ridl_rt::contract::Unsized`.
- */
-public class Unsized(
-    /** The member's ordinal. */
-    public val ordinal: Ordinal,
-    /** The member's name. */
-    public val member: String,
-    /** The name of the payload type that has no size. */
-    public val typeName: String,
-) : RidlError("member `$member` (ordinal ${ordinal.value}): payload `$typeName` has no size in this encoding")
 
 /** The form of a timing annotation (ridl §9). `ridl_rt::contract::TimingMode`. */
 public enum class TimingMode {
@@ -284,27 +308,14 @@ public data class Timing(
     public val max: Duration?,
 )
 
-/** One payload of a member. `ridl_rt::contract::PayloadInfo`. */
+/**
+ * One payload of a member. `ridl_rt::contract::PayloadInfo`.
+ *
+ * A payload's size in an encoding is not here: it is the member's row of the
+ * interface's size table ([Sizes.reservations]), which derives from the
+ * payload type's own codec for that encoding.
+ */
 public data class PayloadInfo(
     /** The payload type's name. */
     public val typeName: String,
-    /** The payload's largest encoded size in each core encoding. */
-    public val maxSize: EncodedSizes,
-)
-
-/**
- * A payload's largest encoded size in bytes, one field per core encoding.
- * `ridl_rt::contract::EncodedSizes`.
- *
- * A field is `null` when the toolchain cannot size the payload for that
- * encoding; a consumer reads `null` as "no size is available here", never as
- * "this payload cannot be encoded this way".
- */
-public data class EncodedSizes(
-    /** The proto3 size. */
-    public val proto3: UInt?,
-    /** The FlatBuffers size. */
-    public val flatbuffers: UInt?,
-    /** The `repr(C)` size. */
-    public val reprC: UInt?,
 )

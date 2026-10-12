@@ -255,7 +255,7 @@ class FacesEmitterTest {
     fun `each signal is a state of the async client, read through one shared decode`() {
         // #76: the timing travels on the descriptor; the runtime turns it into the polling period.
         val text = gauge(timing(TimingMode.TIMING_MODE_RANGE, "20000", "500000"))
-        assertTrue("public val <P : SignalReader> GaugeAsyncClient<P>.level: SignalState<Level>" in text, text)
+        assertTrue("public val <P> GaugeAsyncClient<P>.level: SignalState<Level> where P : SignalReader, P : Encoded" in text, text)
         assertTrue("get() = _signalStates.of(GaugeLevel, null, LevelCodec.maxSize) { raw, buf -> sampled(LevelCodec, GaugeLevel, raw, buf) }" in text, text)
         assertTrue("return sampled(LevelCodec, GaugeLevel, port.read(Gauge.number, Ordinal(1u), buf), buf)" in text, "the blocking read decodes the same way")
         assertFalse("levelFlow" in text, "the cold flow is gone")
@@ -264,7 +264,7 @@ class FacesEmitterTest {
     @Test
     fun `a signal-only interface gets a suspending client of signal states, polled in a scope it owns by default`() {
         val text = gauge(null)
-        assertTrue("public class GaugeAsyncClient<P : SignalReader>(" in text, text)
+        assertTrue("public class GaugeAsyncClient<P>(" in text && ") where P : SignalReader, P : Encoded {" in text, text)
         assertTrue("scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)," in text, text)
         assertTrue("grid: PollGrid = PollGrid.Default," in text, text)
         assertTrue("internal val _signalStates: SignalStates = SignalStates(port, scope, grid)" in text, text)

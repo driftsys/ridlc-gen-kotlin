@@ -23,8 +23,10 @@ import ridl.rt.contract.Kind
 import ridl.rt.contract.Member
 import ridl.rt.contract.Ordinal
 import ridl.rt.contract.Signal
+import ridl.rt.contract.Sizes
 import ridl.rt.contract.Timing
 import ridl.rt.contract.TimingMode
+import ridl.rt.encoding.Encoding
 import ridl.rt.port.RawSample
 import ridl.rt.port.ReadError
 import ridl.rt.port.SignalReader
@@ -69,6 +71,7 @@ class SignalStateTest {
 
     private class Level(timing: Timing?, override val iface: Interface = Gauge) : Signal<Int> {
         override val member = Member(Ordinal(1u), Kind.Signal, "level", timing, emptyList())
+        override val row = 0
 
         override fun init() = 0
     }
@@ -79,6 +82,8 @@ class SignalStateTest {
         override val provisional = false
         override val name = "Gauge"
         override val members get() = emptyList<Member>()
+
+        override fun sizes(encoding: Encoding): Sizes = throw IllegalArgumentException("no codec")
     }
 
     private fun range(minMs: Long?, maxMs: Long?) =

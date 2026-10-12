@@ -19,6 +19,7 @@ import ridl.rt.RidlError
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.encoding.Encoding
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Envelope
 import ridl.rt.sample.Freshness
@@ -32,6 +33,22 @@ import java.nio.ByteBuffer
 public interface Attached {
     /** The catalog this port serves. */
     public val catalog: CatalogRef
+}
+
+/**
+ * The encoding of the bytes a port carries. `ridl_rt::port::Encoded`.
+ *
+ * A separate interface, not a supertype of [Attached], so a port that never
+ * meets a face — a conformance fixture — is not forced to name an encoding.
+ * A generated face takes its payload encoding from its port: every face over
+ * a port requires `Encoded`, and refuses at construction a port whose
+ * [encoding] the package carries no codec for, which Rust refuses at compile
+ * time. Rust states the encoding as the port's associated type; Kotlin, whose
+ * generics are erased, as a value the face reads from the port.
+ */
+public interface Encoded {
+    /** The encoding of the bytes this port carries. */
+    public val encoding: Encoding
 }
 
 /** The clock envelopes are stamped from. A runtime has one. `ridl_rt::port::Clock`. */
@@ -356,7 +373,7 @@ public sealed class ReadError(message: String) : RidlError(message) {
      * it under the same [claim]. The id is reported so that a provider can
      * settle the claim without reading its arguments; the generated `serve`
      * settles it `CallError.Transport(Transport.Corrupt)`, because arguments
-     * that do not fit the serving interface's `MAX_BUFFER_SIZE` are not a
+     * that do not fit the serving interface's `Sizes.maxBufferSize` are not a
      * well-formed encoding of any of its members (ADR-0021 decision 5,
      * amended 2026-09-28). [trace] is the context the call was sent with,
      * under the delivery contract of [Caller], so that a provider that settles

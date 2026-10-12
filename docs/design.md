@@ -141,23 +141,25 @@ it compiles and its round trips run on a workstation with no Android SDK.
 item it spells, so ADR-0021's decisions and the frame specification apply to it
 without a second record. The table is the contract of the module:
 
-| `ridl-rt`                                                                                           | `ridl-rt-kt`                                                                                                                                          | Note                                                 |
-| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `Ordinal(u32)`, `InterfaceNo(u32)`                                                                  | `@JvmInline value class Ordinal(val value: UInt)`, `InterfaceNo` likewise                                                                             | inline, so a port method takes them at no allocation |
-| `CatalogHash([u8; 32])`, `CatalogRef`                                                               | `class CatalogHash(bytes: ByteArray)` with structural equality, `data class CatalogRef(name, hash)`                                                   |                                                      |
-| `Kind` 1 to 5                                                                                       | `enum class Kind(val value: Int)` in the language order                                                                                               |                                                      |
-| `Member`, `Timing`, `TimingMode`, `PayloadInfo`, `EncodedSizes`                                     | `data class` each                                                                                                                                     | the `MEMBERS` row of a generated descriptor          |
-| `Timestamp(i64)`, `Duration(i64)`                                                                   | `value class` each over `Long`                                                                                                                        |                                                      |
-| `Envelope`, `Provenance`, `Cause`, `Detection`, `Freshness`                                         | `data class Envelope`, `sealed interface Provenance`, `enum class` for the rest                                                                       | as `sample.rs`                                       |
-| `Sample<T>`, `Occurrence<T>`                                                                        | `data class Sample<T>(value: T, envelope, provenance, freshness)`, `Occurrence<T>`                                                                    |                                                      |
-| `Correlation`, `ClaimId`, `Claim`                                                                   | `value class Correlation(Long)`, `ClaimId`, `data class Claim`                                                                                        | untyped, as ADR-0023 decision 4 keeps them           |
-| `Contract`, `Transport`, `CallError`                                                                | `sealed interface CallError` with `Contract` and `Transport` arms, each a `sealed interface` of the same variants                                     |                                                      |
-| `ReadError`, `WriteError`, `SendError`, `SubscribeError`, `RaiseError`, `ServeError`, `SettleError` | one `sealed interface` each, thrown, not returned                                                                                                     | D-K3                                                 |
-| `Attached`, `Clock`                                                                                 | `interface Attached { val catalog: CatalogRef }`, `interface Clock { fun now(): Timestamp }`                                                          |                                                      |
-| `SignalReader`, `SignalWriter`, `EventSource`, `EventSink`, `Caller`, `Handler`                     | one `interface` each, same method names, same semantics                                                                                               | §3, "the ports"                                      |
-| `FixedReader`, `ScannableSignals`, `CoherentSignals`                                                | the same three, optional for a runtime                                                                                                                |                                                      |
-| `Payload<E: Encoding>`                                                                              | `interface Payload<T> { val maxSize: Int; fun encode(value: T, out: ByteBuffer): Int; fun verify(buf: ByteBuffer): View; fun decode(view: View): T }` | one object per generated type per encoding, §4       |
-| `Encoding` with `FlatBuffers`, `Proto3`, `ReprC`                                                    | `enum class Encoding(val tag: Int)` 1, 2, 3                                                                                                           | the frame's tags                                     |
+| `ridl-rt`                                                                                           | `ridl-rt-kt`                                                                                                                                                                                | Note                                                 |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `Ordinal(u32)`, `InterfaceNo(u32)`                                                                  | `@JvmInline value class Ordinal(val value: UInt)`, `InterfaceNo` likewise                                                                                                                   | inline, so a port method takes them at no allocation |
+| `CatalogHash([u8; 32])`, `CatalogRef`                                                               | `class CatalogHash(bytes: ByteArray)` with structural equality, `data class CatalogRef(name, hash)`                                                                                         |                                                      |
+| `Kind` 1 to 5                                                                                       | `enum class Kind(val value: Int)` in the language order                                                                                                                                     |                                                      |
+| `Member`, `Timing`, `TimingMode`, `PayloadInfo`                                                     | `data class` each                                                                                                                                                                           | the `MEMBERS` row of a generated descriptor          |
+| `Sizes<E>`, `Interaction::ROW`, `reservation`, `table_budget`                                       | `class Sizes(encoding, reservations, maxBufferSize, eventSourceBufferSize)` from `Interface.sizes(encoding)`, `Interaction.row`, `reservation(x, encoding)`, `tableBudget(iface, encoding)` | the encoding a value; one table per codec, §5        |
+| `Timestamp(i64)`, `Duration(i64)`                                                                   | `value class` each over `Long`                                                                                                                                                              |                                                      |
+| `Envelope`, `Provenance`, `Cause`, `Detection`, `Freshness`                                         | `data class Envelope`, `sealed interface Provenance`, `enum class` for the rest                                                                                                             | as `sample.rs`                                       |
+| `Sample<T>`, `Occurrence<T>`                                                                        | `data class Sample<T>(value: T, envelope, provenance, freshness)`, `Occurrence<T>`                                                                                                          |                                                      |
+| `Correlation`, `ClaimId`, `Claim`                                                                   | `value class Correlation(Long)`, `ClaimId`, `data class Claim`                                                                                                                              | untyped, as ADR-0023 decision 4 keeps them           |
+| `Contract`, `Transport`, `CallError`                                                                | `sealed interface CallError` with `Contract` and `Transport` arms, each a `sealed interface` of the same variants                                                                           |                                                      |
+| `ReadError`, `WriteError`, `SendError`, `SubscribeError`, `RaiseError`, `ServeError`, `SettleError` | one `sealed interface` each, thrown, not returned                                                                                                                                           | D-K3                                                 |
+| `Attached`, `Clock`                                                                                 | `interface Attached { val catalog: CatalogRef }`, `interface Clock { fun now(): Timestamp }`                                                                                                |                                                      |
+| `Encoded`                                                                                           | `interface Encoded { val encoding: Encoding }`, the associated type a value                                                                                                                 | a face reads it from its port, §5                    |
+| `SignalReader`, `SignalWriter`, `EventSource`, `EventSink`, `Caller`, `Handler`                     | one `interface` each, same method names, same semantics                                                                                                                                     | §3, "the ports"                                      |
+| `FixedReader`, `ScannableSignals`, `CoherentSignals`                                                | the same three, optional for a runtime                                                                                                                                                      |                                                      |
+| `Payload<E: Encoding>`                                                                              | `interface Payload<T> { val maxSize: Int; fun encode(value: T, out: ByteBuffer): Int; fun verify(buf: ByteBuffer): View; fun decode(view: View): T }`                                       | one object per generated type per encoding, §4       |
+| `Encoding` with `FlatBuffers`, `Proto3`, `ReprC`                                                    | `enum class Encoding(val tag: Int)` 1, 2, 3                                                                                                                                                 | the frame's tags                                     |
 
 **The ports.** Each port interface keeps `ridl-rt`'s method names and semantics,
 with two spellings changed for the JVM and recorded here so the Rust record
@@ -283,12 +285,14 @@ tool produces (D-K5).
 `interaction-face.md`.** Per interface with at least one member the face covers:
 
 - **`object <Iface> : Interface`**, the descriptor: `catalog`, `number`,
-  `provisional`, `name`, `members` (the `MEMBERS` rows), and one nested `object`
-  per interaction with its `Member`, its `Payload` codec, and for a command or a
-  query its `require` and, for a query, its `ensure`, translated from the
-  model's clauses by the same narrow translator ADR-0023 decision 1 gives the
-  Rust backend: every clause form it does not accept is a refusal at generation
-  time, reported as an error diagnostic naming the clause.
+  `provisional`, `name`, `members` (the `MEMBERS` rows), `sizes(encoding)`, the
+  size table of each encoding the package carries a codec for, built from the
+  codecs' `maxSize`, and one nested `object` per interaction with its `Member`,
+  its row, its `Payload` codec, and for a command or a query its `require` and,
+  for a query, its `ensure`, translated from the model's clauses by the same
+  narrow translator ADR-0023 decision 1 gives the Rust backend: every clause
+  form it does not accept is a refusal at generation time, reported as an error
+  diagnostic naming the clause.
 - **`class <Iface>Client<P>(private val port: P)`** with upper bounds computed
   from the interface's own kinds and no others (RA-19): a `SignalReader` bound
   only if it declares a signal, `P : EventSource` only if an event, `P : Caller`
@@ -316,6 +320,18 @@ tool produces (D-K5).
 A face holds its port by value with no lifetime, as ADR-0023 decision 5; on the
 JVM that is the only option, and a runtime's aggregate handle (ADR-0021
 decision 12) is what a face is normally built over.
+
+**A face reads its encoding from its port** (driftsys/ridl#887, ADR-0018
+decision 15). Every face generic over a port bounds it on `Encoded` as well as
+on the ports its kinds need, and sizes the buffers it fills before it knows the
+payload — the claim buffer, the next-event buffer — from the size table of the
+port's encoding. Rust states that encoding as the port's associated type and
+refuses, at compile time, a port whose encoding the package has no codec for;
+Kotlin's generics are erased, so the encoding is a value (`Encoded.encoding`),
+and each binding checks it once, beside the catalog, throwing
+`IllegalArgumentException` for such a port. The face holds no encoding of its
+own: it reads the port's. With FlatBuffers the one codec the plugin emits, a
+face built over a port of another encoding is refused.
 
 **What is deliberately the same as Rust.** The shape, the bounds rule, the
 correlation newtypes, the settlement table and the polling. The reason is the

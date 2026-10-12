@@ -43,10 +43,10 @@ The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
 one deployment, and this one lays out none. The model's size states
 (`Payload.sizes`, `request_sizes`, `reply_sizes`, `reservation` and
-`table_budget`) are not read either: a `PayloadInfo` takes its FlatBuffers size
-from `Payload.flatbuffers_max_size`, which ridl keeps writing, equal to the
-bounded FlatBuffers state, and `Member.reservation` and `tableBudget` sum those
-sizes at run time, as `ridl-rt` does.
+`table_budget`) are not read either: a descriptor's size table is built from its
+codecs' `maxSize`, each `Payload.flatbuffers_max_size`, which ridl keeps
+writing, equal to the bounded FlatBuffers state, as the Rust backend builds
+`Sizes<E>` from each codec's `MAX_SIZE`.
 
 ## Generated code on Android
 
@@ -189,13 +189,21 @@ to that over 15,780 buffers (`CodecTest`).
 
 Per declared interface, the Rust face of the pinned release spelled in Kotlin
 (ADR-0023): the descriptor `object <Iface> : Interface`, with its `MEMBERS`
-rows, `MAX_BUFFER_SIZE`, `EVENT_SOURCE_BUFFER_SIZE`, one correlation value class
-per call, the `Event` sealed interface, `dispatch`, and `serve` and
+rows, its FlatBuffers size table through `sizes(encoding)`, one correlation
+value class per call, the `Event` sealed interface, `dispatch`, and `serve` and
 `serveAsync`; one descriptor object per interaction, `<Iface><Member>`, with its
-codec and its `require`, `ensure` or `init`; the clients, bound to exactly the
-ports their kinds need (RA-19); `<Iface>Publisher<W>`; and `<Iface>Provider`.
-`dispatch` settles as the Rust one does, a command before its provider method
-runs and a query after.
+codec, its row and its `require`, `ensure` or `init`; the clients, bound to
+exactly the ports their kinds need (RA-19) and to `Encoded`;
+`<Iface>Publisher<W>`; and `<Iface>Provider`. `dispatch` settles as the Rust one
+does, a command before its provider method runs and a query after.
+
+Since ridl 0.10 (driftsys/ridl#887) a face reads its encoding from its port:
+each binding checks the port's `encoding` beside its catalog, and the claim and
+next-event buffers are sized from that encoding's table. Rust refuses a port of
+an encoding with no codec at compile time; this face throws
+`IllegalArgumentException` when it is built, `serve` and `serveAsync` before
+they register, and `dispatch`, which no binding precedes, when it sizes its
+buffer.
 
 Since ridl 0.6.0 (driftsys/ridl#752) every `command`, `query` and `raise` the
 face sends passes `null` as its trace context, as the Rust face passes `None`;

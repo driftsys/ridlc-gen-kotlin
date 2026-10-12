@@ -5,6 +5,7 @@ package ridl.rt.loopback
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.encoding.Encoding
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
 import ridl.rt.port.Claim
@@ -12,6 +13,7 @@ import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.CoherentSignals
 import ridl.rt.port.Correlation
+import ridl.rt.port.Encoded
 import ridl.rt.port.EventSink
 import ridl.rt.port.EventSource
 import ridl.rt.port.FixedReader
@@ -29,7 +31,7 @@ import ridl.rt.task.Waker
 import ridl.rt.trace.TraceContext
 import java.nio.ByteBuffer
 
-/** The six role handles of one runtime, as [Loopback.split] hands them out. */
+/** The six role handles of one runtime, as [Loopback.split] hands them out, each carrying the runtime's encoding. */
 public class Handles internal constructor(
     /** `Attached`, `Clock`, `SignalReader`, `FixedReader`, `ScannableSignals`, `CoherentSignals` and `Wakeable`. */
     public val reader: ReaderHandle,
@@ -71,22 +73,33 @@ public class Handles internal constructor(
  *
  * [attach] makes a second aggregate on the same store, for a program that
  * holds several faces over one runtime, each owning its own.
+ *
+ * Every aggregate and every role handle presents [Encoded], with the
+ * [encoding] the runtime was made with: `Loopback<E>`, `Handles<E>` and the
+ * six `<Role>Handle<E>` of Rust, whose type parameter is a value here.
  */
 public class Loopback private constructor(
     override val catalog: CatalogRef,
+    override val encoding: Encoding,
     private val store: Store,
-) : Clock, SignalWriter, EventSource, EventSink, Caller, Handler, FixedReader, ScannableSignals, CoherentSignals,
+) : Encoded, Clock, SignalWriter, EventSource, EventSink, Caller, Handler, FixedReader, ScannableSignals, CoherentSignals,
     Wakeable {
-    /** A runtime over a new, empty store. */
-    public constructor(catalog: CatalogRef) : this(catalog, Store())
+    /**
+     * A runtime over a new, empty store, whose ports carry [encoding]:
+     * FlatBuffers unless another is named. `Loopback::new`, and
+     * `Loopback::<E>::with_encoding` when [encoding] is given. The bytes stay
+     * opaque to the runtime; the encoding is what its ports state through
+     * [Encoded], so that a face built over one reads it (driftsys/ridl#887).
+     */
+    public constructor(catalog: CatalogRef, encoding: Encoding = Encoding.FlatBuffers) : this(catalog, encoding, Store())
 
     private var held: Handles? = Handles(
-        reader = ReaderHandle(store, catalog),
-        writer = WriterHandle(store, catalog),
-        source = SourceHandle(store, catalog),
-        sink = SinkHandle(store, catalog),
-        caller = CallerHandle(store, catalog),
-        handler = HandlerHandle(store, catalog),
+        reader = ReaderHandle(store, catalog, encoding),
+        writer = WriterHandle(store, catalog, encoding),
+        source = SourceHandle(store, catalog, encoding),
+        sink = SinkHandle(store, catalog, encoding),
+        caller = CallerHandle(store, catalog, encoding),
+        handler = HandlerHandle(store, catalog, encoding),
     )
 
     private val handles: Handles
@@ -113,28 +126,28 @@ public class Loopback private constructor(
      * staged, no call sent and nothing served. Closing its handles closes only
      * those handles. It works on a split aggregate too, as the factories do.
      */
-    public fun attach(): Loopback = Loopback(catalog, store)
+    public fun attach(): Loopback = Loopback(catalog, encoding, store)
 
     /** An additional reader handle on the same store. */
-    public fun reader(): ReaderHandle = ReaderHandle(store, catalog)
+    public fun reader(): ReaderHandle = ReaderHandle(store, catalog, encoding)
 
     /** An additional writer handle, with its own staging area and sequence counters. */
-    public fun writer(): WriterHandle = WriterHandle(store, catalog)
+    public fun writer(): WriterHandle = WriterHandle(store, catalog, encoding)
 
     /** An additional event source, with its own subscription set and queue. */
-    public fun source(): SourceHandle = SourceHandle(store, catalog)
+    public fun source(): SourceHandle = SourceHandle(store, catalog, encoding)
 
     /** An additional event sink, with its own sequence counters. */
-    public fun sink(): SinkHandle = SinkHandle(store, catalog)
+    public fun sink(): SinkHandle = SinkHandle(store, catalog, encoding)
 
     /** An additional caller, with its own sequence counter (driftsys/ridl#308). */
-    public fun caller(): CallerHandle = CallerHandle(store, catalog)
+    public fun caller(): CallerHandle = CallerHandle(store, catalog, encoding)
 
     /**
      * An additional handler. Every handler draws from the one queue of
      * waiting calls, filtered by what it has served.
      */
-    public fun handler(): HandlerHandle = HandlerHandle(store, catalog)
+    public fun handler(): HandlerHandle = HandlerHandle(store, catalog, encoding)
 
     /**
      * Advances the clock by [by]. The clock is a counter only this moves, so

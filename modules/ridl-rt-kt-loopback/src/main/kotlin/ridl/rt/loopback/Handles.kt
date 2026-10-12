@@ -15,6 +15,8 @@
 // | `CallerHandle`  | `Clock`, `Caller`                                                              | `Outcome` with each call, `Slot` | one thread at a time |
 // | `HandlerHandle` | `Handler`                                                                      | `Claim`, one waker             | one thread at a time |
 //
+// `Encoded` is on every handle too: each carries the encoding its runtime was
+// made with, the payload bytes staying opaque to it (driftsys/ridl#887).
 // `Wakeable` is on every handle, because each handle wakes its own waiters. A
 // handle stores a waker only under a kind of key one of its roles observes:
 // one waker per kind for `Event` and `Claim`, which a change to any key of
@@ -40,6 +42,7 @@ package ridl.rt.loopback
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.encoding.Encoding
 import ridl.rt.port.Attached
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
@@ -48,6 +51,7 @@ import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.CoherentSignals
 import ridl.rt.port.Correlation
+import ridl.rt.port.Encoded
 import ridl.rt.port.EventSink
 import ridl.rt.port.EventSource
 import ridl.rt.port.FixedReader
@@ -80,7 +84,8 @@ private fun wake(wakers: Iterable<Waker>) {
 public class ReaderHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
-) : Clock, SignalReader, FixedReader, ScannableSignals, CoherentSignals, Wakeable {
+    override val encoding: Encoding,
+) : Encoded, Clock, SignalReader, FixedReader, ScannableSignals, CoherentSignals, Wakeable {
     override fun now(): Timestamp = store.locked { now() }
 
     /** Wakes every key at once: no role of this handle observes one. */
@@ -112,7 +117,8 @@ public class ReaderHandle internal constructor(
 public class WriterHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
-) : SignalWriter, Wakeable {
+    override val encoding: Encoding,
+) : Encoded, SignalWriter, Wakeable {
     private val staged = TreeMap<Key, Staged>()
     private val seqs = TreeMap<Key, ULong>()
 
@@ -154,7 +160,8 @@ public class WriterHandle internal constructor(
 public class SourceHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
-) : EventSource, Wakeable, AutoCloseable {
+    override val encoding: Encoding,
+) : Encoded, EventSource, Wakeable, AutoCloseable {
     private val id: Int = store.locked { openSource() }
 
     override fun subscribe(iface: InterfaceNo, ords: List<Ordinal>) {
@@ -190,7 +197,8 @@ public class SourceHandle internal constructor(
 public class SinkHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
-) : EventSink, Wakeable {
+    override val encoding: Encoding,
+) : Encoded, EventSink, Wakeable {
     private val seqs = TreeMap<Key, ULong>()
 
     override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?) {
@@ -217,7 +225,8 @@ public class SinkHandle internal constructor(
 public class CallerHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
-) : Caller, Clock, Wakeable, AutoCloseable {
+    override val encoding: Encoding,
+) : Encoded, Caller, Clock, Wakeable, AutoCloseable {
     private val id: Int = store.locked { openCaller() }
     private var seq: ULong = 0u
 
@@ -285,7 +294,8 @@ public class CallerHandle internal constructor(
 public class HandlerHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
-) : Handler, Wakeable, AutoCloseable {
+    override val encoding: Encoding,
+) : Encoded, Handler, Wakeable, AutoCloseable {
     private val id: Int = store.locked { openHandler() }
 
     /** The members `serve` was called with, in the order served, with no duplicate. */

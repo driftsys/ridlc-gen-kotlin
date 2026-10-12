@@ -135,8 +135,12 @@ interface Cabin {
 An interface becomes several declarations in `Faces.kt`:
 
 - **The descriptor**, `object Cabin`. It names the interface's catalog, its
-  number and its members, and holds `serve` and `serveAsync`. A runtime port is
-  created for a catalog: `Loopback(Cabin.catalog)`.
+  number and its members, holds `serve` and `serveAsync`, and gives the size
+  table of each encoding the package carries a codec for, FlatBuffers only:
+  `Cabin.sizes(Encoding.FlatBuffers)` holds each member's reservation and the
+  buffer sizes a runtime needs. A runtime port is created for a catalog:
+  `Loopback(Cabin.catalog)`, whose ports carry FlatBuffers unless another
+  encoding is named.
 - **The provider interface**, `CabinProvider`, which the application implements
   to answer commands and queries.
 - **The publisher**, `CabinPublisher`, which the provider side uses to publish
@@ -194,7 +198,7 @@ then published by `commit`; an event is raised at once:
 ```kotlin
 public class CabinPublisher<W>(
   internal val port: W,
-) where W : SignalWriter, W : EventSink {
+) where W : SignalWriter, W : EventSink, W : Encoded {
 // ...
   public fun temperature(`value`: Temperature) {
 // ...
@@ -210,7 +214,7 @@ timeout:
 public class CabinClient<P>(
   internal val port: P,
   timeout: TimeDuration? = null,
-) where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable {
+) where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable, P : Encoded {
 // ...
   public fun temperature(): Sample<Temperature> = poll.temperature()
 // ...
@@ -227,7 +231,7 @@ public class CabinAsyncClient<P>(
   port: P,
   scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
   grid: PollGrid = PollGrid.Default,
-) where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable {
+) where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable, P : Encoded {
 // ...
   public suspend fun setLevel(level: Level) {
 // ...
@@ -244,7 +248,7 @@ polled in `scope`, by default one the client owns, on `grid`; it is described in
 
 ```kotlin
 public val <P> CabinAsyncClient<P>.temperature:
-    SignalState<Temperature> where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable
+    SignalState<Temperature> where P : SignalReader, P : EventSource, P : Caller, P : Clock, P : Wakeable, P : Encoded
   get() = _signalStates.of(CabinTemperature, null, TemperatureCodec.maxSize) { raw, buf -> sampled(TemperatureCodec, CabinTemperature, raw, buf) }
 ```
 

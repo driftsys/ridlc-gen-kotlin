@@ -7,7 +7,6 @@ import org.junit.jupiter.api.TestFactory
 import ridl.rt.contract.CatalogHash
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.Command
-import ridl.rt.contract.EncodedSizes
 import ridl.rt.contract.Event
 import ridl.rt.contract.Fixed
 import ridl.rt.contract.Interaction
@@ -17,6 +16,7 @@ import ridl.rt.contract.Kind
 import ridl.rt.contract.Member
 import ridl.rt.contract.Ordinal
 import ridl.rt.contract.PayloadInfo
+import ridl.rt.contract.Sizes
 import ridl.rt.contract.Query
 import ridl.rt.contract.Signal
 import ridl.rt.contract.Timing
@@ -39,6 +39,7 @@ import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.CoherentSignals
 import ridl.rt.port.Correlation
+import ridl.rt.port.Encoded
 import ridl.rt.port.EventSink
 import ridl.rt.port.EventSource
 import ridl.rt.port.FixedReader
@@ -83,10 +84,10 @@ import kotlin.reflect.full.isSubclassOf
  * except the items ridl `main` added ahead of the release that carries them:
  * `port::Wakeable`, `port::Interest` and `error::Transport::Busy` at c2543c2
  * (story E11.16), and `sample::Continuity`, `sample::TrackerFull`,
- * `sample::EventSeqTracker`, `contract::Unsized`, `Member::call_deadline`,
- * `Member::reservation` and `Encoding::max_size` at 87de8c6 (story E11.19),
- * and `correlate` with `error::ClientError` and `error::ProviderError` at
- * eb41a7a (story E11.18).
+ * `sample::EventSeqTracker` and `Member::call_deadline` at 87de8c6 (story
+ * E11.19), `correlate` with `error::ClientError` and `error::ProviderError`
+ * at eb41a7a (story E11.18), and the ridl-rt 0.10 items: `contract::Sizes`,
+ * `Interaction::ROW` and `port::Encoded` (driftsys/ridl#851, #887).
  * Two Rust items have no row: `payload::Ref` and `payload::Encoded`, the
  * borrow-checked proof that a value is decoded only from checked bytes, whose
  * guarantee [Payload] gives by taking the view `verify` returned.
@@ -116,7 +117,11 @@ class CorrespondenceTest {
             "ridl_rt::contract::Interface", Interface::class,
             members = listOf("catalog", "number", "provisional", "name", "members"),
         ),
-        Row("ridl_rt::contract::Interaction", Interaction::class, members = listOf("iface", "member")),
+        Row("ridl_rt::contract::Interaction", Interaction::class, members = listOf("iface", "member", "row")),
+        Row(
+            "ridl_rt::contract::Sizes", Sizes::class,
+            members = listOf("reservations", "max_buffer_size", "event_source_buffer_size"),
+        ),
         Row("ridl_rt::contract::Signal", Signal::class, members = listOf("init"), extends = listOf(Interaction::class)),
         Row("ridl_rt::contract::Event", Event::class, extends = listOf(Interaction::class)),
         Row("ridl_rt::contract::Fixed", Fixed::class, extends = listOf(Interaction::class)),
@@ -130,20 +135,15 @@ class CorrespondenceTest {
         ),
         Row(
             "ridl_rt::contract::Member", Member::class,
-            members = listOf("ordinal", "kind", "name", "timing", "payloads", "call_deadline", "reservation"),
+            members = listOf("ordinal", "kind", "name", "timing", "payloads", "call_deadline"),
         ),
-        Row("ridl_rt::contract::Unsized", ridl.rt.contract.Unsized::class, members = listOf("ordinal", "member", "type_name")),
         Row("ridl_rt::contract::TimingMode", TimingMode::class, variants = listOf("StrictPeriodic", "Range")),
         Row("ridl_rt::contract::Timing", Timing::class, members = listOf("mode", "min", "max")),
-        Row("ridl_rt::contract::PayloadInfo", PayloadInfo::class, members = listOf("type_name", "max_size")),
-        Row(
-            "ridl_rt::contract::EncodedSizes", EncodedSizes::class,
-            members = listOf("proto3", "flatbuffers", "repr_c"),
-        ),
+        Row("ridl_rt::contract::PayloadInfo", PayloadInfo::class, members = listOf("type_name")),
         // encoding: the trait and its three marker types are one closed enum.
         Row(
             "ridl_rt::encoding::Encoding", Encoding::class,
-            variants = listOf("FlatBuffers", "Proto3", "ReprC"), members = listOf("max_size"),
+            variants = listOf("FlatBuffers", "Proto3", "ReprC"),
         ),
         // error
         Row(
@@ -215,6 +215,7 @@ class CorrespondenceTest {
         Row("ridl_rt::flatbuffers::Vector", ridl.rt.flatbuffers.Vector::class, members = listOf("len", "first", "element")),
         // port
         Row("ridl_rt::port::Attached", Attached::class, members = listOf("catalog")),
+        Row("ridl_rt::port::Encoded", Encoded::class, members = listOf("encoding")),
         Row("ridl_rt::port::Clock", Clock::class, members = listOf("now")),
         Row("ridl_rt::port::SignalReader", SignalReader::class, members = listOf("read"), extends = listOf(Attached::class)),
         Row(
