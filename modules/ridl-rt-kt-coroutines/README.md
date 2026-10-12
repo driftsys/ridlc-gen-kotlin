@@ -72,12 +72,13 @@ wake-up for a signal change, so a state polls the port, on these rules:
   one period share one state, and one nobody holds is collected, so a state
   created and never collected leaks nothing. A state never read holds no buffer.
 - **`value`** is the last sample polled while the state polls, with that poll's
-  freshness, and a fresh read otherwise; `read()` always reads the port. A read
+  freshness, as long as it is at most one period and one quantum old, and a
+  fresh read otherwise; `read()` always reads the port. The age guard is one
+  clock read on the grid's time source, so a poller its dispatcher starves never
+  leaves `value` handing out an old sample. Why a guard, and not a read every
+  time: [`value`: cache, read or guard](#value-cache-read-or-guard-78). A read
   and its publication hold one lock, so two reads publish in the order they
-  read. No clock is read to check the cached sample's age, so a poller its
-  dispatcher starves leaves it older than one period; #78 benchmarks the cache
-  against a read and against an age-guarded cache, as a clock read can cost as
-  much as a seqlock'd read.
+  read.
 - **Failure.** A read or a decode that throws while polling stops the polling,
   and every collector's `collect` throws it, as a cold flow would; the failure
   never reaches the scope the state polls in. A later subscriber, `value` or
@@ -109,6 +110,53 @@ Implementing `StateFlow` needs the opt-in
 `ExperimentalForInheritanceCoroutinesApi` of kotlinx-coroutines: a later release
 of the library may add members to the interface, which `SignalState` would then
 implement.
+
+## `value`: cache, read or guard (#78)
+
+Until #78, `value` returned the cached sample while the state polled, with no
+check of its age, and #78 weighed three ways for it: **A**, that cache; **B**, a
+read every time (`read()`); **C**, the cache behind an age guard, falling back
+to a read. The question was whether C's clock read costs as much as the read it
+avoids on a seqlock'd shared-memory runtime, where a port read is two atomic
+loads and a copy.
+
+Measured by `samples/cabin/src/jmh` (`just bench [threads] [filter]`), through
+the generated `CabinAsyncClient.temperature` with its collector polling at 10
+ms, over the loopback and over `SeqlockPort`, a seqlock'd off-heap stand-in that
+reads a clock for the freshness as a runtime does. JMH 1.37, OpenJDK 17, x86-64
+Linux, 20 hardware threads, average time in ns per call:
+
+| Call                                 | Loopback, 1 thread | Seqlock, 1 thread | Loopback, 4 threads | Seqlock, 4 threads |
+| ------------------------------------ | -----------------: | ----------------: | ------------------: | -----------------: |
+| `System.nanoTime()`                  |               12.9 |              12.9 |                14.5 |               15.0 |
+| port read alone                      |                 18 |                24 |                 393 |                 39 |
+| A, `value` before #78                |               0.47 |              0.47 |                0.57 |               0.57 |
+| C, `value` now                       |               17.3 |              17.1 |                19.7 |               19.8 |
+| B, `read()`, publication unchanged   |                 98 |                98 |                 635 |           1350[^2] |
+| B, `read()`, publication changed[^1] |                359 |               270 |                   — |                  — |
+
+[^1]: `readChanged − publishChanged`, before `read()` stamped its read: a read
+    that decodes, publishes the new sample and wakes the collector.
+
+[^2]: ±1,900 ns across its iterations; an earlier run measured 1,030 ns.
+
+- **The port read is as cheap as the issue expected, `read()` is not.** A
+  seqlock'd port read costs about two clock reads, but `read()` around it takes
+  the state's lock, compares the bytes, builds a `Sample` and publishes it, and
+  costs four to six times C before any decode. Its lock makes it worse with
+  threads: four threads calling `read()` together wait on each other, where
+  `value` scales.
+- **C costs one clock read over A,** about 17 ns, as `kotlin.time`'s mark
+  arithmetic adds about 4 ns to `System.nanoTime()`. Every read now also stamps
+  itself, which took `read()` from 78 to 98 ns: the poller pays it once per
+  period.
+- **An IPC-backed port** (Binder, a socket) was not measured: its read costs
+  microseconds to milliseconds, so C's 17 ns is noise there, and the guard
+  matters more, as a stalled poller's sample is the costlier one to replace.
+
+So `value` is C on every runtime class, with no knob: it is the only variant
+that never returns a sample older than one period and one quantum, and it costs
+a fifth of a read or less on both runtimes measured.
 
 ## Status
 
