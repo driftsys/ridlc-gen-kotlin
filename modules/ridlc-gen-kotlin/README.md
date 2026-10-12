@@ -70,8 +70,11 @@ why, and how the rule was last checked; CI does not check it.
 - **`-classpath`, not `-jar`.** The Shadow start script runs the main class with
   the fat jar as the class path rather than `java -jar`; the effect is the same,
   and the script still ends in `exec "$JAVACMD" "$@"`.
-- **`wire-encoding`** accepts `flatbuffers` alone: O-K1 is disposed on
-  FlatBuffers with a verifier (#65), and no other codec is emitted.
+- **`encodings`** accepts `flatbuffers` alone: O-K1 is disposed on FlatBuffers
+  with a verifier (#65), and no other codec is emitted. With no `encodings`
+  option the plugin still emits the FlatBuffers codec, where the family emits
+  the types only; that rule lands with the move to ridl 0.10 (#83). ridl 0.9
+  sends `encodings` and never `wire-encoding`, which the plugin no longer reads.
 - **Every reference goes through `Model.declarationOf`** (`Refs.kt`), which
   refuses a reference whose `TypeRef.foreign` disagrees with its package, or
   whose index is past its table, with a diagnostic naming the reference, where

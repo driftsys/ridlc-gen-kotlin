@@ -18,7 +18,7 @@ import ridl.codegen.v1.ModelOuterClass.Struct
 
 /** How `Codec.kt` treats a root with no finite bound, and the table layout: what the corpus does not reach. */
 class CodecEmitterTest {
-    private val options = Options("kt.demo", WireEncoding.FlatBuffers)
+    private val options = Options("kt.demo", listOf(WireEncoding.FlatBuffers))
 
     private fun model(cause: FbUnboundedCause): Model {
         val declaration = Declaration.newBuilder()

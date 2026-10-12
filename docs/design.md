@@ -105,9 +105,11 @@ of a short-lived JVM and costs nothing a generator notices.
    and never refused.
 3. Reads the options. Two keys are known: `kotlin-package`, the Kotlin package
    the generated files are placed in (default: the ridl package's dotted name),
-   and `wire-encoding`, the payload encoding the codec is generated for (§4,
-   O-K1; default `flatbuffers`, the same key and value the Rust backend reads).
-   An unknown key is an error diagnostic, as every in-tree backend answers it.
+   and `encodings`, the payload encodings the codec is generated for (§4, O-K1),
+   the manifest's `[backend.kotlin] encodings` joined by `,`, the same key and
+   value the Rust backend reads. An empty element, a name given twice and a name
+   the plugin has no codec for are refused. An unknown key is an error
+   diagnostic, as every in-tree backend answers it.
 4. Generates the files (§4, §5) into a `CodegenResponse`, every path relative
    and `/`-separated per the path rule, every file a `text` arm, and writes the
    response to standard output as canonical protobuf JSON through the same
@@ -216,11 +218,11 @@ variants.
 
 **The codec.** For every payload type of every interaction, and for every named
 type a payload reaches, the plugin emits one one `<Type>Codec` object
-implementing `Payload` in `Codec.kt`, for the encoding the `wire-encoding`
-option names. The codec's obligation is the frame's §9: `verify` rejects a
-buffer that is not structurally a value of the type, `decode` runs every typl
-constraint on the way to a value object through `unchecked`, and `encode` writes
-a legal value into a buffer no larger than `maxSize`, which is the model's
+implementing `Payload` in `Codec.kt`, for the encodings the `encodings` option
+names. The codec's obligation is the frame's §9: `verify` rejects a buffer that
+is not structurally a value of the type, `decode` runs every typl constraint on
+the way to a value object through `unchecked`, and `encode` writes a legal value
+into a buffer no larger than `maxSize`, which is the model's
 `Payload.flatbuffers_max_size` carried as a constant.
 
 **O-K1 is disposed: FlatBuffers with a verifier in `ridl-rt-kt`, option A
@@ -264,9 +266,9 @@ The recommendation is A, decided by a bounded spike at the start of K1: write
 the verifier for the cabin package's four payload types; if it comes in under
 the size above and passes the malformed-buffer corpus (§7), FlatBuffers stays;
 if not, C, with the frame amended. B is not recommended. The generator is
-written so that the choice is one codec emitter behind the `wire-encoding`
-option, the way the Rust backend's is, and the value objects and the faces are
-the same under either.
+written so that the choice is one codec emitter behind the `encodings` option,
+the way the Rust backend's is, and the value objects and the faces are the same
+under either.
 
 **The `.fbs` and `.proto` schemas are not the plugin's to emit.** `ridl build`
 with the `flatbuffers` and `proto` emits writes them in the same run, from the

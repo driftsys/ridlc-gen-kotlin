@@ -36,7 +36,7 @@ import ridl.codegen.v1.Plugin
 
 /** What `Faces.kt` skips, and how: an interface the face cannot carry is a warning, not a failed package. */
 class FacesEmitterTest {
-    private val options = Options("kt.demo", WireEncoding.FlatBuffers)
+    private val options = Options("kt.demo", listOf(WireEncoding.FlatBuffers))
 
     /** A catalog hash no placeholder spells: bytes 1 to 32. */
     private val hash = ByteArray(32) { (it + 1).toByte() }

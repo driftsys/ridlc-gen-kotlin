@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 import ridl.codegen.v1.ModelOuterClass
 import ridl.codegen.v1.Plugin
 
-/** docs/design.md §2, step 3: the two known keys and the refusal of every other. */
+/** docs/design.md §2, step 3: the two known keys, `encodings` read as the Rust backend reads it, and the refusal of every other. */
 class OptionsTest {
     private fun request(vararg options: Pair<String, String>): Plugin.CodegenRequest =
         Plugin.CodegenRequest.newBuilder()
@@ -20,17 +20,22 @@ class OptionsTest {
     @Test
     fun `no option means the package's dotted name and flatbuffers`() {
         assertEquals(
-            Options.Parsed.Ok(Options("veh.cabin", WireEncoding.FlatBuffers)),
+            Options.Parsed.Ok(Options("veh.cabin", listOf(WireEncoding.FlatBuffers))),
             Options.parse(request()),
         )
     }
 
     @Test
-    fun `kotlin-package and wire-encoding are read`() {
+    fun `kotlin-package and encodings are read`() {
         assertEquals(
-            Options.Parsed.Ok(Options("com.example.cabin", WireEncoding.FlatBuffers)),
-            Options.parse(request("kotlin-package" to "com.example.cabin", "wire-encoding" to "flatbuffers")),
+            Options.Parsed.Ok(Options("com.example.cabin", listOf(WireEncoding.FlatBuffers))),
+            Options.parse(request("kotlin-package" to "com.example.cabin", "encodings" to "flatbuffers")),
         )
+    }
+
+    @Test
+    fun `wire-encoding is no longer a key`() {
+        assertTrue("`wire-encoding`" in refused(Options.parse(request("wire-encoding" to "flatbuffers")))[0])
     }
 
     @Test
@@ -41,8 +46,28 @@ class OptionsTest {
     }
 
     @Test
-    fun `an unknown encoding is refused until O-K1 admits it`() {
-        assertTrue("`proto3`" in refused(Options.parse(request("wire-encoding" to "proto3")))[0])
+    fun `an encoding with no Kotlin codec is refused by name`() {
+        for (name in listOf("proto3", "repr-c")) {
+            assertTrue("no `$name` codec" in refused(Options.parse(request("encodings" to name)))[0])
+        }
+        assertTrue("no `proto3` codec" in refused(Options.parse(request("encodings" to "flatbuffers,proto3")))[0])
+    }
+
+    @Test
+    fun `a name that is no encoding is refused`() {
+        assertTrue("`cbor`, which is not an encoding" in refused(Options.parse(request("encodings" to "cbor")))[0])
+    }
+
+    @Test
+    fun `an empty element is refused`() {
+        for (bad in listOf("", "flatbuffers,", ",flatbuffers")) {
+            assertTrue("empty element" in refused(Options.parse(request("encodings" to bad)))[0], bad)
+        }
+    }
+
+    @Test
+    fun `an encoding named twice is refused`() {
+        assertTrue("twice" in refused(Options.parse(request("encodings" to "flatbuffers,flatbuffers")))[0])
     }
 
     @Test
