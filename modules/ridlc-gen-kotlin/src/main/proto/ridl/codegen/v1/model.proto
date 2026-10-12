@@ -163,6 +163,16 @@ message Declaration {
     EnumSet enum_set = 14;
     Union union = 15;
   }
+  // Numbered after the oneof: 16–19 stay open for it.
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 20;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 21;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 22;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 23;
 }
 
 // A named scalar, and the shape of an inline one.
@@ -246,6 +256,15 @@ message Field {
   string doc = 5;
   repeated string labels = 6;
   optional string deprecated = 7;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 8;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 9;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 10;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 11;
 }
 
 message Enum {
@@ -262,6 +281,15 @@ message EnumValue {
   Spellings name = 1;
   int64 value = 2;
   string doc = 3;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 4;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 5;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 6;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 7;
 }
 
 message EnumSet {
@@ -289,6 +317,15 @@ message Arm {
   // Index into `FlatBuffersProjection.tables` when the arm is boxed
   // (ADR-0019 decision 2).
   optional uint32 flatbuffers_box = 6;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 7;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 8;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 9;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 10;
 }
 
 // ---------------------------------------------------------------------
@@ -463,6 +500,16 @@ message Interface {
     // A service's inline shape: the service's dotted name.
     DottedName service = 11;
   }
+  // Numbered after the oneof: 16–19 stay open for it.
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 20;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 21;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 22;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 23;
 }
 
 message InteractionSlot {
@@ -490,6 +537,9 @@ message Interaction {
   // have one payload, a command has its request, and a query has its request
   // and then its reply.
   Reservation reservation = 8;
+  // The family of the interaction (ADR-0012 decision 6), copied from the IR.
+  // A plugin that does not read it sees the core kind.
+  Family family = 9;
   oneof shape {
     SignalShape signal = 10;
     EventShape event = 11;
@@ -497,6 +547,16 @@ message Interaction {
     QueryShape query = 13;
     FixedShape fixed = 14;
   }
+  // Numbered after the oneof: 16–19 stay open for it.
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 20;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 21;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 22;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 23;
 }
 
 // One thing that crosses, as a named type.
@@ -632,6 +692,10 @@ message CommandShape {
   // `ABSENT_CAUSE_NO_BOUND` for a single parameter that is a scalar no proto3
   // leaf bounds, such as a `string` with no length bound.
   PayloadSizes request_sizes = 4;
+  // The operation shape of an intent command, copied from the IR. On the
+  // command shape, not on Interaction, because Interaction's oneof is named
+  // shape.
+  Shape shape = 5;
 }
 
 message QueryShape {
@@ -667,6 +731,18 @@ message FixedShape {
 message Param {
   Spellings name = 1;
   Type type = 2;
+  // Doc comment body in CommonMark, as the IR carries it; empty when absent
+  // (ADR-0026).
+  string doc = 3;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 4;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 5;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 6;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 7;
 }
 
 message Reply {
@@ -729,6 +805,15 @@ message Service {
   repeated string interface_refs = 6;
   // Index into `Model.interfaces`, the inline form.
   optional uint32 inline_shape = 7;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 8;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 9;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 10;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 11;
 }
 
 message Catalog {
@@ -741,11 +826,94 @@ message Catalog {
   bytes hash = 2;
   // `Package.retired`, number order.
   repeated RetiredInterface retired = 3;
+  // The descriptor's list of compatible catalog hashes, in the same order:
+  // each a 32-byte SHA-256 catalog hash of an earlier catalog this one is
+  // compatible with. Empty when no history applies.
+  repeated bytes compatible = 4;
 }
 
 message RetiredInterface {
   string name = 1;
   uint32 number = 2;
+}
+
+// ---------------------------------------------------------------------
+// Doc links and rules (ADR-0026, ADR-0028)
+// ---------------------------------------------------------------------
+
+// One resolved doc link. The same fields as `ridl.ir.v2.DocLink`.
+message DocLink {
+  // The link text as written, without the brackets.
+  string text = 1;
+  // Byte offset of the link in the carrier's `doc`; 0 for a `see` entry.
+  uint32 offset = 2;
+  // Byte length of the link in the carrier's `doc`; 0 for a `see` entry.
+  uint32 len = 3;
+  // The canonical qualified name of the target, `pkg.Name`, with an
+  // optional `.member`.
+  string target = 4;
+}
+
+// One rule of an item (ADR-0028). `text` is the canonical line; a backend
+// places it verbatim. A reader that does not know the `kind` member still
+// renders `text`. The kind messages are nested so that `Rule.Timing` does not
+// collide with the top-level `Timing`.
+message Rule {
+  // The inclusive value range; a side is absent when unstated.
+  message Range {
+    optional string min = 1;
+    optional string max = 2;
+  }
+  // The length bounds of a string, in characters, or of bytes, in bytes.
+  message Length {
+    optional uint64 min = 1;
+    optional uint64 max = 2;
+  }
+  // The element bound of an array, or the entry bound of a map.
+  message CollectionBound {
+    uint64 min = 1;
+    uint64 max = 2;
+  }
+  // The resolved timing of a `signal` or `event`, as exact decimal
+  // microsecond text.
+  message Timing {
+    TimingMode mode = 1;
+    optional string min_us = 2;
+    optional string max_us = 3;
+  }
+  // The declared bounds of a `command` or `query`: `min_us` is the call
+  // throttle and `max_us` the response bound.
+  message ResponseBound {
+    optional string min_us = 1;
+    optional string max_us = 2;
+  }
+  // The qualified names of the error types of an interaction.
+  message Errors {
+    repeated string names = 1;
+  }
+  // One `require` or `ensure` clause, as its canonical source text.
+  message Contract {
+    ContractKind kind = 1;
+    string source = 2;
+  }
+
+  oneof kind {
+    Range range = 10;
+    // The quantization step, as canonical decimal text.
+    string step = 11;
+    // The canonical UCUM unit.
+    string unit = 12;
+    Length length = 13;
+    // The regex source text of a string's `match` pattern.
+    string pattern = 14;
+    CollectionBound collection_bound = 15;
+    Timing timing = 16;
+    ResponseBound response_bound = 17;
+    Errors errors = 18;
+    Contract contract = 19;
+  }
+  // `ridl_ir::rules::render` of this rule.
+  string text = 1;
 }
 
 // ---------------------------------------------------------------------
@@ -948,6 +1116,30 @@ enum Kind {
   KIND_COMMAND = 3;
   KIND_QUERY = 4;
   KIND_FIXED = 5;
+}
+
+// The interaction family (ADR-0012 decisions 2 and 6), mirrored from the IR.
+// The zero value is `FAMILY_DISPATCH`, not an `_UNSPECIFIED` value: every
+// interaction that exists today is dispatch, proto3 encodes no byte for a
+// zero enum field, so a model written before this field decodes as dispatch.
+enum Family {
+  FAMILY_DISPATCH = 0;
+  FAMILY_PRESENTATION = 1;
+  FAMILY_INTENT = 2;
+  FAMILY_ACQUISITION = 3;
+  FAMILY_CONTROL = 4;
+}
+
+// The operation shape of an intent command (ADR-0012 decisions 5 and 6),
+// mirrored from the IR. The zero value is `SHAPE_NONE` for the reason
+// `Family` gives.
+enum Shape {
+  SHAPE_NONE = 0;
+  SHAPE_ACTIVATE = 1;
+  SHAPE_TOGGLE = 2;
+  SHAPE_SELECT = 3;
+  SHAPE_ADJUST = 4;
+  SHAPE_DISMISS = 5;
 }
 
 enum ScalarClass {

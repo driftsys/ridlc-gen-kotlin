@@ -16,6 +16,7 @@ import ridl.codegen.v1.ModelOuterClass.CommandShape
 import ridl.codegen.v1.ModelOuterClass.ContractKind
 import ridl.codegen.v1.ModelOuterClass.DottedName
 import ridl.codegen.v1.ModelOuterClass.EventShape
+import ridl.codegen.v1.ModelOuterClass.Family
 import ridl.codegen.v1.ModelOuterClass.Init
 import ridl.codegen.v1.ModelOuterClass.Interaction
 import ridl.codegen.v1.ModelOuterClass.InteractionSlot
@@ -26,6 +27,7 @@ import ridl.codegen.v1.ModelOuterClass.Param
 import ridl.codegen.v1.ModelOuterClass.Payload
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import ridl.codegen.v1.ModelOuterClass.Shape
 import ridl.codegen.v1.ModelOuterClass.SignalShape
 import ridl.codegen.v1.ModelOuterClass.Timing
 import ridl.codegen.v1.ModelOuterClass.TimingMode
@@ -192,6 +194,17 @@ class FacesEmitterTest {
         val emitted = faces("Level", "InteractionCall", iface = iface)
         assertEquals(emptyList<String>(), emitted.warnings)
         assertTrue("internal abstract class InteractionCall_<" in checkNotNull(emitted.text))
+    }
+
+    @Test
+    fun `an interaction's family and a command's shape change nothing the face emits`() {
+        // #88: ridl 0.10 carries both, and every interaction ridl emits is still a dispatch one; the face reads neither.
+        fun drive(family: Family, shape: Shape) = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(command(1, "set", "Set").apply { interactionBuilder.setFamily(family).commandBuilder.setShape(shape) })
+        assertEquals(
+            faces("Level", iface = drive(Family.FAMILY_DISPATCH, Shape.SHAPE_NONE)).text,
+            faces("Level", iface = drive(Family.FAMILY_INTENT, Shape.SHAPE_TOGGLE)).text,
+        )
     }
 
     /** A signal, or an event, named [declared] and [camel], over one `Level`. */
