@@ -31,7 +31,7 @@ class NamesTest {
     /** The plugin's response for [source], a package named `probe.<name>`, by package: it and every package it reaches. */
     private fun responses(name: String, source: String): Map<String, CodegenResponse> {
         val pkg = work.resolve("src-$name").createDirectories()
-        pkg.resolve("ridl.toml").writeText("[package]\nname = \"probe.$name\"\nversion = \"1.0.0\"\n")
+        pkg.resolve("ridl.toml").writeText(Harness.manifest("probe.$name"))
         pkg.resolve("$name.ridl").writeText("package probe.$name\n\n$source")
         val requests = Harness.capturedRequests(pkg, name, work, "--emit", "codegen-model")
         return requests.mapValues { (_, request) -> Generator.generate(Wire.readRequest(request)) }
@@ -395,7 +395,7 @@ class NamesTest {
     @Test
     fun `X-18 a type named like its child package builds and is reachable from it`() {
         val root = work.resolve("src-veh").createDirectories()
-        root.resolve("ridl.toml").writeText("[package]\nname = \"veh\"\nversion = \"1.0.0\"\n")
+        root.resolve("ridl.toml").writeText(Harness.manifest("veh"))
         root.resolve("veh.ridl").writeText("package veh\n\ntype common : integer [0..100]\n")
         root.resolve("common").createDirectories().resolve("common.ridl")
             .writeText("package veh.common\n\nimport veh.common as Common\n\nstruct Uses { c : Common }\n")

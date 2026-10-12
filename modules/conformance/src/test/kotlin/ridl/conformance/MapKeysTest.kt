@@ -23,7 +23,7 @@ class MapKeysTest {
     @Test
     fun `every map a constructor accepts is one verify accepts`() {
         val pkg = work.resolve("kt-keys").createDirectories()
-        pkg.resolve("ridl.toml").writeText("[package]\nname = \"kt.keys\"\nversion = \"1.0.0\"\n")
+        pkg.resolve("ridl.toml").writeText(Harness.manifest("kt.keys"))
         pkg.resolve("keys.ridl").writeText(
             """
             package kt.keys

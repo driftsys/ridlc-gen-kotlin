@@ -1,3 +1,11 @@
 [package]
 name = "veh.common"
 version = "1.0.0"
+
+# Every backend generates the types alone unless the manifest names an
+# encoding (#83, driftsys/ridl#851).
+[backend.kotlin]
+encodings = ["flatbuffers"]
+
+[backend.rust]
+encodings = ["flatbuffers"]

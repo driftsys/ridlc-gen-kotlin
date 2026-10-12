@@ -26,7 +26,7 @@ class PatternsTest {
     /** The plugin's response for package `probe.<name>`; `ridl build` accepting [source] is checked on the way. */
     private fun response(name: String, source: String): CodegenResponse {
         val pkg = work.resolve("src-$name").createDirectories()
-        pkg.resolve("ridl.toml").writeText("[package]\nname = \"probe.$name\"\nversion = \"1.0.0\"\n")
+        pkg.resolve("ridl.toml").writeText(Harness.manifest("probe.$name"))
         pkg.resolve("$name.ridl").writeText("package probe.$name\n\n$source")
         val requests = Harness.capturedRequests(pkg, name, work, "--emit", "codegen-model")
         return Generator.generate(Wire.readRequest(requests.getValue("probe.$name")))

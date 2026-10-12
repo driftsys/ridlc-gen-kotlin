@@ -17,8 +17,9 @@ data class Options(
     val kotlinPackage: String,
     /**
      * `encodings`: the encodings the codec is generated for, in the order the
-     * manifest names them. Default: `flatbuffers` alone, until the plugin
-     * emits the types only when none is named (driftsys/ridlc-gen-kotlin#83).
+     * manifest names them. Default: none, and the package is then its types
+     * alone, with no codec and no face, as every backend of the family
+     * generates it (#83, driftsys/ridl#851).
      */
     val encodings: List<WireEncoding>,
 ) {
@@ -55,7 +56,7 @@ data class Options(
                         "the known options are `$KOTLIN_PACKAGE` and `$ENCODINGS`"
                 }
             }
-            val options = Options(kotlinPackage, encodings ?: listOf(WireEncoding.FlatBuffers))
+            val options = Options(kotlinPackage, encodings ?: emptyList())
             return if (messages.isEmpty()) Parsed.Ok(options) else Parsed.Refused(messages)
         }
 

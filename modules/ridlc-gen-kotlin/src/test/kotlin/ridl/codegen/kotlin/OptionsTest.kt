@@ -11,18 +11,27 @@ class OptionsTest {
     private fun request(vararg options: Pair<String, String>): Plugin.CodegenRequest =
         Plugin.CodegenRequest.newBuilder()
             .setSchema(SCHEMA)
-            .setModel(ModelOuterClass.Model.newBuilder().setName(ModelOuterClass.DottedName.newBuilder().setDotted("veh.cabin")))
+            .setModel(
+                ModelOuterClass.Model.newBuilder().setName(ModelOuterClass.DottedName.newBuilder().setDotted("veh.cabin"))
+                    .setCatalog(ModelOuterClass.Catalog.newBuilder().setHash(com.google.protobuf.ByteString.copyFrom(ByteArray(32)))),
+            )
             .addAllOptions(options.map { (k, v) -> Plugin.BackendOption.newBuilder().setKey(k).setValue(v).build() })
             .build()
 
     private fun refused(parsed: Options.Parsed): List<String> = (parsed as Options.Parsed.Refused).messages
 
     @Test
-    fun `no option means the package's dotted name and flatbuffers`() {
-        assertEquals(
-            Options.Parsed.Ok(Options("veh.cabin", listOf(WireEncoding.FlatBuffers))),
-            Options.parse(request()),
-        )
+    fun `no option means the package's dotted name and no encoding`() {
+        assertEquals(Options.Parsed.Ok(Options("veh.cabin", emptyList())), Options.parse(request()))
+    }
+
+    @Test
+    fun `with no encoding the package is its types alone, and with flatbuffers its codec too`() {
+        // #83: the family's rule, as the Rust backend applies it since ridl 0.9 (driftsys/ridl#851).
+        val bare = Generator.generate(request()).filesList.map { it.path }
+        assertEquals(listOf("veh/cabin/Types.kt"), bare)
+        val coded = Generator.generate(request("encodings" to "flatbuffers")).filesList.map { it.path }
+        assertEquals(listOf("veh/cabin/Types.kt", "veh/cabin/Codec.kt"), coded)
     }
 
     @Test

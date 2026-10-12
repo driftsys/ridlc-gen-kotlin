@@ -72,9 +72,10 @@ why, and how the rule was last checked; CI does not check it.
   and the script still ends in `exec "$JAVACMD" "$@"`.
 - **`encodings`** accepts `flatbuffers` alone: O-K1 is disposed on FlatBuffers
   with a verifier (#65), and no other codec is emitted. With no `encodings`
-  option the plugin still emits the FlatBuffers codec, where the family emits
-  the types only; that rule lands with the move to ridl 0.10 (#83). ridl 0.9
-  sends `encodings` and never `wire-encoding`, which the plugin no longer reads.
+  option the package is `Types.kt` alone, with no codec and no face, as every
+  backend of the family generates it since ridl 0.9 (#83); the corpus and the
+  cabin sample name `flatbuffers` in `[backend.kotlin]`. ridl 0.9 sends
+  `encodings` and never `wire-encoding`, which the plugin no longer reads.
 - **Every reference goes through `Model.declarationOf`** (`Refs.kt`), which
   refuses a reference whose `TypeRef.foreign` disagrees with its package, or
   whose index is past its table, with a diagnostic naming the reference, where

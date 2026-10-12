@@ -119,7 +119,7 @@ class FacesEmitterTest {
     fun `a catalog hash that is not 32 bytes refuses the package`() {
         for (size in listOf(0, 31, 33)) {
             val model = demo().setCatalog(Catalog.newBuilder().setPackage("kt.demo").setHash(ByteString.copyFrom(ByteArray(size))))
-            val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(model).build()
+            val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("flatbuffers")).setModel(model).build()
             val response = Generator.generate(request)
             assertEquals(0, response.filesCount, "no file for a $size-byte hash")
             assertEquals(
@@ -132,7 +132,7 @@ class FacesEmitterTest {
     @Test
     fun `a skipped interface leaves the package generated, with the warning in the response`() {
         val command = CommandShape.newBuilder().addParams(Param.newBuilder().setName(spelled("a"))).addParams(Param.newBuilder().setName(spelled("b"))).build()
-        val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(model(command)).build()
+        val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("flatbuffers")).setModel(model(command)).build()
         val response = Generator.generate(request)
         assertEquals(listOf("kt/demo/Types.kt", "kt/demo/Codec.kt"), response.filesList.map { it.path })
         assertEquals(Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING, response.diagnosticsList.single().severity)
@@ -161,7 +161,7 @@ class FacesEmitterTest {
 
     /** The error diagnostics of the whole plugin over [declarations] and [iface]. */
     private fun refusals(vararg declarations: String, iface: Interface.Builder): List<String> = Generator.generate(
-        Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(
+        Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("flatbuffers")).setModel(
             demo()
                 .addAllDeclarations(declarations.map { scalar(it).build() }).addInterfaces(iface),
         ).build(),
