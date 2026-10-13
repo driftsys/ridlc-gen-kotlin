@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     application
+    alias(libs.plugins.jmh)
 }
 
 // The JVM demo (docs/design.md §6, stage K4): `ridl/cabin.ridl`, the ridl
@@ -66,4 +67,23 @@ tasks.test {
     inputs.dir(book)
     inputs.file(rootProject.layout.projectDirectory.file("modules/conformance/ridl-release"))
     systemProperty("book.dir", book.asFile.absolutePath)
+}
+
+// #78: what `SignalState.value` costs, cached, read, or behind an age guard,
+// over the loopback and over a seqlock'd stand-in for a shared-memory channel,
+// both reached through the generated `CabinAsyncClient`. `just bench` runs it;
+// nothing in `check` does. The results are in
+// modules/ridl-rt-kt-coroutines/README.md.
+jmh {
+    jmhVersion = libs.versions.jmh
+    includes.addAll(providers.gradleProperty("jmh.includes").map { listOf(it) }.orElse(emptyList()))
+    threads = providers.gradleProperty("jmh.threads").map { it.toInt() }.orElse(1)
+    fork = 1
+    warmupIterations = 3
+    warmup = "2s"
+    iterations = 5
+    timeOnIteration = "2s"
+    benchmarkMode = listOf("avgt")
+    timeUnit = "ns"
+    resultFormat = "JSON"
 }

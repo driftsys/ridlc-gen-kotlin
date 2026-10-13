@@ -17,6 +17,11 @@ test:
 build: fmt-check check install-check
     ./gradlew assemble
 
+# #78: the SignalState.value benchmarks (samples/cabin/src/jmh), on `threads`
+# benchmark threads beside the state's own poller. `filter` is a JMH regex.
+bench threads="1" filter="":
+    ./gradlew :samples:cabin:jmh -Pjmh.threads={{ threads }} {{ if filter == "" { "" } else { "-Pjmh.includes=" + quote(filter) } }}
+
 # The runtime sources as an Android tree vendors them, with an Android.bp
 # (packaging/android/README.md): build/vendor/ridl-rt-kt-<version>-android.tar.gz.
 vendor-package:
