@@ -25,7 +25,8 @@ val generateCabin = tasks.register<Exec>("generateCabin") {
     if (!ridlOverride.isPresent) dependsOn(":conformance:installRidl")
     inputs.dir(source)
     inputs.dir(pluginDist)
-    inputs.property("ridl", ridlBin)
+    // The binary, not its path: a ridl rebuilt in place generates again.
+    inputs.file(ridlBin).withPropertyName("ridl").withPathSensitivity(PathSensitivity.NONE)
     outputs.dir(generated)
     val out = generated.get().asFile
     doFirst { out.deleteRecursively() }

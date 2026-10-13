@@ -177,7 +177,7 @@ private fun async() = runBlocking {
             val handler = rt.handler()
             suspend fun settledWith(outcome: Result<ByteBuffer>): Result<Even> {
                 val call = async(start = CoroutineStart.UNDISPATCHED) { runCatching { client.half(Even.of(2)) } }
-                val claim = checkNotNull(handler.nextClaim(ByteBuffer.allocate(Probe.MAX_BUFFER_SIZE))) { "the query was not sent" }
+                val claim = checkNotNull(handler.nextClaim(ByteBuffer.allocate(Probe.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize))) { "the query was not sent" }
                 handler.settle(claim.id, outcome)
                 return call.await()
             }

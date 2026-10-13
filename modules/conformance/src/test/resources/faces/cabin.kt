@@ -83,7 +83,7 @@ fun probe(): List<String> {
     val client = CabinPollClient(rt)
     val publisher = CabinPublisher(rt)
     val provider = Recorder()
-    val buffer = ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)
+    val buffer = ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize)
 
     // A signal: the init value before any publication, then set and read.
     client.temperature().let {
@@ -140,7 +140,7 @@ fun probe(): List<String> {
             setLevel(Level.of(1))
             average(Window.of(1))
         }
-        val out = ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)
+        val out = ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize)
         expectEqual("a raise from the face carries no trace context", null, fresh.next(out)?.trace)
         repeat(2) {
             out.clear()
@@ -225,10 +225,10 @@ fun probe(): List<String> {
     expectEqual("and the claim waits for the next dispatch", 1, Cabin.dispatch(rt, provider, buffer))
     expectEqual("which acknowledges it", Result.success(Unit), client.setLevelAck(waiting))
 
-    // driftsys/ridl#569: a claim whose arguments exceed MAX_BUFFER_SIZE comes
+    // driftsys/ridl#569: a claim whose arguments exceed maxBufferSize comes
     // back as ReadError.ShortClaim. dispatch settles it Corrupt unread, counts
     // it, and serves the claim behind it; only a raw Caller can send one.
-    val oversized = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1), null)
+    val oversized = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize + 1), null)
     val behind = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(3)), null)
     val served = provider.levels.size
     expectEqual("an oversized claim and the one behind it are both settled", 2, Cabin.dispatch(rt, provider, buffer))
@@ -239,11 +239,11 @@ fun probe(): List<String> {
     // A refused settlement of an oversized claim, with any SettleError, ends
     // the pass at once: the runtime keeps that claim the next one.
     for (refusal in listOf(ridl.rt.port.SettleError.UnknownClaim, ridl.rt.port.SettleError.TooLarge(0))) {
-        val big = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE + 1), null)
+        val big = rt.command(Cabin.number, Ordinal(3u), ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize + 1), null)
         val next = rt.command(Cabin.number, Ordinal(3u), bytes(LevelCodec, Level.of(4)), null)
         var reads = 0
         var settles = 0
-        val refusing = object : ridl.rt.port.Handler by rt {
+        val refusing = object : ridl.rt.port.Handler by rt, ridl.rt.port.Encoded by rt {
             override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = try {
                 rt.nextClaim(out)
             } finally {
@@ -279,24 +279,44 @@ fun probe(): List<String> {
 
     // ReadError.Short from nextClaim, which an older runtime returned for an
     // oversized claim, is a read failure like any other.
-    val older = object : ridl.rt.port.Handler by rt {
-        override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Short(Cabin.MAX_BUFFER_SIZE + 1)
+    val older = object : ridl.rt.port.Handler by rt, ridl.rt.port.Encoded by rt {
+        override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Short(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize + 1)
     }
     try {
         Cabin.dispatch(older, provider, buffer)
         failures += "a Short from nextClaim reaches dispatch's caller"
     } catch (e: ridl.rt.error.ProviderError.Claim) {
-        expectEqual("a Short from nextClaim is ProviderError.Claim", ReadError.Short(Cabin.MAX_BUFFER_SIZE + 1), e.error)
+        expectEqual("a Short from nextClaim is ProviderError.Claim", ReadError.Short(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize + 1), e.error)
     }
 
     // Horn: a second interface on the same runtime, a signal only.
     HornPublisher(rt).let { it.active(Health.WARN); it.commit() }
     expectEqual("a second interface's signal reads back", Health.WARN, HornClient(rt).active().value)
     expectEqual("its descriptor has its own number", InterfaceNo(2u), Horn.number)
-    expect("the reply codec is the descriptor's", AverageCodec.maxSize == Cabin.members[3].payloads[1].maxSize.flatbuffers?.toInt())
+    expectEqual(
+        "a query's row of the size table is its request and its reply",
+        WindowCodec.maxSize.toULong() + AverageCodec.maxSize.toULong(),
+        ridl.rt.contract.reservation(veh.cabin.CabinAverage, ridl.rt.encoding.Encoding.FlatBuffers),
+    )
+
+    // driftsys/ridl#887: a face reads its encoding from its port, and refuses
+    // a port whose encoding the package carries no codec for.
+    for (encoding in listOf(ridl.rt.encoding.Encoding.Proto3, ridl.rt.encoding.Encoding.ReprC)) {
+        val foreign = Loopback(Cabin.catalog, encoding)
+        try {
+            CabinPublisher(foreign)
+            failures += "a publisher over a $encoding port is built"
+        } catch (_: IllegalArgumentException) {
+        }
+        try {
+            Cabin.dispatch(foreign, provider, ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize))
+            failures += "dispatch over a $encoding handler runs"
+        } catch (_: IllegalArgumentException) {
+        }
+    }
 
     // dispatch reports the handler's read failure as serve does.
-    val failing = object : ridl.rt.port.Handler by rt {
+    val failing = object : ridl.rt.port.Handler by rt, ridl.rt.port.Encoded by rt {
         override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Detached
     }
     try {

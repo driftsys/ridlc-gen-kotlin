@@ -37,16 +37,16 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.7.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.10.0` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
 one deployment, and this one lays out none. The model's size states
 (`Payload.sizes`, `request_sizes`, `reply_sizes`, `reservation` and
-`table_budget`) are not read either: a `PayloadInfo` takes its FlatBuffers size
-from `Payload.flatbuffers_max_size`, which ridl keeps writing, equal to the
-bounded FlatBuffers state, and `Member.reservation` and `tableBudget` sum those
-sizes at run time, as `ridl-rt` does.
+`table_budget`) are not read either: a descriptor's size table is built from its
+codecs' `maxSize`, each `Payload.flatbuffers_max_size`, which ridl keeps
+writing, equal to the bounded FlatBuffers state, as the Rust backend builds
+`Sizes<E>` from each codec's `MAX_SIZE`.
 
 ## Generated code on Android
 
@@ -70,8 +70,12 @@ why, and how the rule was last checked; CI does not check it.
 - **`-classpath`, not `-jar`.** The Shadow start script runs the main class with
   the fat jar as the class path rather than `java -jar`; the effect is the same,
   and the script still ends in `exec "$JAVACMD" "$@"`.
-- **`wire-encoding`** accepts `flatbuffers` alone: O-K1 is disposed on
-  FlatBuffers with a verifier (#65), and no other codec is emitted.
+- **`encodings`** accepts `flatbuffers` alone: O-K1 is disposed on FlatBuffers
+  with a verifier (#65), and no other codec is emitted. With no `encodings`
+  option the package is `Types.kt` alone, with no codec and no face, as every
+  backend of the family generates it since ridl 0.9 (#83); the corpus and the
+  cabin sample name `flatbuffers` in `[backend.kotlin]`. ridl 0.9 sends
+  `encodings` and never `wire-encoding`, which the plugin no longer reads.
 - **Every reference goes through `Model.declarationOf`** (`Refs.kt`), which
   refuses a reference whose `TypeRef.foreign` disagrees with its package, or
   whose index is past its table, with a diagnostic naming the reference, where
@@ -185,13 +189,21 @@ to that over 15,780 buffers (`CodecTest`).
 
 Per declared interface, the Rust face of the pinned release spelled in Kotlin
 (ADR-0023): the descriptor `object <Iface> : Interface`, with its `MEMBERS`
-rows, `MAX_BUFFER_SIZE`, `EVENT_SOURCE_BUFFER_SIZE`, one correlation value class
-per call, the `Event` sealed interface, `dispatch`, and `serve` and
+rows, its FlatBuffers size table through `sizes(encoding)`, one correlation
+value class per call, the `Event` sealed interface, `dispatch`, and `serve` and
 `serveAsync`; one descriptor object per interaction, `<Iface><Member>`, with its
-codec and its `require`, `ensure` or `init`; the clients, bound to exactly the
-ports their kinds need (RA-19); `<Iface>Publisher<W>`; and `<Iface>Provider`.
-`dispatch` settles as the Rust one does, a command before its provider method
-runs and a query after.
+codec, its row and its `require`, `ensure` or `init`; the clients, bound to
+exactly the ports their kinds need (RA-19) and to `Encoded`;
+`<Iface>Publisher<W>`; and `<Iface>Provider`. `dispatch` settles as the Rust one
+does, a command before its provider method runs and a query after.
+
+Since ridl 0.10 (driftsys/ridl#887) a face reads its encoding from its port:
+each binding checks the port's `encoding` beside its catalog, and the claim and
+next-event buffers are sized from that encoding's table. Rust refuses a port of
+an encoding with no codec at compile time; this face throws
+`IllegalArgumentException` when it is built, `serve` and `serveAsync` before
+they register, and `dispatch`, which no binding precedes, when it sizes its
+buffer.
 
 Since ridl 0.6.0 (driftsys/ridl#752) every `command`, `query` and `raise` the
 face sends passes `null` as its trace context, as the Rust face passes `None`;
@@ -265,9 +277,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a
-  call with other than one named parameter, a reply that is not a named type.
-  The rest of the package is generated, as the Rust pipeline skips such an
-  interface with a `__RIDL_NO_FACE_*` note (E11.14 decision 2).
+  parameter with no type or a stream, a fallible `T | E` reply, a call struct
+  the lowering induced with no finite FlatBuffers bound. Since ridl 0.10
+  (driftsys/ridl#713) a call of any other parameter list sends its induced
+  `<Iface><Call>Params`, and a tuple reply its `<Iface><Call>Reply`; a call
+  method's KDoc lists the parameters under `@param args`, as the Rust face's
+  `# Parameters` section does. The rest of the package is generated, as the Rust
+  pipeline skips such an interface with a `__RIDL_NO_FACE_*` note (E11.14
+  decision 2).
 - **A channel's init is the signal's own `= value`** when it declares one over a
   named scalar, else the payload type's typl init, built from the model's `Init`
   facts. The Rust face always calls the payload's `Default`, and calls the

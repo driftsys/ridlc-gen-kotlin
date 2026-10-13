@@ -22,6 +22,14 @@ object Harness {
     val plugin: Path = Path.of(System.getProperty("plugin.bin"))
     val corpus: Path = Path.of(System.getProperty("corpus.dir"))
 
+    /**
+     * The `ridl.toml` of a package a test writes: [name], and the FlatBuffers
+     * codec named for this plugin, without which the package is its types
+     * alone (#83).
+     */
+    fun manifest(name: String): String =
+        "[package]\nname = \"$name\"\nversion = \"1.0.0\"\n\n[backend.kotlin]\nencodings = [\"flatbuffers\"]\n"
+
     /** Every corpus package: one directory holding a `ridl.toml`. */
     fun packages(): List<String> =
         corpus.listDirectoryEntries().filter { it.resolve("ridl.toml").isRegularFile() }.map { it.fileName.toString() }.sorted()

@@ -98,8 +98,15 @@ public enum class Malformed {
 
 /** A value that breaks a typl constraint. `ridl_rt::payload::Violation`. */
 public data class Violation(
-    /** The name of the typl type whose constraint failed. */
-    public val typeName: String,
+    /**
+     * The name of the typl type whose constraint failed. `null` only for an
+     * `INVALID_VALUE` outcome decoded from a frame, as a frame carries the
+     * [rule] alone (frame specification §9.6). It is set otherwise: when the
+     * generated code detected the violation, on bytes received in a frame
+     * included, and when an in-process transport such as `ridl-rt-kt-loopback`
+     * delivered it. No Kotlin transport decodes a frame yet.
+     */
+    public val typeName: String?,
     /** The kind of constraint that failed. */
     public val rule: Rule,
 )

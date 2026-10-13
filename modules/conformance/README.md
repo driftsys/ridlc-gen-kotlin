@@ -20,11 +20,11 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.7.0`, the tag that carries ridl 0.7.0's binaries. The tests
-of stage K2a run: a request the pinned `ridl` wrote parses, a request with an
-unknown key parses, a request nested 1,000 levels parses in process and through
-the installed script, a wrong schema is one error diagnostic and exit 0, an
-unknown option is an error diagnostic, unreadable input is exit 3, and the
+Pinned to `editor-v0.10.0`, the tag that carries ridl 0.10.0's binaries. The
+tests of stage K2a run: a request the pinned `ridl` wrote parses, a request with
+an unknown key parses, a request nested 1,000 levels parses in process and
+through the installed script, a wrong schema is one error diagnostic and exit 0,
+an unknown option is an error diagnostic, unreadable input is exit 3, and the
 parity test compares `ridl build` with `--plugin kotlin=<script>` to the script
 invoked directly, for every package each build hands the plugin.
 
@@ -120,26 +120,30 @@ admits 0, in a struct, a tuple, a map entry, a union arm and a box root. Reading
 every absent scalar as 0, reading an absent enum as its first member rather than
 its zero member, or refusing an absent named scalar each turns it red.
 
-The test of stage K3a, `FacesTest`: the generated faces of `cabin` and
-`kt-values`, over `ridl-rt-kt-loopback`, driven by the probes of
+The test of stage K3a, `FacesTest`: the generated faces of `cabin`, `kt-values`
+and `face-induced`, over `ridl-rt-kt-loopback`, driven by the probes of
 `resources/faces/`. Cabin's four interaction kinds round-trip — a signal set and
 read, an event raised and received, a command sent, dispatched and acknowledged,
 a query sent, dispatched and replied — and `dispatch`'s settlement table is
 reached past the client: a failing `require`, a corrupt argument buffer, an
 argument outside its constraints, an unknown ordinal, another interface's
 number, a settlement the handler refuses, a buffer too short, and, since ridl
-0.4.0, a claim larger than `MAX_BUFFER_SIZE`: settled `Corrupt` with the claim
-behind it served, or ending the pass when that settlement is refused, while a
-`ReadError.Short` from `nextClaim` stays `ProviderError.Claim`. `kt-values`'
-`Probe`, driven through its blocking and async clients with `serve` and
-`serveAsync`, adds a failing `ensure` returned as
+0.4.0, a claim larger than the size table's `maxBufferSize`: settled `Corrupt`
+with the claim behind it served, or ending the pass when that settlement is
+refused, while a `ReadError.Short` from `nextClaim` stays `ProviderError.Claim`.
+`kt-values`' `Probe`, driven through its blocking and async clients with `serve`
+and `serveAsync`, adds a failing `ensure` returned as
 `ClientError.Call(ContractBroken)`, a float clause and a signal's own init, and
 settles a query by hand with every outcome a provider or a runtime can send: a
 corrupt reply is `Call(Corrupt)`, a reply outside its constraint
 `Call(InvalidValue)`, a provider's failed `require` `Call(PreconditionFailed)`,
 an unknown interaction `Call(UnknownInteraction)`. A wrong comparison operator,
 a wrong settlement, a missing interface check or a reply check always reported
-as `Corrupt` each turns it red.
+as `Corrupt` each turns it red. `face-induced` (ridl 0.10, driftsys/ridl#713)
+sends a call of one named parameter as it is, and the struct the lowering
+induced for a call of two parameters, of none, and for a tuple reply; each is
+dispatched and settled, the provider is handed each argument as it was sent, and
+the size table reserves each induced struct's codec's `maxSize`.
 
 The test of #7, `ClientsTest`: the clients and `serve` generated for `cabin`,
 over `ridl-rt-kt-loopback`, driven by the probe of `resources/clients/`. The

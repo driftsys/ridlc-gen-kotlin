@@ -16,6 +16,7 @@ import ridl.codegen.v1.ModelOuterClass.CommandShape
 import ridl.codegen.v1.ModelOuterClass.ContractKind
 import ridl.codegen.v1.ModelOuterClass.DottedName
 import ridl.codegen.v1.ModelOuterClass.EventShape
+import ridl.codegen.v1.ModelOuterClass.Family
 import ridl.codegen.v1.ModelOuterClass.Init
 import ridl.codegen.v1.ModelOuterClass.Interaction
 import ridl.codegen.v1.ModelOuterClass.InteractionSlot
@@ -26,17 +27,29 @@ import ridl.codegen.v1.ModelOuterClass.Param
 import ridl.codegen.v1.ModelOuterClass.Payload
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import ridl.codegen.v1.ModelOuterClass.Shape
 import ridl.codegen.v1.ModelOuterClass.SignalShape
 import ridl.codegen.v1.ModelOuterClass.Timing
 import ridl.codegen.v1.ModelOuterClass.TimingMode
 import ridl.codegen.v1.ModelOuterClass.Spellings
 import ridl.codegen.v1.ModelOuterClass.Type
+import ridl.codegen.v1.ModelOuterClass.TupleRef
 import ridl.codegen.v1.ModelOuterClass.TypeRef
+import ridl.codegen.v1.ModelOuterClass.Fallible
+import ridl.codegen.v1.ModelOuterClass.FbRoot
+import ridl.codegen.v1.ModelOuterClass.FbUnbounded
+import ridl.codegen.v1.ModelOuterClass.Field
+import ridl.codegen.v1.ModelOuterClass.FlatBuffersProjection
+import ridl.codegen.v1.ModelOuterClass.InducedName
+import ridl.codegen.v1.ModelOuterClass.InducedTuple
+import ridl.codegen.v1.ModelOuterClass.InteractionPath
+import ridl.codegen.v1.ModelOuterClass.QueryShape
+import ridl.codegen.v1.ModelOuterClass.Reply
 import ridl.codegen.v1.Plugin
 
 /** What `Faces.kt` skips, and how: an interface the face cannot carry is a warning, not a failed package. */
 class FacesEmitterTest {
-    private val options = Options("kt.demo", WireEncoding.FlatBuffers)
+    private val options = Options("kt.demo", listOf(WireEncoding.FlatBuffers))
 
     /** A catalog hash no placeholder spells: bytes 1 to 32. */
     private val hash = ByteArray(32) { (it + 1).toByte() }
@@ -55,7 +68,7 @@ class FacesEmitterTest {
     }
 
     @Test
-    fun `a call with two parameters skips its interface with a warning`() {
+    fun `a call whose parameter has no type skips its interface with a warning`() {
         val command = CommandShape.newBuilder()
             .addParams(Param.newBuilder().setName(spelled("a")))
             .addParams(Param.newBuilder().setName(spelled("b")))
@@ -63,7 +76,62 @@ class FacesEmitterTest {
         val emitted = FacesEmitter(model(command), options).emit()
         assertNull(emitted.text, "no interface is left to face")
         assertEquals(emptyList<String>(), emitted.errors)
-        assertTrue(emitted.warnings.single().contains("`kt.demo.Drive`") && "exactly one parameter" in emitted.warnings[0], emitted.warnings[0])
+        val warning = emitted.warnings.single()
+        assertTrue("`kt.demo.Drive`" in warning && "declares a parameter with no type" in warning, warning)
+    }
+
+    /**
+     * Package `kt.demo` with `Level` and interface `Drive`, whose command `go`
+     * takes two `Level`s and so sends `DriveGoParams`, the struct the
+     * lowering induced at `Model.tuples[0]` (driftsys/ridl#713); a root
+     * bounds it when [bounded].
+     */
+    private fun induced(bounded: Boolean): Model {
+        val param = { name: String -> Param.newBuilder().setName(spelled(name)).setType(Type.newBuilder().setNamed(level)) }
+        val field = { name: String -> Field.newBuilder().setName(spelled(name)).setType(Type.newBuilder().setNamed(level)) }
+        val command = CommandShape.newBuilder().addParams(param("a").setDoc("The first.")).addParams(param("b"))
+            .setRequestTuple(TupleRef.newBuilder().setIndex(0))
+        val tuple = InducedTuple.newBuilder()
+            .setName(InducedName.newBuilder().setRust("DriveGoParams"))
+            .addFields(field("a")).addFields(field("b"))
+            .setInteraction(InteractionPath.newBuilder().setInterface(0).setSlot(0).addSegments("Params"))
+        val root = FbRoot.newBuilder().setTuple(0)
+        if (bounded) root.setMaxSize(40) else root.setUnbounded(FbUnbounded.getDefaultInstance())
+        return model(command.build()).toBuilder().addDeclarations(scalar("Level")).addTuples(tuple)
+            .setFlatbuffers(FlatBuffersProjection.newBuilder().addRoots(root)).build()
+    }
+
+    @Test
+    fun `a call with any other parameter list sends the struct the lowering induced for it`() {
+        val text = checkNotNull(FacesEmitter(induced(bounded = true), options).emit().text)
+        assertTrue("public fun go(args: DriveGoParams) {" in text, text)
+        assertTrue("PayloadInfo(\"DriveGoParams\")" in text, "the member row names the induced struct\n$text")
+        assertTrue("listOf(DriveGoParamsCodec.maxSize.toULong())" in text, "the size table reserves its codec's bound\n$text")
+        assertTrue("fun go(args: DriveGoParams)\n" in text, "the provider takes it too\n$text")
+        val listed = "   * @param args The arguments, one property per parameter:\n   * - `a`: The first.\n   * - `b`\n   */\n"
+        assertEquals(3, Regex(Regex.escape(listed) + "  public (suspend )?fun go\\(").findAll(text).count(), "each call method lists the parameters\n$text")
+    }
+
+    @Test
+    fun `an induced struct with no finite bound skips its interface with a warning`() {
+        val emitted = FacesEmitter(induced(bounded = false), options).emit()
+        assertNull(emitted.text)
+        val warning = emitted.warnings.single()
+        assertTrue("`kt.demo.DriveGoParams` has no finite FlatBuffers bound" in warning, warning)
+    }
+
+    @Test
+    fun `a fallible reply skips its interface with a warning`() {
+        val query = QueryShape.newBuilder()
+            .addParams(Param.newBuilder().setName(spelled("level")).setType(Type.newBuilder().setNamed(level)))
+            .setRequest(Payload.newBuilder().setType(level).setFlatbuffersMaxSize(43))
+            .setReply(Reply.newBuilder().setFallible(Fallible.getDefaultInstance()))
+        val interaction = Interaction.newBuilder().setName(spelled("probe")).setQuery(query)
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(InteractionSlot.newBuilder().setOrdinal(1).setInteraction(interaction))
+        val emitted = FacesEmitter(demo().addDeclarations(scalar("Level")).addInterfaces(iface).build(), options).emit()
+        val warning = emitted.warnings.single()
+        assertTrue("query `probe`'s reply is a fallible `T | E`, which the face does not carry" in warning, warning)
     }
 
     @Test
@@ -117,7 +185,7 @@ class FacesEmitterTest {
     fun `a catalog hash that is not 32 bytes refuses the package`() {
         for (size in listOf(0, 31, 33)) {
             val model = demo().setCatalog(Catalog.newBuilder().setPackage("kt.demo").setHash(ByteString.copyFrom(ByteArray(size))))
-            val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(model).build()
+            val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("flatbuffers")).setModel(model).build()
             val response = Generator.generate(request)
             assertEquals(0, response.filesCount, "no file for a $size-byte hash")
             assertEquals(
@@ -130,7 +198,7 @@ class FacesEmitterTest {
     @Test
     fun `a skipped interface leaves the package generated, with the warning in the response`() {
         val command = CommandShape.newBuilder().addParams(Param.newBuilder().setName(spelled("a"))).addParams(Param.newBuilder().setName(spelled("b"))).build()
-        val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(model(command)).build()
+        val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("flatbuffers")).setModel(model(command)).build()
         val response = Generator.generate(request)
         assertEquals(listOf("kt/demo/Types.kt", "kt/demo/Codec.kt"), response.filesList.map { it.path })
         assertEquals(Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING, response.diagnosticsList.single().severity)
@@ -159,7 +227,7 @@ class FacesEmitterTest {
 
     /** The error diagnostics of the whole plugin over [declarations] and [iface]. */
     private fun refusals(vararg declarations: String, iface: Interface.Builder): List<String> = Generator.generate(
-        Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(
+        Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("flatbuffers")).setModel(
             demo()
                 .addAllDeclarations(declarations.map { scalar(it).build() }).addInterfaces(iface),
         ).build(),
@@ -194,6 +262,75 @@ class FacesEmitterTest {
         assertTrue("internal abstract class InteractionCall_<" in checkNotNull(emitted.text))
     }
 
+    @Test
+    fun `an interaction's family and a command's shape change nothing the face emits`() {
+        // #88: ridl 0.10 carries both, and every interaction ridl emits is still a dispatch one; the face reads neither.
+        fun drive(family: Family, shape: Shape) = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(command(1, "set", "Set").apply { interactionBuilder.setFamily(family).commandBuilder.setShape(shape) })
+        assertEquals(
+            faces("Level", iface = drive(Family.FAMILY_DISPATCH, Shape.SHAPE_NONE)).text,
+            faces("Level", iface = drive(Family.FAMILY_INTENT, Shape.SHAPE_TOGGLE)).text,
+        )
+    }
+
+    @Test
+    fun `an interaction's doc and rules reach every method a user calls or implements for it, and no internal one`() {
+        // #86, ADR-0028 decisions 6 and 7.
+        val rule = ridl.codegen.v1.ModelOuterClass.Rule.newBuilder().setText("require `level < 100`")
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(
+            command(1, "set", "Set").apply {
+                interactionBuilder.setDoc("Sets the level.").addRules(rule)
+                    .commandBuilder.getParamsBuilder(0).setDoc("The new level.")
+            },
+        )
+        val text = checkNotNull(faces("Level", iface = iface).text)
+        val documented = "   * Sets the level.\n   *\n   * %s\n   *\n   * Rules:\n   * - require `level < 100`\n   *\n   * @param level The new level.\n   */\n"
+        for ((sentence, signature) in listOf(
+            "Calls command `set` and waits for its outcome." to "  public fun `set`(level: Level) {",
+            "Calls command `set` and suspends until its outcome." to "  public suspend fun `set`(level: Level) {",
+        )) {
+            assertTrue(documented.format(sentence) + signature in text, "$signature\n$text")
+        }
+        assertTrue("Serves command `set`." in text && "@param level The new level.\n   */\n  public fun `set`(level: Level)\n" in text, text)
+        assertEquals(3, Regex("Sets the level\\.").findAll(text).count(), "the blocking and suspending clients and the provider, not the poll face")
+    }
+
+    @Test
+    fun `a signal's doc comes before the whole sentence of its read`() {
+        val signal = slot(1, "level", "Level", signal = true).apply { interactionBuilder.setDoc("The fill level.") }
+        val iface = Interface.newBuilder().setDeclared(spelled("Gauge")).setNumber(1).addSlots(signal)
+        val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
+        val text = checkNotNull(FacesEmitter(demo().addDeclarations(level).addInterfaces(iface).build(), options).emit().text)
+        val sentence = "Reads signal `level`, with the provenance, freshness and envelope the runtime resolved. A channel with no " +
+            "value under `Init` or `Invalid(Declared)` holds its init value; bytes that fail their check, none under any other " +
+            "provenance included, read as the init value under `Provenance.Invalid` with what was detected."
+        assertTrue("   * The fill level.\n   *\n   * $sentence\n   */\n  public fun level(): Sample<Level> {" in text, text)
+    }
+
+    @Test
+    fun `an internal interface has its descriptors, internal, and no face`() {
+        // driftsys/ridl#832: the Rust backend gives an internal interface no face and crate-visible descriptors.
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .setVisibility(ridl.codegen.v1.ModelOuterClass.Visibility.VISIBILITY_INTERNAL)
+            .addSlots(slot(1, "level", "Level", signal = true))
+            .addSlots(slot(2, "alarm", "Alarm", signal = false))
+            .addSlots(command(3, "set", "Set"))
+        val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
+        val emitted = FacesEmitter(demo().addDeclarations(level).addInterfaces(iface).build(), options).emit()
+        assertEquals(emptyList<String>(), emitted.warnings)
+        val text = checkNotNull(emitted.text)
+        for (descriptor in listOf("Drive", "DriveLevel", "DriveAlarm", "DriveSet")) {
+            assertTrue("internal object $descriptor :" in text, "$descriptor is an internal descriptor\n$text")
+        }
+        assertTrue("override fun sizes(encoding: Encoding): Sizes" in text, "the size table is a descriptor's\n$text")
+        val face = listOf(
+            "DriveClient", "DrivePollClient", "DriveAsyncClient", "DrivePublisher", "DriveProvider", "DriveSetCall", "SetCorrelation",
+            "sealed interface Event", "fun dispatch", "fun serve", "fun checkCatalog", "fun checkEncoding", "fun takeEvent", "fun encoded",
+            "fun settle",
+        )
+        for (item in face) assertFalse(item in text, "no `$item`, which only a face uses\n$text")
+    }
+
     /** A signal, or an event, named [declared] and [camel], over one `Level`. */
     private fun slot(ordinal: Int, declared: String, camel: String, signal: Boolean) = InteractionSlot.newBuilder().setOrdinal(ordinal)
         .setInteraction(
@@ -220,7 +357,7 @@ class FacesEmitterTest {
     fun `each signal is a state of the async client, read through one shared decode`() {
         // #76: the timing travels on the descriptor; the runtime turns it into the polling period.
         val text = gauge(timing(TimingMode.TIMING_MODE_RANGE, "20000", "500000"))
-        assertTrue("public val <P : SignalReader> GaugeAsyncClient<P>.level: SignalState<Level>" in text, text)
+        assertTrue("public val <P> GaugeAsyncClient<P>.level: SignalState<Level> where P : SignalReader, P : Encoded" in text, text)
         assertTrue("get() = _signalStates.of(GaugeLevel, null, LevelCodec.maxSize) { raw, buf -> sampled(LevelCodec, GaugeLevel, raw, buf) }" in text, text)
         assertTrue("return sampled(LevelCodec, GaugeLevel, port.read(Gauge.number, Ordinal(1u), buf), buf)" in text, "the blocking read decodes the same way")
         assertFalse("levelFlow" in text, "the cold flow is gone")
@@ -229,7 +366,7 @@ class FacesEmitterTest {
     @Test
     fun `a signal-only interface gets a suspending client of signal states, polled in a scope it owns by default`() {
         val text = gauge(null)
-        assertTrue("public class GaugeAsyncClient<P : SignalReader>(" in text, text)
+        assertTrue("public class GaugeAsyncClient<P>(" in text && ") where P : SignalReader, P : Encoded {" in text, text)
         assertTrue("scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)," in text, text)
         assertTrue("grid: PollGrid = PollGrid.Default," in text, text)
         assertTrue("internal val _signalStates: SignalStates = SignalStates(port, scope, grid)" in text, text)

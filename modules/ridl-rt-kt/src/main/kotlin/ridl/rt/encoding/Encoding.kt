@@ -1,7 +1,6 @@
 // The payload encodings: the spelling of `ridl_rt::encoding` (docs/design.md §3).
 package ridl.rt.encoding
 
-import ridl.rt.contract.EncodedSizes
 
 /**
  * A payload encoding. `ridl_rt::encoding::Encoding` and its three marker
@@ -22,18 +21,6 @@ public enum class Encoding(public val tag: Int, public val encodingName: String)
     /** `repr(C)`, the fixed-layout encoding of ADR-0020 decision 1. */
     ReprC(3, "repr-c"),
     ;
-
-    /**
-     * This encoding's field of [sizes]: a payload's largest encoded size in
-     * this encoding, or `null` when the toolchain cannot size it.
-     * `ridl_rt::encoding::Encoding::max_size`. A `when` with no `else`, so an
-     * encoding added without saying which field it reads does not compile.
-     */
-    public fun maxSize(sizes: EncodedSizes): UInt? = when (this) {
-        FlatBuffers -> sizes.flatbuffers
-        Proto3 -> sizes.proto3
-        ReprC -> sizes.reprC
-    }
 
     public companion object {
         /** The encoding whose frame tag is [tag], or `null` for a tag no encoding has. */

@@ -150,7 +150,7 @@ def run(command, **kwargs):
 
 
 def release():
-    """The pinned tag and the `ridl-rt` version requirement it carries: `0.7` for `editor-v0.7.0`."""
+    """The pinned tag and the `ridl-rt` version requirement it carries: `0.10` for `editor-v0.10.0`."""
     tag = (CONFORMANCE / "ridl-release").read_text().strip()
     match = re.fullmatch(r"editor-v(\d+)\.(\d+)\.\d+", tag)
     if not match:

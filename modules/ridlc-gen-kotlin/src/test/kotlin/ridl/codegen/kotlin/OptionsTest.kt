@@ -6,31 +6,45 @@ import org.junit.jupiter.api.Test
 import ridl.codegen.v1.ModelOuterClass
 import ridl.codegen.v1.Plugin
 
-/** docs/design.md §2, step 3: the two known keys and the refusal of every other. */
+/** docs/design.md §2, step 3: the two known keys, `encodings` read as the Rust backend reads it, and the refusal of every other. */
 class OptionsTest {
     private fun request(vararg options: Pair<String, String>): Plugin.CodegenRequest =
         Plugin.CodegenRequest.newBuilder()
             .setSchema(SCHEMA)
-            .setModel(ModelOuterClass.Model.newBuilder().setName(ModelOuterClass.DottedName.newBuilder().setDotted("veh.cabin")))
+            .setModel(
+                ModelOuterClass.Model.newBuilder().setName(ModelOuterClass.DottedName.newBuilder().setDotted("veh.cabin"))
+                    .setCatalog(ModelOuterClass.Catalog.newBuilder().setHash(com.google.protobuf.ByteString.copyFrom(ByteArray(32)))),
+            )
             .addAllOptions(options.map { (k, v) -> Plugin.BackendOption.newBuilder().setKey(k).setValue(v).build() })
             .build()
 
     private fun refused(parsed: Options.Parsed): List<String> = (parsed as Options.Parsed.Refused).messages
 
     @Test
-    fun `no option means the package's dotted name and flatbuffers`() {
+    fun `no option means the package's dotted name and no encoding`() {
+        assertEquals(Options.Parsed.Ok(Options("veh.cabin", emptyList())), Options.parse(request()))
+    }
+
+    @Test
+    fun `with no encoding the package is its types alone, and with flatbuffers its codec too`() {
+        // #83: the family's rule, as the Rust backend applies it since ridl 0.9 (driftsys/ridl#851).
+        val bare = Generator.generate(request()).filesList.map { it.path }
+        assertEquals(listOf("veh/cabin/Types.kt"), bare)
+        val coded = Generator.generate(request("encodings" to "flatbuffers")).filesList.map { it.path }
+        assertEquals(listOf("veh/cabin/Types.kt", "veh/cabin/Codec.kt"), coded)
+    }
+
+    @Test
+    fun `kotlin-package and encodings are read`() {
         assertEquals(
-            Options.Parsed.Ok(Options("veh.cabin", WireEncoding.FlatBuffers)),
-            Options.parse(request()),
+            Options.Parsed.Ok(Options("com.example.cabin", listOf(WireEncoding.FlatBuffers))),
+            Options.parse(request("kotlin-package" to "com.example.cabin", "encodings" to "flatbuffers")),
         )
     }
 
     @Test
-    fun `kotlin-package and wire-encoding are read`() {
-        assertEquals(
-            Options.Parsed.Ok(Options("com.example.cabin", WireEncoding.FlatBuffers)),
-            Options.parse(request("kotlin-package" to "com.example.cabin", "wire-encoding" to "flatbuffers")),
-        )
+    fun `wire-encoding is no longer a key`() {
+        assertTrue("`wire-encoding`" in refused(Options.parse(request("wire-encoding" to "flatbuffers")))[0])
     }
 
     @Test
@@ -41,8 +55,28 @@ class OptionsTest {
     }
 
     @Test
-    fun `an unknown encoding is refused until O-K1 admits it`() {
-        assertTrue("`proto3`" in refused(Options.parse(request("wire-encoding" to "proto3")))[0])
+    fun `an encoding with no Kotlin codec is refused by name`() {
+        for (name in listOf("proto3", "repr-c")) {
+            assertTrue("no `$name` codec" in refused(Options.parse(request("encodings" to name)))[0])
+        }
+        assertTrue("no `proto3` codec" in refused(Options.parse(request("encodings" to "flatbuffers,proto3")))[0])
+    }
+
+    @Test
+    fun `a name that is no encoding is refused`() {
+        assertTrue("`cbor`, which is not an encoding" in refused(Options.parse(request("encodings" to "cbor")))[0])
+    }
+
+    @Test
+    fun `an empty element is refused`() {
+        for (bad in listOf("", "flatbuffers,", ",flatbuffers")) {
+            assertTrue("empty element" in refused(Options.parse(request("encodings" to bad)))[0], bad)
+        }
+    }
+
+    @Test
+    fun `an encoding named twice is refused`() {
+        assertTrue("twice" in refused(Options.parse(request("encodings" to "flatbuffers,flatbuffers")))[0])
     }
 
     @Test

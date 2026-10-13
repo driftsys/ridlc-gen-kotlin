@@ -21,6 +21,7 @@ class FacesTest {
     private val probes = mapOf(
         "cabin" to "ridl.conformance.probe.faces.cabin.CabinFaceProbe",
         "kt-values" to "ridl.conformance.probe.faces.values.ValuesFaceProbe",
+        "face-induced" to "ridl.conformance.probe.faces.induced.InducedFaceProbe",
     )
 
     @TestFactory

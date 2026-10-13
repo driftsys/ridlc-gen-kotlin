@@ -62,6 +62,29 @@ interface Cabin {
 
 // ANCHOR_END: schema
 
+/// Which cabin subsystems a report covers. A set holds any number of them.
+enumset Subsystems {
+  /// The climate control, which holds [Temperature].
+  CLIMATE = 0
+  /// The horn, which [Horn.active] reports on.
+  HORN = 1
+}
+
+/// A report that links to an enum set bit, an enum value and an interaction,
+/// and holds a range written as prose: a value in [0, 1].
+/// @see veh.cabin.Cabin.warning
+/// @see veh.cabin.Cabin.setLevel
+/// @since 1.0
+struct Diagnostic {
+  /// The subsystems covered, which include [Subsystems.CLIMATE] when the
+  /// climate control is checked.
+  covers: Subsystems
+  /// The health found. It is [Health.OK] when no fault was found.
+  health: Health
+  /// The level taken, which [Diagnostic.loop] names: a Rust keyword.
+  loop: Level
+}
+
 /// A second interface with a signal and nothing else, so the emitted crate
 /// holds more than one interface module and the per-interface buffer bound is
 /// visibly computed per interface rather than fixed.

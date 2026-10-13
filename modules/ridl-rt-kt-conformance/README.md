@@ -92,6 +92,14 @@ latest call's context on a claim fails the two in-flight cases, and on a
 `ShortClaim` fails
 `an oversized claims context is the offered calls not the latest`.
 
+ridl 0.10 (driftsys/ridl#927, ADR-0021 decision 10's 2026-10-12 amendment):
+`Watermark` has no `seq`.
+`scan reports the changes since a mark and moves it
+forward` now checks that
+each entry carries its own signal's sequence number, not the generation, and the
+scannable arm gains `scan stops at the first interface that does not fit`: 5
+scannable cases and 75 in all.
+
 The case of a forget before any claim accepts either a call still presented and
 settled or a withdrawn one, and checks that the runtime then accepts exactly
 `slots` further sends, so the forgotten call gave its slot back.

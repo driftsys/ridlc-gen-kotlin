@@ -1,0 +1,31 @@
+// A fixture for the codec of an induced argument and reply struct
+// (driftsys/ridl#713).
+//
+// Every parameter list that is not exactly one named type induces a named
+// argument struct, and a tuple reply induces a named reply struct. Each
+// induced struct a call sends gets a FlatBuffers root of its own, so it
+// carries a `Payload<FlatBuffers>` implementation the way a declared type
+// does.
+
+package face.induced
+
+/// A control level.
+type Level : integer [0..100]
+
+/// A window length, in samples.
+type Window : integer [0..100000]
+
+/// An averaged reading.
+type Average : integer [0..1000]
+
+/// The interface whose calls induce their payload types.
+interface Pump {
+  /// One named parameter: the request type is `Level`, and nothing is induced.
+  command one(level: Level) @[..50ms]
+  /// Two parameters: the request type is an induced struct.
+  command both(level: Level, window: Window) @[..50ms]
+  /// No parameter: the request type is an induced struct with no field.
+  query status(): Average @[..200ms]
+  /// A tuple reply: the reply type is an induced struct too.
+  query drain(): (level: Level, window: Window) @[..200ms]
+}

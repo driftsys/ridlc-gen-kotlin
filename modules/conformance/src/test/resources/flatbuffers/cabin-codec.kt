@@ -172,7 +172,7 @@ private fun debug(value: Any?): String = when (value) {
 private fun debug(error: VerifyError): String = when (error) {
     is VerifyError.Structure -> "Structure(${error.malformed.name})"
     is VerifyError.Contract ->
-        "Contract(Violation { type_name: \"${error.violation.typeName}\", rule: ${error.violation.rule.name} })"
+        "Contract(Violation { type_name: ${error.violation.typeName?.let { "Some(\"$it\")" } ?: "None"}, rule: ${error.violation.rule.name} })"
 }
 
 private fun unhex(hex: String) = ByteArray(hex.length / 2) { hex.substring(2 * it, 2 * it + 2).toInt(16).toByte() }

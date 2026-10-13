@@ -3,6 +3,7 @@ package ridl.conformance
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DynamicTest
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.io.TempDir
 import ridl.codegen.kotlin.Generator
@@ -49,25 +50,32 @@ class TypesTest {
     }
 
     /**
-     * #51: ridl strips the doc tags `@see` and `@since` before the model
-     * reaches the plugin (driftsys/ridl#703), and the emitters copy a doc as
-     * it is. `kt-values` documents `Offset` with both tags, so this fails as
-     * soon as a ridl release leaves one in the doc.
+     * #51, #86: ridl strips the doc tags `@see` and `@since` from the doc
+     * (driftsys/ridl#703) and carries them as fields of the model, with the
+     * rules (ADR-0028), and the plugin renders each once, after the doc text,
+     * as KDoc does. `kt-values` documents `Offset` with both tags and a
+     * range and a step.
      */
-    @TestFactory
-    fun `no doc tag reaches the generated KDoc`(): List<DynamicTest> = Harness.packages().map { name ->
-        DynamicTest.dynamicTest(name) {
-            val generated = generate(name)
-            for ((path, text) in generated.sources) {
-                for (tag in listOf("@see", "@since")) {
-                    assertTrue(tag !in text, "$path carries `$tag`")
-                }
-            }
-            if (name == "kt-values") {
-                // The documented declaration is generated with its doc, so the check is not vacuous.
-                assertTrue(" * An offset, in quarter steps." in generated.sources.getValue("kt/values/Types.kt"))
-            }
-        }
+    @Test
+    fun `the doc tags and the rules are rendered once, after the doc text`() {
+        val types = generate("kt-values").sources.getValue("kt/values/Types.kt")
+        val offset = """
+            |/**
+            | * An offset, in quarter steps. Its doc tags are the model's, not the text's:
+            | * ridl strips them from the doc (#51).
+            | *
+            | * Rules:
+            | * - range -5 ..= 5
+            | * - step 0.25
+            | *
+            | * @see kt.values.Even
+            | * @since 1.0
+            | */
+            |@JvmInline
+            |public value class Offset private constructor(
+        """.trimMargin()
+        assertTrue(offset in types, types)
+        assertEquals(1, Regex("@see ").findAll(types).count(), "the tag is rendered once, not left in the text")
     }
 
     @TestFactory

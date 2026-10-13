@@ -85,7 +85,7 @@ public sealed interface Forgotten {
  * storage of its own indexed by [slot].
  *
  * [budget] is the byte budget reservations are debited from — a runtime with a
- * catalog descriptor sizes it with `tableBudget` — or `null` for no budget, in
+ * catalog descriptor sizes it with `tableBudget(iface, encoding)` — or `null` for no budget, in
  * which case only the slot count bounds the calls in flight.
  *
  * @throws IllegalArgumentException when [capacity] is not between 0 and 65536,

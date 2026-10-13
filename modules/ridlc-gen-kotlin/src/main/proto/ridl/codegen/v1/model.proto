@@ -163,6 +163,16 @@ message Declaration {
     EnumSet enum_set = 14;
     Union union = 15;
   }
+  // Numbered after the oneof: 16–19 stay open for it.
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 20;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 21;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 22;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 23;
 }
 
 // A named scalar, and the shape of an inline one.
@@ -246,6 +256,15 @@ message Field {
   string doc = 5;
   repeated string labels = 6;
   optional string deprecated = 7;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 8;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 9;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 10;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 11;
 }
 
 message Enum {
@@ -262,6 +281,15 @@ message EnumValue {
   Spellings name = 1;
   int64 value = 2;
   string doc = 3;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 4;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 5;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 6;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 7;
 }
 
 message EnumSet {
@@ -289,6 +317,15 @@ message Arm {
   // Index into `FlatBuffersProjection.tables` when the arm is boxed
   // (ADR-0019 decision 2).
   optional uint32 flatbuffers_box = 6;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 7;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 8;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 9;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 10;
 }
 
 // ---------------------------------------------------------------------
@@ -390,7 +427,10 @@ message InteractionPath {
   uint32 interface = 1;
   // Index into `Interface.slots`.
   uint32 slot = 2;
-  // ["reply"], ["param", "window"], ["payload"], then as `TuplePath`.
+  // ["Params"] and ["Reply"] for the induced argument and reply structs,
+  // ["Param", "window"] for a tuple written inside a parameter, ["payload"]
+  // for a fixed, then as `TuplePath`. A role word is capitalized because it
+  // is also a segment of the induced name.
   repeated string segments = 3;
 }
 
@@ -463,6 +503,16 @@ message Interface {
     // A service's inline shape: the service's dotted name.
     DottedName service = 11;
   }
+  // Numbered after the oneof: 16–19 stay open for it.
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 20;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 21;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 22;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 23;
 }
 
 message InteractionSlot {
@@ -486,10 +536,15 @@ message Interaction {
   // Absent for a fixed, and for a call with no declared bound.
   Timing timing = 7;
   // The memory a call table reserves for the member, per wire encoding: the
-  // sum of the sizes of its payloads. A signal, an event and a fixed member
-  // have one payload, a command has its request, and a query has its request
-  // and then its reply.
+  // sum of the sizes of its payloads. A signal and an event have one payload,
+  // a command has its request, and a query has its request and then its
+  // reply. A fixed member counts no payload and is always `bytes` 0, whatever
+  // its payload: a fixed value is provisioned and never in flight, which is
+  // the same number the runtime's size table carries for it.
   Reservation reservation = 8;
+  // The family of the interaction (ADR-0012 decision 6), copied from the IR.
+  // A plugin that does not read it sees the core kind.
+  Family family = 9;
   oneof shape {
     SignalShape signal = 10;
     EventShape event = 11;
@@ -497,6 +552,16 @@ message Interaction {
     QueryShape query = 13;
     FixedShape fixed = 14;
   }
+  // Numbered after the oneof: 16–19 stay open for it.
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 20;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 21;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 22;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 23;
 }
 
 // One thing that crosses, as a named type.
@@ -542,7 +607,10 @@ enum AbsentCause {
   ABSENT_CAUSE_UNSPECIFIED = 0;
   // No codec defines the encoding of the shape.
   ABSENT_CAUSE_ENCODING_UNDEFINED = 1;
-  // proto3 only: the type has no message of its own.
+  // proto3 only: the type has no message of its own. No declaration kind
+  // produces it: a named scalar, an enum and an enum set each have the root
+  // box message `<Name>Box` the proto backend emits for them. The value is
+  // kept so that the codegen protocol keeps its numbering.
   ABSENT_CAUSE_NO_MESSAGE = 2;
   // proto3 only: every failure inside the message other than the depth
   // limit — a member the proto backend refuses, a name inside the message
@@ -578,13 +646,10 @@ message ReservationState {
     //   state is not bounded. `<role>` is `payload`, `request` or `reply`.
     //   `<payload>` is the payload's type reference when it is one named
     //   type, and otherwise what the shape is: the kind word `primitive`,
-    //   `inline scalar`, `tuple`, `map`, `stream`, `array of <element>`,
-    //   `no type` or `no payload`; the parameter list `(a, b)` of a request
-    //   whose parameters are not exactly one named type — zero parameters,
-    //   several parameters, or one parameter that is an array, a tuple, a
-    //   map, a stream, an inline scalar, a primitive or untyped;
-    //   `<ok> | <err>` for a fallible reply; or `()` for a query with no
-    //   declared return type.
+    //   `inline scalar`, `tuple`, `map`, `stream`, `array of <element>` or
+    //   `no type`; the parameter list `(a, b)` of a request that has no
+    //   induced argument struct, because a parameter is a stream or untyped;
+    //   or `<ok> | <err>` for a fallible reply.
     //
     //   `<member>: no known payload shape` — a member whose kind this
     //   toolchain does not know. Its payloads are not listed, so it is
@@ -623,15 +688,26 @@ message CommandShape {
   // The size state of the request under each wire encoding, for every
   // command. Where the request is exactly one named type, the state is that
   // type's own, which may be absent under one encoding and present under the
-  // other: a named scalar is `ABSENT_CAUSE_NO_MESSAGE` under proto3 and
-  // bounded under FlatBuffers. Otherwise it is absent under both encodings:
-  // `ABSENT_CAUSE_ENCODING_UNDEFINED` for no parameter, for several
-  // parameters, for an untyped parameter, and for a single parameter that is
-  // a tuple, an array, a map, a stream, or a scalar a proto3 leaf bounds —
-  // no codec defines the encoding of any of those request shapes;
-  // `ABSENT_CAUSE_NO_BOUND` for a single parameter that is a scalar no proto3
-  // leaf bounds, such as a `string` with no length bound.
+  // other: a struct with a member the proto backend refuses, such as an
+  // optional array, is `ABSENT_CAUSE_REFUSED_MEMBER` under proto3 whatever
+  // its FlatBuffers state is. A named scalar, an enum and an enum set are
+  // sized through their proto3 root box message and their FlatBuffers box
+  // table. Every other parameter list, including none, is sized as the
+  // induced argument struct `request_tuple` names, under the same rules as a
+  // declared struct. It is absent under both encodings only where no struct
+  // exists: `ABSENT_CAUSE_ENCODING_UNDEFINED` for a parameter with no
+  // declared type and for a stream parameter.
   PayloadSizes request_sizes = 4;
+  // The operation shape of an intent command, copied from the IR. On the
+  // command shape, not on Interaction, because Interaction's oneof is named
+  // shape.
+  Shape shape = 5;
+  // The induced argument struct, when the call's parameters are not exactly
+  // one named type: an index into `Model.tuples`. Exactly one of `request`
+  // and `request_tuple` is present for a call this toolchain lowers. The
+  // struct has one field per declared parameter, and no field when the call
+  // declares none.
+  optional TupleRef request_tuple = 6;
 }
 
 message QueryShape {
@@ -648,13 +724,19 @@ message QueryShape {
   // The size state of the reply under each wire encoding, for every query,
   // including a query with no declared return type. Where the reply is
   // exactly one named type, the state is that type's own, under the same rule
-  // as `request_sizes`. Otherwise it is absent under both encodings:
-  // `ABSENT_CAUSE_ENCODING_UNDEFINED` for a fallible `T | E` reply, for no
-  // declared return type, for a return type that declares no reply type, for
-  // an untyped reply, and for a reply that is a tuple, an array, a map, a
-  // stream, or a scalar a proto3 leaf bounds; `ABSENT_CAUSE_NO_BOUND` for a
-  // reply that is a scalar no proto3 leaf bounds.
+  // as `request_sizes`. A reply that is a tuple, and a query with no
+  // declared return type, are sized as the induced reply struct `reply_tuple`
+  // names. `ABSENT_CAUSE_ENCODING_UNDEFINED` for a fallible `T | E` reply,
+  // which is a sum no codec defines, and for an untyped or stream reply.
   PayloadSizes reply_sizes = 7;
+  // As for a command.
+  optional TupleRef request_tuple = 8;
+  // The induced reply struct, when the reply is a tuple or the query
+  // declares no return type: an index into `Model.tuples`. A query that
+  // declares no return type induces a struct with no field. A fallible
+  // `T | E` reply induces nothing — it is a sum, and neither `reply_payload`
+  // nor this field is present for it.
+  optional TupleRef reply_tuple = 9;
 }
 
 message FixedShape {
@@ -667,6 +749,18 @@ message FixedShape {
 message Param {
   Spellings name = 1;
   Type type = 2;
+  // Doc comment body in CommonMark, as the IR carries it; empty when absent
+  // (ADR-0026).
+  string doc = 3;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 4;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 5;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 6;
+  // The rules of the item, in the order `ridl_ir::rules::rules` returns
+  // them (ADR-0028).
+  repeated Rule rules = 7;
 }
 
 message Reply {
@@ -729,6 +823,15 @@ message Service {
   repeated string interface_refs = 6;
   // Index into `Model.interfaces`, the inline form.
   optional uint32 inline_shape = 7;
+  // Resolved links in `doc`, in source order (ADR-0026).
+  repeated DocLink links = 8;
+  // Resolved @see targets, in source order (ADR-0026).
+  repeated DocLink see = 9;
+  // @since versions, in source order (ADR-0026).
+  repeated string since = 10;
+  // Always empty: `ridl_ir::rules::rules` has no `ItemRef` for this item.
+  // The field keeps one layout on every doc carrier (ADR-0028).
+  repeated Rule rules = 11;
 }
 
 message Catalog {
@@ -741,11 +844,94 @@ message Catalog {
   bytes hash = 2;
   // `Package.retired`, number order.
   repeated RetiredInterface retired = 3;
+  // The descriptor's list of compatible catalog hashes, in the same order:
+  // each a 32-byte SHA-256 catalog hash of an earlier catalog this one is
+  // compatible with. Empty when no history applies.
+  repeated bytes compatible = 4;
 }
 
 message RetiredInterface {
   string name = 1;
   uint32 number = 2;
+}
+
+// ---------------------------------------------------------------------
+// Doc links and rules (ADR-0026, ADR-0028)
+// ---------------------------------------------------------------------
+
+// One resolved doc link. The same fields as `ridl.ir.v2.DocLink`.
+message DocLink {
+  // The link text as written, without the brackets.
+  string text = 1;
+  // Byte offset of the link in the carrier's `doc`; 0 for a `see` entry.
+  uint32 offset = 2;
+  // Byte length of the link in the carrier's `doc`; 0 for a `see` entry.
+  uint32 len = 3;
+  // The canonical qualified name of the target, `pkg.Name`, with an
+  // optional `.member`.
+  string target = 4;
+}
+
+// One rule of an item (ADR-0028). `text` is the canonical line; a backend
+// places it verbatim. A reader that does not know the `kind` member still
+// renders `text`. The kind messages are nested so that `Rule.Timing` does not
+// collide with the top-level `Timing`.
+message Rule {
+  // The inclusive value range; a side is absent when unstated.
+  message Range {
+    optional string min = 1;
+    optional string max = 2;
+  }
+  // The length bounds of a string, in characters, or of bytes, in bytes.
+  message Length {
+    optional uint64 min = 1;
+    optional uint64 max = 2;
+  }
+  // The element bound of an array, or the entry bound of a map.
+  message CollectionBound {
+    uint64 min = 1;
+    uint64 max = 2;
+  }
+  // The resolved timing of a `signal` or `event`, as exact decimal
+  // microsecond text.
+  message Timing {
+    TimingMode mode = 1;
+    optional string min_us = 2;
+    optional string max_us = 3;
+  }
+  // The declared bounds of a `command` or `query`: `min_us` is the call
+  // throttle and `max_us` the response bound.
+  message ResponseBound {
+    optional string min_us = 1;
+    optional string max_us = 2;
+  }
+  // The qualified names of the error types of an interaction.
+  message Errors {
+    repeated string names = 1;
+  }
+  // One `require` or `ensure` clause, as its canonical source text.
+  message Contract {
+    ContractKind kind = 1;
+    string source = 2;
+  }
+
+  oneof kind {
+    Range range = 10;
+    // The quantization step, as canonical decimal text.
+    string step = 11;
+    // The canonical UCUM unit.
+    string unit = 12;
+    Length length = 13;
+    // The regex source text of a string's `match` pattern.
+    string pattern = 14;
+    CollectionBound collection_bound = 15;
+    Timing timing = 16;
+    ResponseBound response_bound = 17;
+    Errors errors = 18;
+    Contract contract = 19;
+  }
+  // `ridl_ir::rules::render` of this rule.
+  string text = 1;
 }
 
 // ---------------------------------------------------------------------
@@ -764,6 +950,10 @@ message FbRoot {
   uint32 declaration = 1;
   // `projection::root_table`.
   FbRootKind root = 2;
+  // Set when the root is an induced tuple rather than a declaration: an
+  // index into `Model.tuples`. `declaration` is written as 0 and must be
+  // ignored when this is present.
+  optional uint32 tuple = 3;
   oneof bound {
     // `projection::max_size` over the scope.
     uint32 max_size = 10;
@@ -948,6 +1138,30 @@ enum Kind {
   KIND_COMMAND = 3;
   KIND_QUERY = 4;
   KIND_FIXED = 5;
+}
+
+// The interaction family (ADR-0012 decisions 2 and 6), mirrored from the IR.
+// The zero value is `FAMILY_DISPATCH`, not an `_UNSPECIFIED` value: every
+// interaction that exists today is dispatch, proto3 encodes no byte for a
+// zero enum field, so a model written before this field decodes as dispatch.
+enum Family {
+  FAMILY_DISPATCH = 0;
+  FAMILY_PRESENTATION = 1;
+  FAMILY_INTENT = 2;
+  FAMILY_ACQUISITION = 3;
+  FAMILY_CONTROL = 4;
+}
+
+// The operation shape of an intent command (ADR-0012 decisions 5 and 6),
+// mirrored from the IR. The zero value is `SHAPE_NONE` for the reason
+// `Family` gives.
+enum Shape {
+  SHAPE_NONE = 0;
+  SHAPE_ACTIVATE = 1;
+  SHAPE_TOGGLE = 2;
+  SHAPE_SELECT = 3;
+  SHAPE_ADJUST = 4;
+  SHAPE_DISMISS = 5;
 }
 
 enum ScalarClass {

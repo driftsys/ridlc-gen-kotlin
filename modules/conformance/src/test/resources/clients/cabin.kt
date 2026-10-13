@@ -187,7 +187,7 @@ private fun callObjects() {
     Loopback(Cabin.catalog).let { rt ->
         val call = CabinAverageCall(rt, Window.of(10))
         val recorder = Recorder()
-        Cabin.dispatch(rt, recorder, ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE))
+        Cabin.dispatch(rt, recorder, ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize))
         expectEqual("the reply is returned", Average.of(250), call.poll(waker))
         expectEqual("the call was forgotten", Loopback.SLOTS, sendsUntilBusy(rt))
         expectThrows<IllegalStateException>("a finished call polled again throws") { call.poll(waker) }
@@ -251,12 +251,12 @@ private fun blocking() {
     }
     // serve's two failures, and a provider's own exception.
     Loopback(Cabin.catalog).let { rt ->
-        val refusing = object : Handler by rt, Wakeable by rt {
+        val refusing = object : Handler by rt, Wakeable by rt, ridl.rt.port.Encoded by rt {
             override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = throw ServeError.NotOwner
         }
         expectEqual("a refused serve", ServeError.NotOwner,
             expectThrows<ProviderError.Serve>("a refused serve throws Serve") { Cabin.serve(refusing, Recorder()) }?.error)
-        val failing = object : Handler by rt, Wakeable by rt {
+        val failing = object : Handler by rt, Wakeable by rt, ridl.rt.port.Encoded by rt {
             override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = throw ReadError.Detached
         }
         expectEqual("a failed claim read", ReadError.Detached,
@@ -317,9 +317,9 @@ private fun async() = runBlocking {
             val first = async(start = CoroutineStart.UNDISPATCHED) { client.setLevel(Level.of(1)) }
             val second = async(start = CoroutineStart.UNDISPATCHED) { client.average(Window.of(10)) }
             val handler = rt.handler()
-            val claim = handler.nextClaim(ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE))
+            val claim = handler.nextClaim(ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize))
             expect("the first call is sent", claim != null)
-            expect("the second waits for the first", handler.nextClaim(ByteBuffer.allocate(Cabin.MAX_BUFFER_SIZE)) == null)
+            expect("the second waits for the first", handler.nextClaim(ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize)) == null)
             handler.settle(claim!!.id, Result.success(ByteBuffer.allocate(0)))
             first.await()
             val recorder = Recorder()
@@ -336,7 +336,8 @@ private class Detached(rt: Loopback) :
     ridl.rt.port.EventSource by rt,
     ridl.rt.port.Caller by rt,
     ridl.rt.port.Clock by rt,
-    Wakeable by rt {
+    Wakeable by rt,
+    ridl.rt.port.Encoded by rt {
     private val rt = rt
     override val catalog: ridl.rt.contract.CatalogRef get() = rt.catalog
     override fun next(out: ByteBuffer): ridl.rt.port.RawOccurrence? = throw ReadError.Detached
@@ -366,7 +367,8 @@ private class Counting(val rt: Loopback) :
     ridl.rt.port.EventSource by rt,
     ridl.rt.port.Caller by rt,
     ridl.rt.port.Clock by rt,
-    Wakeable by rt {
+    Wakeable by rt,
+    ridl.rt.port.Encoded by rt {
     val eventWaits = java.util.concurrent.atomic.AtomicInteger()
     override val catalog: ridl.rt.contract.CatalogRef get() = rt.catalog
     override fun wakeOn(what: ridl.rt.port.Interest, waker: ridl.rt.task.Waker) {
@@ -380,7 +382,7 @@ private fun bounds() {
     Loopback(Cabin.catalog).let { rt ->
         val until = kotlin.time.TimeSource.Monotonic.markNow() + 3.seconds
         var id = 0L
-        val endless = object : Handler by rt, Wakeable by rt {
+        val endless = object : Handler by rt, Wakeable by rt, ridl.rt.port.Encoded by rt {
             override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = Unit
             override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim? = if (until.hasPassedNow()) null else ridl.rt.port.Claim(
                 ridl.rt.port.ClaimId(++id), ridl.rt.contract.InterfaceNo(99u), Ordinal(1u),
@@ -400,7 +402,7 @@ private fun bounds() {
     Loopback(Cabin.catalog).let { rt ->
         val settled = java.util.concurrent.atomic.AtomicLong()
         var id = 0L
-        val stream = object : Handler by rt, Wakeable by rt {
+        val stream = object : Handler by rt, Wakeable by rt, ridl.rt.port.Encoded by rt {
             override fun serve(iface: ridl.rt.contract.InterfaceNo, ords: List<Ordinal>) = Unit
             override fun nextClaim(out: ByteBuffer): ridl.rt.port.Claim = ridl.rt.port.Claim(
                 ridl.rt.port.ClaimId(++id), ridl.rt.contract.InterfaceNo(99u), Ordinal(1u),

@@ -282,10 +282,7 @@ internal class Store {
                 .map { (key, entry) -> Changed(key.iface, key.ord, entry.envelope.seq) }
             if (changes.size > out.size - written) return written
             for (change in changes) out[written++] = change
-            marks[index] = mark.copy(
-                generation = current,
-                seq = changes.maxOfOrNull { it.seq } ?: mark.seq,
-            )
+            marks[index] = mark.copy(generation = current)
         }
         return written
     }

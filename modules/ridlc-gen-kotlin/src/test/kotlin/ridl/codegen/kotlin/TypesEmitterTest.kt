@@ -22,7 +22,7 @@ import ridl.codegen.v1.ModelOuterClass.TypeRef
 
 /** What `Types.kt` refuses, and where it puts the file: the facts the corpus does not reach. */
 class TypesEmitterTest {
-    private val options = Options("kt.demo", WireEncoding.FlatBuffers)
+    private val options = Options("kt.demo", listOf(WireEncoding.FlatBuffers))
 
     private fun spelled(name: String) = Spellings.newBuilder().setDeclared(name).setCamel(name.replaceFirstChar(Char::uppercaseChar)).build()
 

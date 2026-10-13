@@ -74,7 +74,7 @@ ok:19a0b374708cbe33
 ok:4cc48edee5d47987
 ok:064fd97b25dbcc48
 ok:edff90d81e70a4b3
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:ed3ce7441c376ea4
 ok:f7b5ed0af09f3d70
 ok:5decf26db9765413
@@ -147,7 +147,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Percent", rule: Range })
+err:Contract(Violation { type_name: Some("Percent"), rule: Range })
 ok:500cb26d111e2382
 ok:5decf26db9765413
 ok:5decf26db9765413
@@ -323,22 +323,22 @@ ok:152829cd84241839
 ok:152829cd84241839
 ok:152829cd84241839
 ok:51595ee9789e1c56
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
-err:Contract(Violation { type_name: "EngageState", rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
+err:Contract(Violation { type_name: Some("EngageState"), rule: Variant })
 ok:42ff94fe662ca9bd
 ok:5decf26db9765413
 err:Structure(OutOfBounds)
@@ -410,7 +410,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Warnings", rule: Variant })
+err:Contract(Violation { type_name: Some("Warnings"), rule: Variant })
 ok:500cb26d111e2382
 ok:5decf26db9765413
 ok:5decf26db9765413
@@ -512,7 +512,7 @@ ok:1c50ae38929d5050
 ok:53387f96e60f8e74
 ok:45c615d8645f12cd
 ok:bea2ae3fba649d44
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:10b9cae6e4c85194
 ok:7c631e397388691b
 ok:7c631e397388691b
@@ -669,9 +669,9 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Telemetry", rule: Length })
+err:Contract(Violation { type_name: Some("Telemetry"), rule: Length })
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Telemetry", rule: Length })
+err:Contract(Violation { type_name: Some("Telemetry"), rule: Length })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -696,7 +696,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Warnings", rule: Variant })
+err:Contract(Violation { type_name: Some("Warnings"), rule: Variant })
 ok:82e1d4ff0038cdf2
 ok:7e324423fc6e6883
 ok:7e324423fc6e6883
@@ -739,7 +739,7 @@ ok:1500618f069fca34
 ok:1f27842400335cff
 ok:62ceea0feb2270a8
 ok:bc07a57f3e65a192
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:1eb2800ba4e997e5
 ok:fda30958d392f0f3
 ok:3f6a4c4bbaa15e11
@@ -747,7 +747,7 @@ ok:52c7248a83568b32
 ok:27b5aa19518b1c2b
 ok:4e32c70236fcad87
 ok:7dfcd0f092ba57ff
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:af455c0154a34ddc
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -757,7 +757,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Telemetry", rule: Length })
+err:Contract(Violation { type_name: Some("Telemetry"), rule: Length })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -772,75 +772,75 @@ ok:55413e0b210ed992
 ok:c846767225cdbe62
 ok:fcc80c3825af9246
 ok:2c2366f20d3583c4
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:c805c660206d8b85
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:3614e61dcd42a214
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:a8464ea23a345b44
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:53ad08a0c4fa6fbf
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:791675002e2b7b4a
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:f2ae7d8736ada487
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:9e223aad32ec3abb
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:43f1848d6d719dd9
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:9e297bfd7bf9ce24
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:145378f9d56e5f62
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:035019f54a7e6b0c
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:d09366e8e77ec154
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:f464d47f9eb042d2
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:54c0d46f8506e919
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:4a33e50ffab415bf
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:a2816b1459fe8957
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:54144c031bb96f53
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:00778b127549e3b8
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:e09e99fa781b606b
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:40564e5b238f72ec
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:bf7db8c61444756b
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:86fc2c7cc921d5cb
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:3556fcb5763c6d28
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:52ed2fd88b362f7c
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:1e67daba8b457201
-err:Contract(Violation { type_name: "Speed", rule: Step })
-err:Contract(Violation { type_name: "Speed", rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
+err:Contract(Violation { type_name: Some("Speed"), rule: Step })
 ok:fd054ee8cf153869
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:1a53f4511ed4b2aa
 ok:c623939eef316c91
 ok:154cace1df1c79ee
@@ -965,7 +965,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 ok:9a8e914edb88081b
 err:Structure(OutOfBounds)
-err:Contract(Violation { type_name: "Percent", rule: Range })
+err:Contract(Violation { type_name: Some("Percent"), rule: Range })
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 ok:511b568b1d2e4cd2
@@ -992,9 +992,9 @@ ok:d92d24ec1051b299
 ok:c59e2f048d170b71
 ok:34f972663e9e8960
 ok:87b147352ea165c4
-err:Contract(Violation { type_name: "Speed", rule: Range })
+err:Contract(Violation { type_name: Some("Speed"), rule: Range })
 ok:aee83002d035c46e
-err:Contract(Violation { type_name: "Percent", rule: Range })
+err:Contract(Violation { type_name: Some("Percent"), rule: Range })
 ok:27c975e80ed67efd
 ok:511b568b1d2e4cd2
 ok:13b710b686317652
@@ -1129,7 +1129,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 ok:00224f740b4a8423
-err:Contract(Violation { type_name: "Percent", rule: Range })
+err:Contract(Violation { type_name: Some("Percent"), rule: Range })
 ok:ee2b3e3f7251313e
 ok:6f877730b5374b40
 ok:6f877730b5374b40

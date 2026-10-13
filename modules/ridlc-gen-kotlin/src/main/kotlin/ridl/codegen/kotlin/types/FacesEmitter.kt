@@ -54,7 +54,9 @@ private val KIND = ClassName("$RT.contract", "Kind")
 private val TIMING = ClassName("$RT.contract", "Timing")
 private val TIMING_MODE = ClassName("$RT.contract", "TimingMode")
 private val PAYLOAD_INFO = ClassName("$RT.contract", "PayloadInfo")
-private val ENCODED_SIZES = ClassName("$RT.contract", "EncodedSizes")
+private val SIZES = ClassName("$RT.contract", "Sizes")
+private val ENCODING = ClassName("$RT.encoding", "Encoding")
+private val ENCODED = ClassName("$RT.port", "Encoded")
 private val SIGNAL = ClassName("$RT.contract", "Signal")
 private val EVENT = ClassName("$RT.contract", "Event")
 private val COMMAND = ClassName("$RT.contract", "Command")
@@ -130,17 +132,26 @@ class EmittedFaces(
  * on its descriptor, all over the internal poll face `<Iface>PollClient`, one
  * internal `<Iface><Member>Call` per call and the descriptor's internal
  * `dispatch`, with the Rust settlement table; a signal-only interface gets
- * one plain `<Iface>Client`. An interface the face cannot carry is skipped
+ * one plain `<Iface>Client`. An `internal` interface gets its descriptors,
+ * `internal`, and no face, as the Rust backend gives it none
+ * (driftsys/ridl#832). An interface the face cannot carry is skipped
  * with a warning naming why, as the Rust pipeline skips it; the names a faced
  * interface takes are its claims, which the generator checks with every other
  * file's.
  */
-class FacesEmitter(private val model: Model, private val options: Options) {
+class FacesEmitter internal constructor(
+    private val model: Model,
+    private val options: Options,
+    private val links: Links = Links(model, options.kotlinPackage, emptySet()),
+) {
     private val pkg = options.kotlinPackage
     private val file = FileSpec.builder(pkg, "Faces").jvmName("Faces")
     private val wires = Wires(model, pkg)
     private val inits = Inits(model, pkg, wires)
     private val warnings = mutableListOf<String>()
+
+    /** Whether any interface has a face, not its descriptors alone: the file then needs the shared helpers. */
+    private var faces = false
 
     /** Whether any interface faced has an event, a command or a query: the file then needs the wait helpers. */
     private var waits = false
@@ -153,6 +164,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
     /** The top-level types of the interfaces faced so far, and what each is generated for. */
     private val claims = mutableListOf<Claim>()
+
+    /**
+     * The indices into `model.interfaces` of the interfaces [emit] gives a
+     * face: a declared one the face does not refuse. The doc links read it
+     * before any file is written, so this emitter is spent after it.
+     */
+    fun faced(): Set<Int> = model.interfacesList.withIndex().filter { (_, iface) ->
+        iface.hasDeclared() && runCatching { Face(iface, mutableListOf(), mutableListOf(), Extensions()).emit() }
+            .onFailure { if (it !is Refusal) throw it }.isSuccess
+    }.map { it.index }.toSet()
 
     fun emit(): EmittedFaces {
         val path = pkg.replace('.', '/') + "/Faces.kt"
@@ -184,7 +205,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             faced += 1
         }
         if (faced == 0) return EmittedFaces(path, null, emptyList(), warnings, claims)
-        addHelpers()
+        if (faces) addHelpers()
         if (waits) addWaitHelpers()
         if (calls) addCallHelpers()
         if (sampled) addSignalHelpers()
@@ -321,7 +342,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
     }
 
     private fun interactionCall(): TypeSpec {
-        val p = TypeVariableName("P", listOf(CALLER, CLOCK, WAKEABLE))
+        val p = TypeVariableName("P", listOf(CALLER, CLOCK, WAKEABLE, ENCODED))
         val t = TypeVariableName("T", ANY)
         val correlationOrNull = CORRELATION.copy(nullable = true)
         return TypeSpec.classBuilder(INTERACTION_CALL).addModifiers(KModifier.INTERNAL, KModifier.ABSTRACT)
@@ -467,16 +488,34 @@ class FacesEmitter(private val model: Model, private val options: Options) {
     }
 
     /** A named payload: its Kotlin type, its codec object, and its FlatBuffers size bound. */
-    private inner class Named(val ref: TypeRef, val maxSize: Int) {
-        val type: ClassName
-        val codec: ClassName
+    /**
+     * A payload the face sends or receives: a declared named type, or a
+     * struct the lowering induced for a call's parameter list or a query's
+     * reply (driftsys/ridl#713). [ref] is the declared type's reference, and
+     * `null` for an induced struct; [typeName] is what the member's
+     * `PayloadInfo` names, the reference as written or the induced name.
+     */
+    private inner class Named(val type: ClassName, val codec: ClassName, val typeName: String, val ref: TypeRef?)
 
-        init {
-            val (owner, declaration) = wires.declarationOf(ref)
-            type = ClassName(owner, declaration.name.camel)
-            codec = ClassName(owner, declaration.name.camel + "Codec")
-        }
+    private fun declared(ref: TypeRef): Named {
+        val (owner, declaration) = wires.declarationOf(ref)
+        return Named(ClassName(owner, declaration.name.camel), ClassName(owner, declaration.name.camel + "Codec"), ref.reference, ref)
     }
+
+    /** The struct induced at `Model.tuples[index]`, which `Codec.kt` gives a codec when its root is bounded. */
+    private fun induced(index: Int): Named {
+        val name = model.getTuples(index).name.rust
+        if (name.isEmpty()) refuse("an induced call struct has no name")
+        val bounded = model.flatbuffers.rootsList.any { it.hasTuple() && it.tuple == index && it.hasMaxSize() }
+        if (!bounded) refuse("`${model.name.dotted}.$name` has no finite FlatBuffers bound")
+        return Named(ClassName(pkg, name), ClassName(pkg, name + "Codec"), name, null)
+    }
+
+    /**
+     * The one argument of a call method: the declared parameter, sent as it
+     * is, or `args`, the induced struct whose fields are the parameters.
+     */
+    private class Argument(val name: String, val param: Param?, val payload: Named)
 
     private inner class Face(
         private val iface: Interface,
@@ -498,27 +537,62 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         private fun named(payload: Payload?, what: String): Named {
             if (payload == null || !payload.hasType()) refuse("$what must be a single named type")
             if (!payload.hasFlatbuffersMaxSize()) refuse("$what `${payload.type.reference}` has no FlatBuffers bound")
-            return Named(payload.type, payload.flatbuffersMaxSize)
+            return declared(payload.type)
         }
+
+        /**
+         * The KDoc of an item a user calls or implements for [m] (ADR-0028
+         * decision 6): the interaction's doc text, [sentence], its rules and
+         * tags, and the `@param` of [param].
+         */
+        private fun memberDoc(m: Member, sentence: String, param: Param? = null): String =
+            links.kdoc(DocParts.of(m.interaction), sentence, listOfNotNull(param?.let { it.name.property to DocParts.of(it) }))
+
+        /** [memberDoc] for a call method, whose one argument is [argument]. */
+        private fun memberDoc(m: Member, sentence: String, argument: Argument): String {
+            if (argument.param != null) return memberDoc(m, sentence, argument.param)
+            val params = if (m.interaction.hasCommand()) m.interaction.command.paramsList else m.interaction.query.paramsList
+            return links.kdoc(DocParts.of(m.interaction), sentence, fields = params.map { it.name.property to DocParts.of(it) })
+        }
+
+        private fun kind(m: Member): String = if (m.interaction.hasQuery()) "query" else "command"
 
         private fun signalPayload(m: Member) = named(m.interaction.signal.payload, "signal `${m.declared}`'s payload")
         private fun eventPayload(m: Member) = named(m.interaction.event.payload, "event `${m.declared}`'s payload")
 
-        private fun argument(m: Member): Pair<Param, Named> {
-            val (params, request) = if (m.interaction.hasCommand()) {
-                m.interaction.command.paramsList to m.interaction.command.request
-            } else {
-                m.interaction.query.paramsList to m.interaction.query.request
+        /**
+         * The call's argument: the single declared named parameter, or the
+         * struct the lowering induced for every other parameter list, none
+         * included (driftsys/ridl#713). Refused only for a parameter no
+         * struct field holds: one with no declared type, or a stream.
+         */
+        private fun argument(m: Member): Argument {
+            val command = m.interaction.command
+            val query = m.interaction.query
+            val isCommand = m.interaction.hasCommand()
+            val params = if (isCommand) command.paramsList else query.paramsList
+            if (if (isCommand) command.hasRequest() else query.hasRequest()) {
+                val request = if (isCommand) command.request else query.request
+                return Argument(params[0].name.property, params[0], named(request, "interaction `${m.declared}`'s parameter"))
             }
-            if (params.size != 1) refuse("interaction `${m.declared}` must declare exactly one parameter")
-            val hasRequest = if (m.interaction.hasCommand()) m.interaction.command.hasRequest() else m.interaction.query.hasRequest()
-            if (!hasRequest) refuse("interaction `${m.declared}`'s parameter must be a named type")
-            return params[0] to named(request, "interaction `${m.declared}`'s parameter")
+            if (if (isCommand) command.hasRequestTuple() else query.hasRequestTuple()) {
+                return Argument("args", null, induced(if (isCommand) command.requestTuple.index else query.requestTuple.index))
+            }
+            if (params.any { !it.hasType() }) refuse("interaction `${m.declared}` declares a parameter with no type")
+            refuse("interaction `${m.declared}` declares a stream parameter, which has no payload type")
         }
 
+        /**
+         * The query's reply: the declared named type, or the struct the
+         * lowering induced for a tuple reply or for no declared return type.
+         * A fallible `T | E` reply induces nothing and is refused.
+         */
         private fun reply(m: Member): Named {
-            if (!m.interaction.query.hasReplyPayload()) refuse("query `${m.declared}`'s reply must be a single named type")
-            return named(m.interaction.query.replyPayload, "query `${m.declared}`'s reply")
+            val query = m.interaction.query
+            if (query.hasReplyPayload()) return named(query.replyPayload, "query `${m.declared}`'s reply")
+            if (query.hasReplyTuple()) return induced(query.replyTuple.index)
+            if (query.reply.hasValue()) refuse("query `${m.declared}`'s reply must be a named type or a tuple")
+            refuse("query `${m.declared}`'s reply is a fallible `T | E`, which the face does not carry")
         }
 
         fun emit() {
@@ -526,6 +600,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val of = "interface `${iface.declared.declared}`"
             add(descriptor(), "the descriptor of $of")
             members.forEachIndexed { row, m -> add(interaction(m, row), "the descriptor of member `${m.declared}` of $of") }
+            // An internal interface has its descriptors, `internal`, and no face (driftsys/ridl#832): the Rust
+            // backend's rule, mirrored although an `internal` Kotlin face could name its `internal` types.
+            if (internal) return
             val hasCalls = commands.isNotEmpty() || queries.isNotEmpty()
             for (m in commands + queries) add(call(m), "the call of member `${m.declared}` of $of")
             if (waits) {
@@ -539,6 +616,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             if (signals.isNotEmpty() || events.isNotEmpty()) add(publisher(), "the publisher of $of")
             if (hasCalls) add(provider(), "the provider of $of")
             // Set last: an interface refused above adds nothing to the file, helpers included.
+            this@FacesEmitter.faces = true
             if (waits) this@FacesEmitter.waits = true
             if (hasCalls) this@FacesEmitter.calls = true
             if (signals.isNotEmpty()) this@FacesEmitter.sampled = true
@@ -560,12 +638,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             // The model's `Catalog.package`, the name of the unit, as the Rust backend reads it: since ridl 0.7.0 a
             // unit can hold several source packages, so `Model.name` is not the catalog's name.
             val catalogName = model.catalog.`package`
-            val callSizes = commands.map { argument(it).second.maxSize } +
-                queries.flatMap { listOf(argument(it).second.maxSize, reply(it).maxSize) }
-            val eventSizes = events.map { eventPayload(it).maxSize }
+            val callCodecs = (commands.map { argument(it).payload } + queries.flatMap { listOf(argument(it).payload, reply(it)) })
+                .map { it.codec }.distinct()
+            val eventCodecs = events.map { eventPayload(it).codec }.distinct()
             val rows = members.map { row(it) }.joinToCode(",\n")
             val builder = TypeSpec.objectBuilder(self).visibility()
-                .addKdoc("The descriptor of interface `%L`.", iface.declared.declared)
+                .doc(links.kdoc(DocParts.of(iface), "The descriptor of interface `${iface.declared.declared}`."))
                 .addSuperinterface(INTERFACE)
                 .addProperty(
                     PropertySpec.builder("catalog", CATALOG_REF, KModifier.OVERRIDE)
@@ -581,17 +659,26 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     PropertySpec.builder("members", LIST.parameterizedBy(MEMBER), KModifier.OVERRIDE)
                         .initializer("listOf(\n%L,\n)", rows).build(),
                 )
-                .addFunction(checkCatalog())
                 .addProperty(
-                    PropertySpec.builder("MAX_BUFFER_SIZE", INT, KModifier.CONST)
-                        .addKdoc("The largest argument or reply payload of this interface: a `dispatch` buffer is at least this large. 0 with no call.")
-                        .initializer("%L", callSizes.maxOrNull() ?: 0).build(),
+                    PropertySpec.builder("FLATBUFFERS_SIZES", SIZES, KModifier.PRIVATE)
+                        .addKdoc("The size table in FlatBuffers, the one encoding the package carries a codec for, from each codec's `maxSize`.")
+                        .initializer(
+                            "%T(\n%T.FlatBuffers,\nlistOf(%L),\n%L,\n%L,\n)", SIZES, ENCODING,
+                            members.map { reservationRow(it) }.joinToCode(", "), largest(callCodecs), largest(eventCodecs),
+                        ).build(),
                 )
-                .addProperty(
-                    PropertySpec.builder("EVENT_SOURCE_BUFFER_SIZE", INT, KModifier.CONST)
-                        .addKdoc("The largest event payload of this interface. 0 with no event.")
-                        .initializer("%L", eventSizes.maxOrNull() ?: 0).build(),
+                .addFunction(
+                    FunSpec.builder("sizes").addModifiers(KModifier.OVERRIDE).addParameter("encoding", ENCODING).returns(SIZES)
+                        .addStatement(
+                            "require(encoding == %T.FlatBuffers) { %P }", ENCODING,
+                            "interface `${iface.declared.declared}` has no \${encoding.encodingName} codec: its package carries flatbuffers only",
+                        )
+                        .addStatement("return FLATBUFFERS_SIZES")
+                        .build(),
                 )
+            // What only the face uses: an internal interface has none.
+            if (internal) return builder.build()
+            builder.addFunction(checkCatalog()).addFunction(checkEncoding())
             for (m in commands + queries) {
                 builder.addType(
                     TypeSpec.classBuilder(correlation(m).simpleName)
@@ -643,6 +730,25 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             )
             .build()
 
+        /**
+         * `checkEncoding`, the descriptor's check of a port's encoding: every
+         * binding that calls [checkCatalog] calls it too, so a face is never
+         * built over a port whose bytes the package has no codec for. Rust
+         * reads the encoding from the port's type and refuses such a port at
+         * compile time (driftsys/ridl#887); Kotlin reads it from the port's
+         * value, so it throws `IllegalArgumentException`, as `sizes` does.
+         */
+        private fun checkEncoding(): FunSpec = FunSpec.builder("checkEncoding").addModifiers(KModifier.INTERNAL)
+            .addKdoc(
+                "Throws `IllegalArgumentException` unless the package carries a codec for [found], the encoding of a " +
+                    "port a face of interface `%L` is built over (driftsys/ridl#887). Every client, the publisher, " +
+                    "`serve` and `serveAsync` call it once per binding, beside `checkCatalog`.",
+                iface.declared.declared,
+            )
+            .addParameter("found", ENCODING)
+            .addStatement("sizes(found)")
+            .build()
+
         /** The sentence every binding's KDoc carries about [checkCatalog]: what throws, and how a program avoids it. */
         private fun catalogThrows(port: String, timing: String): String =
             "Throws `IllegalStateException` when [$port] is attached to a catalog other than the one this face was " +
@@ -659,7 +765,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
 
         /** One pass of `serve`: registers for the next claim, then settles the claims waiting, at most [SERVE_BUDGET]. */
         private fun servePass(): FunSpec {
-            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
+            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE, ENCODED))
             return FunSpec.builder("servePass").addModifiers(KModifier.PRIVATE).addTypeVariable(h)
                 .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
                 .addParameter("buffer", BYTE_BUFFER).addParameter("until", VALUE_TIME_MARK.copy(nullable = true))
@@ -672,7 +778,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         }
 
         private fun serve(): FunSpec {
-            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
+            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE, ENCODED))
             return FunSpec.builder("serve").addTypeVariable(h)
                 .addKdoc(
                     "Serves interface `%L`'s calls on this thread: registers its members with [handler], then settles each " +
@@ -685,8 +791,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
                 .addParameter(ParameterSpec.builder("timeout", TIME_DURATION.copy(nullable = true)).defaultValue("null").build())
                 .addStatement("checkCatalog(handler.catalog)")
+                .addStatement("checkEncoding(handler.encoding)")
                 .addStatement("claimServed(handler)")
-                .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
+                .addStatement("val buffer = %T.allocate(sizes(handler.encoding).maxBufferSize)", BYTE_BUFFER)
                 // An explicit null: a `Unit?` lambda returning servePass's `Nothing?` fails JVM verification.
                 .addStatement("val until = deadline(timeout)")
                 .addStatement("%M<%T>(until) { waker -> servePass(handler, provider, buffer, until, waker); null }", BLOCK_ON, UNIT)
@@ -700,19 +807,42 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val (kind, payloads) = when {
                 i.hasSignal() -> "Signal" to listOf(signalPayload(m))
                 i.hasEvent() -> "Event" to listOf(eventPayload(m))
-                i.hasCommand() -> "Command" to listOf(argument(m).second)
-                i.hasQuery() -> "Query" to listOf(argument(m).second, reply(m))
+                i.hasCommand() -> "Command" to listOf(argument(m).payload)
+                i.hasQuery() -> "Query" to listOf(argument(m).payload, reply(m))
                 i.hasFixed() -> "Fixed" to listOf(named(i.fixed.named.takeIf { i.fixed.hasNamed() }, "fixed `${m.declared}`'s payload"))
                 else -> refuse("`${m.declared}` is not an interaction this plugin reads")
             }
             val timing = if (i.hasFixed() || !i.hasTiming()) CodeBlock.of("null") else timing(i.timing)
-            val infos = payloads.map {
-                CodeBlock.of("%T(%S, %T(null, %Lu, null))", PAYLOAD_INFO, it.ref.reference, ENCODED_SIZES, it.maxSize)
-            }.joinToCode(", ")
+            val infos = payloads.map { CodeBlock.of("%T(%S)", PAYLOAD_INFO, it.typeName) }.joinToCode(", ")
             return CodeBlock.of(
                 "%T(%T(%Lu), %T.%L, %S, %L, listOf(%L))",
                 MEMBER, ORDINAL, m.ordinal, KIND, kind, m.declared, timing, infos,
             )
+        }
+
+        /**
+         * The member's row of the size table, from the `maxSize` of its
+         * payloads' codecs: the request and then the reply of a query, the
+         * one payload of a signal, an event or a command, and `0` for a
+         * `fixed`, which is never in flight (driftsys/ridl#904).
+         */
+        private fun reservationRow(m: Member): CodeBlock {
+            val i = m.interaction
+            val payloads = when {
+                i.hasSignal() -> listOf(signalPayload(m))
+                i.hasEvent() -> listOf(eventPayload(m))
+                i.hasCommand() -> listOf(argument(m).payload)
+                i.hasQuery() -> listOf(argument(m).payload, reply(m))
+                else -> return CodeBlock.of("0uL")
+            }
+            return payloads.map { CodeBlock.of("%T.maxSize.toULong()", it.codec) }.joinToCode(" + ")
+        }
+
+        /** The largest `maxSize` of [codecs], or `0` with none. */
+        private fun largest(codecs: List<ClassName>): CodeBlock = when (codecs.size) {
+            0 -> CodeBlock.of("0")
+            1 -> CodeBlock.of("%T.maxSize", codecs[0])
+            else -> CodeBlock.of("maxOf(%L)", codecs.map { CodeBlock.of("%T.maxSize", it) }.joinToCode(", "))
         }
 
         private fun timing(timing: Timing): CodeBlock {
@@ -733,7 +863,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val i = m.interaction
             val builder = TypeSpec.objectBuilder(m.descriptor).visibility()
                 .addProperty(PropertySpec.builder("iface", INTERFACE, KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addStatement("return %T", self).build()).build())
-                .addProperty(PropertySpec.builder("member", MEMBER, KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addStatement("return %T.members[%L]", self, row).build()).build())
+                .addProperty(PropertySpec.builder("member", MEMBER, KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addStatement("return %T.members[row]", self).build()).build())
+                .addProperty(PropertySpec.builder("row", INT, KModifier.OVERRIDE).initializer("%L", row).build())
             when {
                 i.hasSignal() -> {
                     val payload = signalPayload(m)
@@ -748,13 +879,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         .addSuperinterface(EVENT.parameterizedBy(payload.type)).addProperty(codecProperty(payload))
                 }
                 i.hasCommand() -> {
-                    val (_, arg) = argument(m)
+                    val arg = argument(m).payload
                     builder.addKdoc("Command `%L` of `%L`.", m.declared, iface.declared.declared)
                         .addSuperinterface(COMMAND.parameterizedBy(arg.type)).addProperty(codecProperty(arg))
                         .addFunction(clauseFun("require", ContractKind.CONTRACT_KIND_REQUIRE, m, arg, null))
                 }
                 i.hasQuery() -> {
-                    val (_, arg) = argument(m)
+                    val arg = argument(m).payload
                     val reply = reply(m)
                     builder.addKdoc("Query `%L` of `%L`.", m.declared, iface.declared.declared)
                         .addSuperinterface(QUERY.parameterizedBy(arg.type, reply.type))
@@ -781,11 +912,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
          */
         private fun channelInit(m: Member, payload: Named): CodeBlock {
             val signal = m.interaction.signal
-            val (owner, declaration) = wires.declarationOf(payload.ref)
+            val ref = checkNotNull(payload.ref) { "a signal's payload is a declared type" }
+            val (owner, declaration) = wires.declarationOf(ref)
             if (signal.hasDeclaredInit() && declaration.hasScalar() && signal.init.hasValue()) {
-                return inits.named(ClassName(owner, declaration.name.camel), declaration.scalar, signal.init.value, model.isForeign(payload.ref))
+                return inits.named(ClassName(owner, declaration.name.camel), declaration.scalar, signal.init.value, model.isForeign(ref))
             }
-            return inits.ofRef(payload.ref)
+            return inits.ofRef(ref)
         }
 
         // -- the clauses ---------------------------------------------------------
@@ -823,8 +955,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 comparison.hasParam() && comparison.param == 0 -> "args" to arg
                 else -> refuseClause("no accepted comparison")
             }
-            if (model.isForeign(named.ref)) refuseClause("the subject is declared in another package")
-            val (_, declaration) = wires.declarationOf(named.ref)
+            val ref = named.ref ?: refuseClause("the subject is not a named integer or float scalar")
+            if (model.isForeign(ref)) refuseClause("the subject is declared in another package")
+            val (_, declaration) = wires.declarationOf(ref)
             if (!declaration.hasScalar()) refuseClause("the subject is not a named integer or float scalar")
             val literal = when (declaration.scalar.class_) {
                 ScalarClass.SCALAR_CLASS_INTEGER -> {
@@ -850,12 +983,12 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         private fun callClass(m: Member): ClassName = ClassName(pkg, "$name${m.camel}Call")
 
         private fun call(m: Member): TypeSpec {
-            val (_, arg) = argument(m)
+            val arg = argument(m).payload
             // Not the ridl parameter's name, which could be `port`.
             val value = "value"
             val query = m.interaction.hasQuery()
             val result = if (query) reply(m).type else UNIT
-            val p = TypeVariableName("P", listOf(CALLER, CLOCK, WAKEABLE))
+            val p = TypeVariableName("P", listOf(CALLER, CLOCK, WAKEABLE, ENCODED))
             val read = FunSpec.builder("read").addModifiers(KModifier.OVERRIDE).addParameter("c", CORRELATION).returns(result.copy(nullable = true))
             if (query) {
                 val reply = reply(m)
@@ -893,6 +1026,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 if (signals.isNotEmpty()) add(SIGNAL_READER)
                 if (events.isNotEmpty()) add(EVENT_SOURCE)
                 if (commands.isNotEmpty() || queries.isNotEmpty()) add(CALLER)
+                add(ENCODED)
             }
             val p = TypeVariableName("P", bounds)
             val builder = TypeSpec.classBuilder(className)
@@ -910,17 +1044,18 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
                 .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
-                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
+                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self))
             for (m in signals) {
                 val payload = signalPayload(m)
                 builder.addFunction(
                     FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(payload.type))
-                        .addKdoc(
-                            "Reads signal `%L`, with the provenance, freshness and envelope the runtime resolved. A channel " +
-                                "with no value under `Init` or `Invalid(Declared)` holds its init value; bytes that fail their " +
-                                "check, none under any other provenance included, read as the init value under " +
-                                "`Provenance.Invalid` with what was detected.",
-                            m.declared,
+                        .doc(
+                            (
+                                "Reads signal `${m.declared}`, with the provenance, freshness and envelope the runtime resolved. " +
+                                    "A channel with no value under `Init` or `Invalid(Declared)` holds its init value; bytes that " +
+                                    "fail their check, none under any other provenance included, read as the init value under " +
+                                    "`Provenance.Invalid` with what was detected."
+                                ).let { if (pollFace) it else memberDoc(m, it) },
                         )
                         .addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, payload.codec)
                         .addStatement("return sampled(%T, %T, port.read(%L, %L, buf), buf)", payload.codec, m.descriptor, number(), ordinal(m))
@@ -929,7 +1064,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             }
             if (events.isNotEmpty()) {
                 val receiver = Receiver(className, bounds, pollFace || internal)
-                subscriptions(receiver)
+                subscriptions(receiver, facade = !pollFace)
                 extensions.functions += receiver.extension("nextEvent").returns(self.nestedClass("Event").copy(nullable = true))
                     .addKdoc(
                         "Takes the next occurrence of any subscribed event of `%L`, or `null` when none is waiting. An " +
@@ -969,7 +1104,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         }
 
         private fun serveAsync(): FunSpec {
-            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE))
+            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE, ENCODED))
             return FunSpec.builder("serveAsync").addModifiers(KModifier.SUSPEND).addTypeVariable(h)
                 .addKdoc(
                     "Serves interface `%L`'s calls, suspending between claims. It never returns normally: it ends by " +
@@ -980,13 +1115,18 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
                 .returns(NOTHING)
                 .addStatement("checkCatalog(handler.catalog)")
+                .addStatement("checkEncoding(handler.encoding)")
                 .addStatement("claimServed(handler)")
-                .addStatement("val buffer = %T.allocate(MAX_BUFFER_SIZE)", BYTE_BUFFER)
+                .addStatement("val buffer = %T.allocate(sizes(handler.encoding).maxBufferSize)", BYTE_BUFFER)
                 .addStatement("return %M<%T>({}) { waker -> servePass(handler, provider, buffer, null, waker) }", AWAIT_POLL, NOTHING)
                 .build()
         }
 
-        /** The ports a waiting client needs (RA-19): a signal reads, an event waits, a call sends and waits on the clock. */
+        /**
+         * The ports a waiting client needs (RA-19): a signal reads, an event
+         * waits, a call sends and waits on the clock; and the encoding of the
+         * port's bytes, which the face reads (driftsys/ridl#887).
+         */
         private fun waitingBounds(): List<TypeName> = buildList {
             if (signals.isNotEmpty()) add(SIGNAL_READER)
             if (events.isNotEmpty()) add(EVENT_SOURCE)
@@ -995,6 +1135,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 add(CLOCK)
             }
             add(WAKEABLE)
+            add(ENCODED)
         }
 
         /** The signal reads, delegated to the poll face. */
@@ -1002,7 +1143,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             for (m in signals) {
                 addFunction(
                     FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(signalPayload(m).type))
-                        .addKdoc("Reads signal `%L`, as the runtime resolved it. It does not wait.", m.declared)
+                        .doc(memberDoc(m, "Reads signal `${m.declared}`, as the runtime resolved it. It does not wait."))
                         .addStatement("return poll.%N()", m.method).build(),
                 )
             }
@@ -1041,13 +1182,16 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             for (m in signals) {
                 val payload = signalPayload(m)
                 extensions.properties += receiver.extensionVal(m.method, SIGNAL_STATE.parameterizedBy(payload.type))
-                    .addKdoc(
-                        "Signal `%L` as a `StateFlow` of its samples: each publication a poll reads and a turn to stale or " +
-                            "invalid. It polls the port while it has a subscriber, at the signal's rate floor on the " +
-                            "client's grid, until 3 s after the last one left; `value` is the last sample polled, or a fresh " +
-                            "read while nothing polls, and `read()` always reads the port. `every(period)` is the same " +
-                            "signal at a slower rate, `values` its values alone. See `SignalState`.",
-                        m.declared,
+                    .doc(
+                        memberDoc(
+                            m,
+                            "Signal `${m.declared}` as a `StateFlow` of its samples: each publication a poll reads and a " +
+                                "turn to stale or invalid. It polls the port while it has a subscriber, at the signal's rate " +
+                                "floor on the client's grid, until 3 s after the last one left; `value` is the last sample " +
+                                "polled, or a fresh read while nothing polls, and `read()` always reads the port. " +
+                                "`every(period)` is the same signal at a slower rate, `values` its values alone. See " +
+                                "`SignalState`.",
+                        ),
                     )
                     .getter(
                         FunSpec.getterBuilder()
@@ -1067,9 +1211,10 @@ class FacesEmitter(private val model: Model, private val options: Options) {
          * needs no other port than a `SignalReader`.
          */
         private fun signalAsyncClient(): TypeSpec {
-            val p = TypeVariableName("P", SIGNAL_READER)
+            val bounds = listOf(SIGNAL_READER, ENCODED)
+            val p = TypeVariableName("P", bounds)
             val type = ClassName(pkg, "${name}AsyncClient")
-            signalStates(Receiver(type, listOf(SIGNAL_READER), internal))
+            signalStates(Receiver(type, bounds, internal))
             return TypeSpec.classBuilder(type).visibility()
                 .addKdoc(
                     "The suspending client of interface `%L`: each signal as a `StateFlow` of its samples, polled in " +
@@ -1080,7 +1225,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addTypeVariable(p)
                 .primaryConstructor(signalConstructor(p))
                 .addProperty(PropertySpec.builder("_port", p, KModifier.INTERNAL).initializer("port").build())
-                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
+                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self))
                 .addProperty(signalStatesProperty())
                 .build()
         }
@@ -1128,9 +1273,10 @@ class FacesEmitter(private val model: Model, private val options: Options) {
          * `subscribe<Event>` and `unsubscribe<Event>` of every event, as
          * extensions of [receiver]'s client, whose port is its property [port].
          */
-        private fun subscriptions(receiver: Receiver, port: String = "port") {
+        private fun subscriptions(receiver: Receiver, port: String = "port", facade: Boolean = true) {
             for (m in events) {
-                extensions.functions += receiver.extension("subscribe${m.camel}").addKdoc("Starts delivery of event `%L`.", m.declared)
+                val sentence = "Starts delivery of event `${m.declared}`."
+                extensions.functions += receiver.extension("subscribe${m.camel}").doc(if (facade) memberDoc(m, sentence) else sentence)
                     .addStatement("%N.subscribe(%L, listOf(%L))", port, number(), ordinal(m)).build()
                 extensions.functions += receiver.extension("unsubscribe${m.camel}").addKdoc("Stops delivery of event `%L`.", m.declared)
                     .addStatement("%N.unsubscribe(%L, listOf(%L))", port, number(), ordinal(m)).build()
@@ -1178,10 +1324,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .build()
             }
             for (m in commands + queries) {
-                val (param, arg) = argument(m)
-                val value = param.name.property
+                val argument = argument(m)
+                val arg = argument.payload
+                val value = argument.name
                 val f = FunSpec.builder(m.method).addParameter(value, arg.type)
-                    .addKdoc("Calls %L `%L` and waits for its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
+                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and waits for its outcome.", argument))
                 if (m.interaction.hasQuery()) {
                     f.returns(reply(m).type).addStatement("return %T(this.port, %N).block(this.timeoutBound)", callClass(m), value)
                 } else {
@@ -1208,7 +1355,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .primaryConstructor(if (signals.isNotEmpty()) signalConstructor(p) else FunSpec.constructorBuilder().addParameter("port", p).build())
                 // Every member name starts with `_`, which no ridl identifier does: no signal's extension is shadowed (#76).
                 .addProperty(PropertySpec.builder("_port", p, KModifier.INTERNAL).initializer("port").build())
-                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
+                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self))
             if (signals.isNotEmpty()) {
                 builder.addProperty(signalStatesProperty())
                 signalStates(Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal))
@@ -1234,10 +1381,11 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .build()
             }
             for (m in commands + queries) {
-                val (param, arg) = argument(m)
-                val value = param.name.property
+                val argument = argument(m)
+                val arg = argument.payload
+                val value = argument.name
                 val f = FunSpec.builder(m.method).addModifiers(KModifier.SUSPEND).addParameter(value, arg.type)
-                    .addKdoc("Calls %L `%L` and suspends until its outcome.", if (m.interaction.hasQuery()) "query" else "command", m.declared)
+                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and suspends until its outcome.", argument))
                 if (m.interaction.hasQuery()) {
                     f.returns(reply(m).type).addStatement("return this._calls.%M { %T(this._port, %N).await() }", WITH_LOCK, callClass(m), value)
                 } else {
@@ -1270,7 +1418,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         private fun takeEvent(): FunSpec {
             val event = self.nestedClass("Event")
             val code = CodeBlock.builder()
-                .addStatement("val buf = %T.allocate(%T.EVENT_SOURCE_BUFFER_SIZE)", BYTE_BUFFER, self)
+                .addStatement("val buf = %T.allocate(sizes(port.encoding).eventSourceBufferSize)", BYTE_BUFFER)
                 .addStatement("val occurrence = port.next(buf) ?: return null")
                 .beginControlFlow("if (occurrence.iface != %L)", number())
                 .addStatement("throw %T.Contract(%T.UnknownInteraction)", READ_ERROR, CONTRACT)
@@ -1284,7 +1432,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 )
             }
             code.addStatement("else -> throw %T.Contract(%T.UnknownInteraction)", READ_ERROR, CONTRACT).endControlFlow()
-            return FunSpec.builder("takeEvent").addModifiers(KModifier.INTERNAL).addParameter("port", EVENT_SOURCE)
+            val p = TypeVariableName("P", listOf(EVENT_SOURCE, ENCODED))
+            return FunSpec.builder("takeEvent").addModifiers(KModifier.INTERNAL).addTypeVariable(p).addParameter("port", p)
                 .returns(event.copy(nullable = true))
                 .addKdoc(
                     "Takes the next occurrence of any subscribed event of `%L` from [port], or `null` when none is " +
@@ -1296,8 +1445,9 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         }
 
         private fun send(m: Member): FunSpec {
-            val (param, arg) = argument(m)
-            val argName = param.name.property
+            val argument = argument(m)
+            val arg = argument.payload
+            val argName = argument.name
             val kind = if (m.interaction.hasCommand()) "command" else "query"
             return FunSpec.builder(m.method).addParameter(argName, arg.type).returns(correlation(m))
                 .addKdoc(
@@ -1321,6 +1471,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val bounds = buildList<TypeName> {
                 if (signals.isNotEmpty()) add(SIGNAL_WRITER)
                 if (events.isNotEmpty()) add(EVENT_SINK)
+                add(ENCODED)
             }
             val w = TypeVariableName("W", bounds)
             val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}Publisher")).visibility()
@@ -1333,13 +1484,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .addTypeVariable(w)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", w).build())
                 .addProperty(PropertySpec.builder("port", w, KModifier.INTERNAL).initializer("port").build())
-                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n", self))
+                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self))
             val receiver = Receiver(ClassName(pkg, "${name}Publisher"), bounds, internal)
             for (m in signals) {
                 val payload = signalPayload(m)
                 builder.addFunction(
                     FunSpec.builder(m.method).addParameter("value", payload.type)
-                        .addKdoc("Stages a new value for signal `%L`, published by `commit`.", m.declared)
+                        .doc(memberDoc(m, "Stages a new value for signal `${m.declared}`, published by `commit`."))
                         .addStatement("port.set(%L, %L, encoded(%T, value))", number(), ordinal(m), payload.codec).build(),
                 )
                 extensions.functions += receiver.extension("invalidate${m.camel}")
@@ -1352,7 +1503,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             for (m in events) {
                 builder.addFunction(
                     FunSpec.builder(m.method).addParameter("value", eventPayload(m).type)
-                        .addKdoc("Raises one occurrence of event `%L`.", m.declared)
+                        .doc(memberDoc(m, "Raises one occurrence of event `${m.declared}`."))
                         .addStatement("port.raise(%L, %L, encoded(%T, value), null)", number(), ordinal(m), eventPayload(m).codec).build(),
                 )
             }
@@ -1367,24 +1518,36 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             val builder = TypeSpec.interfaceBuilder(ClassName(pkg, "${name}Provider")).visibility()
                 .addKdoc("What an application implements to serve interface `%L`'s calls, driven by `serve` or `serveAsync`.", iface.declared.declared)
             for (m in commands) {
-                val (param, arg) = argument(m)
+                val argument = argument(m)
+                val arg = argument.payload
                 builder.addFunction(
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
-                        .addParameter(param.name.property, arg.type)
-                        .addKdoc(
-                            "Serves command `%L`. A command has no failure the application reports (ridl §6.1); arguments " +
-                                "that break their constraints or `require` never reach it.",
-                            m.declared,
+                        .addParameter(argument.name, arg.type)
+                        .doc(
+                            memberDoc(
+                                m,
+                                "Serves command `${m.declared}`. A command has no failure the application reports (ridl " +
+                                    "§6.1); arguments that break their constraints or `require` never reach it.",
+                                argument,
+                            ),
                         ).build(),
                 )
             }
             for (m in queries) {
-                val (param, arg) = argument(m)
+                val argument = argument(m)
+                val arg = argument.payload
                 builder.addFunction(
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
-                        .addParameter(param.name.property, arg.type)
+                        .addParameter(argument.name, arg.type)
                         .returns(reply(m).type)
-                        .addKdoc("Serves query `%L`. A reply that breaks an `ensure` clause is discarded, and `ContractBroken` settled.", m.declared)
+                        .doc(
+                            memberDoc(
+                                m,
+                                "Serves query `${m.declared}`. A reply that breaks an `ensure` clause is discarded, and " +
+                                    "`ContractBroken` settled.",
+                                argument,
+                            ),
+                        )
                         .build(),
                 )
             }
@@ -1403,7 +1566,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
         private fun dispatch(): FunSpec {
             val provider = ClassName(pkg, "${name}Provider")
             val code = CodeBlock.builder()
-                .beginControlFlow("if (buffer.capacity() < MAX_BUFFER_SIZE)")
+                .beginControlFlow("if (buffer.capacity() < sizes(handler.encoding).maxBufferSize)")
                 .addStatement("return 0")
                 .endControlFlow()
                 .addStatement("var settled = 0")
@@ -1419,7 +1582,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                 .beginControlFlow("val claim = try")
                 .addStatement("handler.nextClaim(buffer)")
                 .nextControlFlow("catch (e: %T.ShortClaim)", READ_ERROR)
-                // Arguments that do not fit MAX_BUFFER_SIZE are larger than any valid encoding of this
+                // Arguments that do not fit the claim buffer are larger than any valid encoding of this
                 // interface's members, so the claim is settled Corrupt unread, whichever member it names. A
                 // refused settlement ends the pass: the runtime keeps that claim the next one (driftsys/ridl#569).
                 .addStatement("if (!settle(handler, e.claim, %T.failure(%T.Corrupt))) return settled", RESULT, TRANSPORT)
@@ -1439,7 +1602,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             // The decoded argument is always `arg`: a ridl parameter's own name could shadow a local here.
             val value = "arg"
             for (m in commands) {
-                val (_, arg) = argument(m)
+                val arg = argument(m).payload
                 code.beginControlFlow("%L ->", ordinal(m))
                     .addStatement("callOutcome(%T, args).fold(", arg.codec)
                     .indent()
@@ -1458,7 +1621,7 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .endControlFlow()
             }
             for (m in queries) {
-                val (_, arg) = argument(m)
+                val arg = argument(m).payload
                 val reply = reply(m)
                 code.beginControlFlow("%L ->", ordinal(m))
                     .addStatement("callOutcome(%T, args).fold(", arg.codec)
@@ -1490,13 +1653,13 @@ class FacesEmitter(private val model: Model, private val options: Options) {
             return FunSpec.builder("dispatch")
                 .addKdoc(
                     "Settles every claim of interface `%L` that is waiting, and returns how many the handler accepted. It " +
-                        "does not wait. [buffer] holds the arguments and then the reply, so it is at least [MAX_BUFFER_SIZE] " +
-                        "bytes; a shorter one returns 0 and consumes nothing.\n\nEvery claim taken is settled: an unknown " +
+                        "does not wait. [buffer] holds the arguments and then the reply, so it is at least the " +
+                        "`maxBufferSize` of the size table in [handler]'s encoding; a shorter one returns 0 and consumes nothing.\n\nEvery claim taken is settled: an unknown " +
                         "interface or ordinal `UnknownInteraction`, bytes that fail their structure `Transport.Corrupt`, a " +
                         "constraint `InvalidValue`, a failed `require` `PreconditionFailed`, a failed `ensure` " +
                         "`ContractBroken`. A command is settled before its provider method runs, because its " +
                         "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A claim " +
-                        "whose arguments do not fit [MAX_BUFFER_SIZE], reported as `ReadError.ShortClaim`, is larger " +
+                        "whose arguments do not fit that size, reported as `ReadError.ShortClaim`, is larger " +
                         "than any valid encoding of this interface's members: it is settled `Transport.Corrupt` by its " +
                         "id without being read, whichever interface or member it names, and when the handler refuses " +
                         "that settlement the pass ends at once, because the runtime keeps that claim the next one " +
@@ -1507,8 +1670,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                         "still be waiting, and it calls [onBudgetSpent] (driftsys/ridl#568).",
                     iface.declared.declared,
                 )
-                .addModifiers(KModifier.INTERNAL)
-                .addParameter("handler", HANDLER).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
+                .addModifiers(KModifier.INTERNAL).addTypeVariable(TypeVariableName("H", listOf(HANDLER, ENCODED)))
+                .addParameter("handler", TypeVariableName("H")).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
                 .addParameter(ParameterSpec.builder("until", VALUE_TIME_MARK.copy(nullable = true)).defaultValue("null").build())
                 .addParameter(ParameterSpec.builder("budget", INT).defaultValue("%T.MAX_VALUE", INT).build())
                 .addParameter(ParameterSpec.builder("onBudgetSpent", LambdaTypeName.get(returnType = UNIT)).defaultValue("{}").build())

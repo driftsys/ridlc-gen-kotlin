@@ -36,13 +36,31 @@ its `WakeFlag` as a `Pair`, and a `ShortClaim` read error (driftsys/ridl#569).
 
 driftsys/ridlc-gen-kotlin#6 adds the runtime helpers of story E11.19 (ridl
 `main` at 87de8c6): `Freshness.of`, `EventSeqTracker` with `Continuity` and
-`TrackerFull`, `Member.callDeadline`, `Member.reservation`, `tableBudget` with
-`Unsized`, and `Encoding.maxSize`; and those of story E11.18 (eb41a7a):
+`TrackerFull`, and `Member.callDeadline`; and those of story E11.18 (eb41a7a):
 `ridl.rt.correlate`, the call `Table` with `Settled` and `Forgotten` and the
 `Waiters` registry, and the composed `ClientError` and `ProviderError`.
-`FreshnessTest`, `EventSeqTrackerTest`, `BudgetTest`, `CallDeadlineTest` and
-`CorrelateTest` are `freshness.rs`, `event_seq.rs`, `budget.rs`,
-`call_deadline.rs` and `correlate.rs`, case for case.
+`FreshnessTest`, `EventSeqTrackerTest`, `CallDeadlineTest` and `CorrelateTest`
+are `freshness.rs`, `event_seq.rs`, `call_deadline.rs` and `correlate.rs`, case
+for case.
+
+ridl-rt 0.10 (driftsys/ridl#851, #887) replaces E11.19's `EncodedSizes`,
+`PayloadInfo.maxSize`, `Encoding.maxSize`, `Member.reservation` and `Unsized`
+with a size table per codec: `Sizes`, which a generated descriptor gives through
+`Interface.sizes(encoding)`, `Interaction.row`, and `reservation` and
+`tableBudget`, which no longer fail on a missing size. It adds `port.Encoded`,
+the encoding of the bytes a port carries, which a generated face reads from its
+port. `SizesTest` is `sizes.rs`, case for case. `Violation.typeName` is
+nullable: a violation decoded from a frame carries no type name
+(driftsys/ridl#903). `Watermark` has no `seq` (driftsys/ridl#927); each
+`Changed` carries its own signal's sequence number.
+
+Rust's fixed-size buffer types have no Kotlin item: `Payload::Buffer` and
+`Payload::BUFFER` (ridl-rt 0.9), and `Sizes::ClaimBuffer`, `EventBuffer`,
+`CLAIM_BUFFER` and `EVENT_BUFFER`. Each is an array `[u8; N]` so that `no_std`
+code can hold a buffer without allocating; a Kotlin caller allocates a
+`ByteBuffer` of `maxSize`, `maxBufferSize` or `eventSourceBufferSize`, which is
+that array's length. Nor has `impl Encoded for &P`, a borrow Kotlin does not
+spell.
 
 ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
@@ -118,13 +136,18 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
   when the wait returns: Rust drops a waker with its task, while a port may keep
   a finished wait's waker and wake it later, which would otherwise leave a
   permit that ends an unrelated park of the thread at once.
-- **The E11.19 helpers take the encoding as an argument**:
-  `member.reservation(Encoding.FlatBuffers)` and
-  `tableBudget(members, encoding)` where Rust has
-  `reservation::<FlatBuffers>()`, and `Unsized` and `TrackerFull` are thrown, as
-  every error type is. `EventSeqTracker(capacity)` takes at run time the `N`
-  Rust takes as a const generic, so `event_seq.rs`'s const-context case has no
-  spelling here.
+- **The encoding is a value**: `Sizes` carries its `encoding`, an interface's
+  table is `iface.sizes(Encoding.FlatBuffers)` where Rust names
+  `<Cabin as Sizes<FlatBuffers>>`, and `reservation(x, encoding)` and
+  `tableBudget(iface, encoding)` take it as an argument where Rust has
+  `reservation::<X, FlatBuffers>()`. An encoding the package carries no codec
+  for throws `IllegalArgumentException` from `sizes`, where Rust refuses to
+  compile; `reservation` and `tableBudget` are not `const` and have no
+  compile-time spelling. `port.Encoded` has `val encoding: Encoding` where Rust
+  has the associated type `Encoding`, and it has no forwarding implementations,
+  as Kotlin has no references. `TrackerFull` is thrown, as every error type is.
+  `EventSeqTracker(capacity)` takes at run time the `N` Rust takes as a const
+  generic, so `event_seq.rs`'s const-context case has no spelling here.
 - **`correlate.Table(capacity, budget)`** takes at run time the `N` Rust takes
   as a const generic, and refuses more than 65536 slots with an
   `IllegalArgumentException` where Rust refuses to compile. An outcome is a
