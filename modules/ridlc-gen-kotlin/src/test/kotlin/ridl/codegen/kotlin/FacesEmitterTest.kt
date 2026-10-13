@@ -307,6 +307,30 @@ class FacesEmitterTest {
         assertTrue("   * The fill level.\n   *\n   * $sentence\n   */\n  public fun level(): Sample<Level> {" in text, text)
     }
 
+    @Test
+    fun `an internal interface has its descriptors, internal, and no face`() {
+        // driftsys/ridl#832: the Rust backend gives an internal interface no face and crate-visible descriptors.
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .setVisibility(ridl.codegen.v1.ModelOuterClass.Visibility.VISIBILITY_INTERNAL)
+            .addSlots(slot(1, "level", "Level", signal = true))
+            .addSlots(slot(2, "alarm", "Alarm", signal = false))
+            .addSlots(command(3, "set", "Set"))
+        val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
+        val emitted = FacesEmitter(demo().addDeclarations(level).addInterfaces(iface).build(), options).emit()
+        assertEquals(emptyList<String>(), emitted.warnings)
+        val text = checkNotNull(emitted.text)
+        for (descriptor in listOf("Drive", "DriveLevel", "DriveAlarm", "DriveSet")) {
+            assertTrue("internal object $descriptor :" in text, "$descriptor is an internal descriptor\n$text")
+        }
+        assertTrue("override fun sizes(encoding: Encoding): Sizes" in text, "the size table is a descriptor's\n$text")
+        val face = listOf(
+            "DriveClient", "DrivePollClient", "DriveAsyncClient", "DrivePublisher", "DriveProvider", "DriveSetCall", "SetCorrelation",
+            "sealed interface Event", "fun dispatch", "fun serve", "fun checkCatalog", "fun checkEncoding", "fun takeEvent", "fun encoded",
+            "fun settle",
+        )
+        for (item in face) assertFalse(item in text, "no `$item`, which only a face uses\n$text")
+    }
+
     /** A signal, or an event, named [declared] and [camel], over one `Level`. */
     private fun slot(ordinal: Int, declared: String, camel: String, signal: Boolean) = InteractionSlot.newBuilder().setOrdinal(ordinal)
         .setInteraction(

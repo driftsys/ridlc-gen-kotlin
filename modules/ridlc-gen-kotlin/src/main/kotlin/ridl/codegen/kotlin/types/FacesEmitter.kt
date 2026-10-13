@@ -132,7 +132,9 @@ class EmittedFaces(
  * on its descriptor, all over the internal poll face `<Iface>PollClient`, one
  * internal `<Iface><Member>Call` per call and the descriptor's internal
  * `dispatch`, with the Rust settlement table; a signal-only interface gets
- * one plain `<Iface>Client`. An interface the face cannot carry is skipped
+ * one plain `<Iface>Client`. An `internal` interface gets its descriptors,
+ * `internal`, and no face, as the Rust backend gives it none
+ * (driftsys/ridl#832). An interface the face cannot carry is skipped
  * with a warning naming why, as the Rust pipeline skips it; the names a faced
  * interface takes are its claims, which the generator checks with every other
  * file's.
@@ -147,6 +149,9 @@ class FacesEmitter internal constructor(
     private val wires = Wires(model, pkg)
     private val inits = Inits(model, pkg, wires)
     private val warnings = mutableListOf<String>()
+
+    /** Whether any interface has a face, not its descriptors alone: the file then needs the shared helpers. */
+    private var faces = false
 
     /** Whether any interface faced has an event, a command or a query: the file then needs the wait helpers. */
     private var waits = false
@@ -200,7 +205,7 @@ class FacesEmitter internal constructor(
             faced += 1
         }
         if (faced == 0) return EmittedFaces(path, null, emptyList(), warnings, claims)
-        addHelpers()
+        if (faces) addHelpers()
         if (waits) addWaitHelpers()
         if (calls) addCallHelpers()
         if (sampled) addSignalHelpers()
@@ -595,6 +600,9 @@ class FacesEmitter internal constructor(
             val of = "interface `${iface.declared.declared}`"
             add(descriptor(), "the descriptor of $of")
             members.forEachIndexed { row, m -> add(interaction(m, row), "the descriptor of member `${m.declared}` of $of") }
+            // An internal interface has its descriptors, `internal`, and no face (driftsys/ridl#832): the Rust
+            // backend's rule, mirrored although an `internal` Kotlin face could name its `internal` types.
+            if (internal) return
             val hasCalls = commands.isNotEmpty() || queries.isNotEmpty()
             for (m in commands + queries) add(call(m), "the call of member `${m.declared}` of $of")
             if (waits) {
@@ -608,6 +616,7 @@ class FacesEmitter internal constructor(
             if (signals.isNotEmpty() || events.isNotEmpty()) add(publisher(), "the publisher of $of")
             if (hasCalls) add(provider(), "the provider of $of")
             // Set last: an interface refused above adds nothing to the file, helpers included.
+            this@FacesEmitter.faces = true
             if (waits) this@FacesEmitter.waits = true
             if (hasCalls) this@FacesEmitter.calls = true
             if (signals.isNotEmpty()) this@FacesEmitter.sampled = true
@@ -650,7 +659,6 @@ class FacesEmitter internal constructor(
                     PropertySpec.builder("members", LIST.parameterizedBy(MEMBER), KModifier.OVERRIDE)
                         .initializer("listOf(\n%L,\n)", rows).build(),
                 )
-                .addFunction(checkCatalog())
                 .addProperty(
                     PropertySpec.builder("FLATBUFFERS_SIZES", SIZES, KModifier.PRIVATE)
                         .addKdoc("The size table in FlatBuffers, the one encoding the package carries a codec for, from each codec's `maxSize`.")
@@ -668,7 +676,9 @@ class FacesEmitter internal constructor(
                         .addStatement("return FLATBUFFERS_SIZES")
                         .build(),
                 )
-                .addFunction(checkEncoding())
+            // What only the face uses: an internal interface has none.
+            if (internal) return builder.build()
+            builder.addFunction(checkCatalog()).addFunction(checkEncoding())
             for (m in commands + queries) {
                 builder.addType(
                     TypeSpec.classBuilder(correlation(m).simpleName)

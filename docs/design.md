@@ -317,6 +317,13 @@ tool produces (D-K5).
   `ensure` `ContractBroken`. A command settles before the provider method runs;
   a query after. The return is the number of claims `settle` accepted.
 
+**An `internal` interface has its descriptors and no face** (driftsys/ridl#832):
+the descriptor object and its interaction objects, `internal`, and no client,
+publisher, provider or `dispatch`. That is the Rust backend's rule, whose ground
+is a compile error Kotlin does not have: an `internal` Kotlin face could name
+the interface's `internal` payload types. The rule is mirrored all the same, so
+that the face has one shape in both languages.
+
 A face holds its port by value with no lifetime, as ADR-0023 decision 5; on the
 JVM that is the only option, and a runtime's aggregate handle (ADR-0021
 decision 12) is what a face is normally built over.

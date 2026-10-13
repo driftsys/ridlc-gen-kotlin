@@ -51,3 +51,13 @@ interface Clash {
   command set_timeout(to: Even) @[..50ms]
   query   new(of: Even): Even @[..200ms]
 }
+
+// An internal interface over an internal type: its descriptors are generated,
+// internal, and it has no face, as the Rust backend gives it none
+// (driftsys/ridl#832).
+internal type Secret : integer [0..9]
+
+internal interface Quiet {
+  signal  hush  : Secret @10ms
+  command calm(level: Secret) @[..50ms]
+}
