@@ -2,7 +2,7 @@
 // issue is about: a read is two loads of a sequence counter around a copy, and
 // a clock read for the freshness, as a runtime computes it on every read
 // (frame specification §8). Only `temperature` has a channel; everything else
-// a `CabinAsyncClient` needs is the loopback's.
+// a `CabinAsyncClient` needs is the loopback's, its encoding included.
 package ridl.sample.cabin
 
 import ridl.rt.contract.CatalogRef
@@ -11,6 +11,7 @@ import ridl.rt.contract.Ordinal
 import ridl.rt.loopback.Loopback
 import ridl.rt.port.Caller
 import ridl.rt.port.Clock
+import ridl.rt.port.Encoded
 import ridl.rt.port.EventSource
 import ridl.rt.port.RawSample
 import ridl.rt.port.ReadError
@@ -31,6 +32,7 @@ class SeqlockPort(private val loopback: Loopback) :
     EventSource by loopback,
     Caller by loopback,
     Clock by loopback,
+    Encoded by loopback,
     Wakeable by loopback {
     override val catalog: CatalogRef get() = loopback.catalog
 
