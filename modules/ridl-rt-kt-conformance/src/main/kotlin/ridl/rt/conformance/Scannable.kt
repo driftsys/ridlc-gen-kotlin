@@ -27,9 +27,10 @@ public class ScannableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`a commit of only touches on unpublished channels changes no generation`,
         ::`scan reports the changes since a mark and moves it forward`,
         ::`scan writes an interface changes all together or not at all`,
+        ::`scan stops at the first interface that does not fit`,
     )
 
-    private fun mark() = Watermark(IFACE, 0u, 0u)
+    private fun mark(iface: InterfaceNo = IFACE) = Watermark(iface, 0u)
 
     /** A commit advances the generation of each interface it publishes to once, however many of its signals it carries, and no other interface's. */
     public fun `a commit advances the interface generation once`() {
@@ -58,6 +59,11 @@ public class ScannableContract<R>(factory: Factory<R>) : Contract<R>(factory)
     /** `scan` reports each signal changed since a mark, moves the mark to the current generation, and reports nothing more for a moved mark. */
     public fun `scan reports the changes since a mark and moves it forward`() {
         val rt = runtime()
+        // OTHER is published twice and ORD once, so the two signals carry
+        // different sequence numbers. At the first scan ORD's sequence number (1)
+        // differs from the interface generation (2); OTHER's (2) equals it.
+        rt.set(IFACE, OTHER, bytes(1))
+        rt.commit()
         rt.set(IFACE, ORD, bytes(1))
         rt.set(IFACE, OTHER, bytes(2))
         rt.commit()
@@ -66,17 +72,18 @@ public class ScannableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         val out = arrayOfNulls<Changed>(4)
         assertEquals(2, rt.scan(marks, out))
         assertEquals(ORD, out[0]!!.ord)
+        assertEquals(1uL, out[0]!!.seq, "each entry carries its own signal's sequence")
         assertEquals(OTHER, out[1]!!.ord)
-        assertEquals(1uL, marks[0].generation, "the mark moved to the current generation")
-        assertEquals(1uL, marks[0].seq)
+        assertEquals(2uL, out[1]!!.seq, "each entry carries its own signal's sequence")
+        assertEquals(2uL, marks[0].generation, "the mark moved to the current generation")
 
         assertEquals(0, rt.scan(marks, out), "a second scan with the moved mark reports nothing")
 
-        rt.set(IFACE, OTHER, bytes(3))
+        rt.set(IFACE, ORD, bytes(3))
         rt.commit()
         assertEquals(1, rt.scan(marks, out), "only the signal that changed since the mark")
-        assertEquals(OTHER, out[0]!!.ord)
-        assertEquals(2uL, out[0]!!.seq)
+        assertEquals(ORD, out[0]!!.ord)
+        assertEquals(2uL, out[0]!!.seq, "the entry carries its own signal's sequence, not the generation (3)")
     }
 
     /** An interface's changes are written all together or not at all, and a mark whose changes did not fit is not moved. */
@@ -93,5 +100,33 @@ public class ScannableContract<R>(factory: Factory<R>) : Contract<R>(factory)
         // Growing the output is what makes progress, the loop `ScannableSignals.scan` documents.
         assertEquals(2, rt.scan(marks, arrayOfNulls(2)))
         assertEquals(1uL, marks[0].generation)
+    }
+
+    /**
+     * The scan serves the marks in order and stops at the first interface whose
+     * changes do not fit in what is left of `out`: the interfaces before it are
+     * written and their marks move, it and every interface after it are left
+     * alone.
+     */
+    public fun `scan stops at the first interface that does not fit`() {
+        val (first, second, third) = Triple(IFACE, InterfaceNo(2u), InterfaceNo(3u))
+        val rt = runtime()
+        rt.set(first, ORD, bytes(1))
+        rt.commit()
+        rt.set(second, ORD, bytes(2))
+        rt.set(second, OTHER, bytes(3))
+        rt.commit()
+        rt.set(third, ORD, bytes(4))
+        rt.commit()
+
+        val marks = arrayOf(mark(first), mark(second), mark(third))
+        // After the first interface's one change, one entry is left. The second
+        // interface needs two, and the third would fit in the one that is left.
+        val out = arrayOfNulls<Changed>(2)
+        assertEquals(1, rt.scan(marks, out), "the scan stops at the second interface and does not serve the third")
+        assertEquals(first, out[0]!!.iface)
+        assertEquals(1uL, marks[0].generation, "the written interface's mark moved")
+        assertEquals(0uL, marks[1].generation, "the blocked interface's mark did not")
+        assertEquals(0uL, marks[2].generation, "nor did the one after it")
     }
 }

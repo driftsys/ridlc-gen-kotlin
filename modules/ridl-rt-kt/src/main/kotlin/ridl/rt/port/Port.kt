@@ -267,14 +267,18 @@ public interface ScannableSignals : SignalReader {
     public fun scan(marks: Array<Watermark>, out: Array<Changed?>): Int
 }
 
-/** How far a consumer has scanned one interface. `ridl_rt::port::Watermark`. */
+/**
+ * How far a consumer has scanned one interface. `ridl_rt::port::Watermark`.
+ *
+ * A mark records the interface and the generation last scanned, with no
+ * sequence number. Each [Changed] entry carries its own signal's sequence
+ * number.
+ */
 public data class Watermark(
     /** The interface. */
     public val iface: InterfaceNo,
     /** The generation last scanned. */
     public val generation: ULong,
-    /** The sequence number last scanned. */
-    public val seq: ULong,
 )
 
 /** A signal that changed since a [Watermark]. `ridl_rt::port::Changed`. */

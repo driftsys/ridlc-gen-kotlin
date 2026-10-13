@@ -251,7 +251,7 @@ class CorrespondenceTest {
             "ridl_rt::port::ScannableSignals", ScannableSignals::class,
             members = listOf("generation", "scan"), extends = listOf(SignalReader::class),
         ),
-        Row("ridl_rt::port::Watermark", Watermark::class, members = listOf("iface", "generation", "seq")),
+        Row("ridl_rt::port::Watermark", Watermark::class, members = listOf("iface", "generation")),
         Row("ridl_rt::port::Changed", Changed::class, members = listOf("iface", "ord", "seq")),
         Row(
             "ridl_rt::port::CoherentSignals", CoherentSignals::class,
