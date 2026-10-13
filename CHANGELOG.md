@@ -68,42 +68,27 @@
 - **ridl-rt-kt-coroutines:** one coroutine per polling, and drop a state that
   stopped ([d721163]), closes 80 and #79.
 
-A `SignalState` now has one coroutine
-  for the whole of a polling: it sleeps
-until the next slot or the end of the
-  linger, whichever comes first, polls on a
-slot and stops at the end. The
-  stopper job and the polling flag are gone; the
-state keeps its subscriber
-  count, the poller and the moment the last
-subscriber left. The five races the
-  two reviews of #77 found had no second
-coroutine left to race with.
+A `SignalState` now has one coroutine for the whole of a polling: it sleeps
+until the next slot or the end of the linger, whichever comes first, polls on a
+slot and stops at the end. The stopper job and the polling flag are gone; the
+state keeps its subscriber count, the poller and the moment the last subscriber
+left. The five races the two reviews of #77 found had no second coroutine left
+to race with.
 
-The
-  rebuild on `shareIn` or `WhileSubscribed` that #80 proposed does not fit
-three
-  of the rules `SignalStateTest` pins, and the module README records why:
-the
-  sharing coroutine waits for the scope's life, a `MutableStateFlow` hands a
-new
-  collector its current value before any start command runs,
-  and
-`WhileSubscribed` issues a start only after a stop, so a collector back
-  within
-the linger after a failure would wait it out. All 26 tests pass
-  unchanged.
+The rebuild on `shareIn` or `WhileSubscribed` that #80 proposed does not fit
+three of the rules `SignalStateTest` pins, and the module README records why:
+the sharing coroutine waits for the scope's life, a `MutableStateFlow` hands a
+new collector its current value before any start command runs, and
+`WhileSubscribed` issues a start only after a stop, so a collector back within
+the linger after a failure would wait it out. All 26 tests pass unchanged.
 
-Eviction follows from the one place a state goes idle (#79): a
-  state leaves
-`SignalStates` when its polling stops or fails, unless it is its
-  signal's
-default-period state, which stays so a generated property is one
-  instance. A
-dropped state a caller holds keeps working and is shared again
-  when collected
-again. A state never read holds no buffer. Three tests cover
-  the slider case, the held state and the failed one.
+Eviction follows from the one place a state goes idle (#79): a state leaves
+`SignalStates` when its polling stops or fails, unless it is its signal's
+default-period state, which stays so a generated property is one instance. A
+dropped state a caller holds keeps working and is shared again when collected
+again. A state never read holds no buffer. Three tests cover the slider case,
+the held state and the failed one.
+
 - **ridl-rt-kt-coroutines:** name the staleness bound `bound` in effectivePeriod
   ([208fb20])
 - **ridl-rt-kt-coroutines:** spell effectivePeriod as its four cases ([3ff3d2b])
@@ -112,16 +97,16 @@ again. A state never read holds no buffer. Three tests cover
 
 - an `internal` interface no longer has an `internal` face.
 - `ridl.rt.port.Watermark` has no `seq`. Drop the argument.
-- a port a generated face is built over implements
-`ridl.rt.port.Encoded`; `EncodedSizes`, `PayloadInfo.maxSize`,
-`Encoding.maxSize`, `Member.reservation` and `Unsized` are removed;
-`tableBudget` takes an interface; a descriptor has `sizes(encoding)` in
-place of `MAX_BUFFER_SIZE` and `EVENT_SOURCE_BUFFER_SIZE`.
+- a port a generated face is built over implements `ridl.rt.port.Encoded`;
+  `EncodedSizes`, `PayloadInfo.maxSize`, `Encoding.maxSize`,
+  `Member.reservation` and `Unsized` are removed; `tableBudget` takes an
+  interface; a descriptor has `sizes(encoding)` in place of `MAX_BUFFER_SIZE`
+  and `EVENT_SOURCE_BUFFER_SIZE`.
 - `ridl.rt.payload.Violation.typeName` is `String?`.
-- a package whose manifest names no encoding gets no
-Codec.kt and no Faces.kt; name `flatbuffers` in [backend.kotlin].
-- the `wire-encoding` option is refused as unknown; name
-the encoding with `encodings`.
+- a package whose manifest names no encoding gets no Codec.kt and no Faces.kt;
+  name `flatbuffers` in [backend.kotlin].
+- the `wire-encoding` option is refused as unknown; name the encoding with
+  `encodings`.
 
 [0.2.0]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.1.0...v0.2.0
 [4ea99bb]: https://github.com/driftsys/ridlc-gen-kotlin/commit/4ea99bb
