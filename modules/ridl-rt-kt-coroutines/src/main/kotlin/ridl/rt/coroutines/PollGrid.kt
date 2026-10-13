@@ -40,9 +40,6 @@ public class PollGrid(
         return (p - Math.floorMod(elapsed, p)).nanoseconds
     }
 
-    /** The time since the epoch, in nanoseconds: how a state stamps its reads without allocating a mark. */
-    internal fun nanosNow(): Long = epoch.elapsedNow().inWholeNanoseconds
-
     public companion object {
         /** The grid of the process: one epoch for every client that does not bring its own. */
         public val Default: PollGrid = PollGrid()

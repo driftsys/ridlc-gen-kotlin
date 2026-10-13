@@ -161,10 +161,9 @@ public class SignalStates(
  *   than it, as a signal is a last-value state. The age of a stale sample is
  *   not compared, so a stale value is emitted once.
  * - **[value].** While polling, the last sample polled, with the freshness of
- *   that poll, as long as it is at most one [period] and one quantum old; a
- *   poller its dispatcher starves leaves it older, and [value] then reads the
- *   port (#78). Otherwise a fresh read of the port. [read] always reads the
- *   port.
+ *   that poll: at most one [period] old while the poller keeps its slots, older
+ *   if its dispatcher starves it, as no clock is read to check (#78).
+ *   Otherwise a fresh read of the port. [read] always reads the port.
  * - **Cost.** A read copies the channel into one buffer the state keeps, and
  *   decodes it only when its bytes, envelope or provenance changed since the
  *   last read: an unchanged publication is not decoded again.
@@ -219,16 +218,9 @@ public class SignalState<T> internal constructor(
     @Volatile
     private var poller: Job? = null
 
-    /** The last sample read, with the freshness of that read: what [value] returns while polling, while it is young. */
+    /** The last sample read, with the freshness of that read: what [value] returns while polling. */
     @Volatile
     private var latest: Sample<T>? = null
-
-    /** When [latest] was read, on the grid ([PollGrid.nanosNow]); written before it. */
-    @Volatile
-    private var latestAt = 0L
-
-    /** How old [latest] may be for [value] to return it: one period and one quantum, a poller's slot and its slack. */
-    private val youngNanos = (period + states.grid.quantum).inWholeNanoseconds
 
     /** What collectors see: [Unset], the last sample emitted, or the failure that stopped the polling. */
     private val state = MutableStateFlow<Any>(Unset)
@@ -241,7 +233,6 @@ public class SignalState<T> internal constructor(
      */
     private fun readLocked(restart: Boolean = false): Sample<T> = synchronized(lock) {
         val sample = fetch()
-        latestAt = states.grid.nanosNow()
         latest = sample
         state.update { last ->
             when {
@@ -395,12 +386,9 @@ public class SignalState<T> internal constructor(
      */
     public fun read(): Sample<T> = readLocked()
 
-    /** While polling, the last sample polled if it is at most one [period] and one quantum old; otherwise a fresh [read]. */
+    /** While polling, the last sample polled; otherwise a fresh [read]. */
     override val value: Sample<T>
-        get() {
-            val cached = if (poller != null) latest else null
-            return if (cached != null && states.grid.nanosNow() - latestAt <= youngNanos) cached else read()
-        }
+        get() = (if (poller != null) latest else null) ?: read()
 
     override val replayCache: List<Sample<T>>
         get() = listOf(value)

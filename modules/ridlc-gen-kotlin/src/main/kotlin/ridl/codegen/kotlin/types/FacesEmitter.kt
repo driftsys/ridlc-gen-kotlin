@@ -1044,8 +1044,8 @@ class FacesEmitter(private val model: Model, private val options: Options) {
                     .addKdoc(
                         "Signal `%L` as a `StateFlow` of its samples: each publication a poll reads and a turn to stale or " +
                             "invalid. It polls the port while it has a subscriber, at the signal's rate floor on the " +
-                            "client's grid, until 3 s after the last one left; `value` is the last sample polled while it is " +
-                            "at most one period and one quantum old, or a fresh read, and `read()` always reads the port. `every(period)` is the same " +
+                            "client's grid, until 3 s after the last one left; `value` is the last sample polled, or a fresh " +
+                            "read while nothing polls, and `read()` always reads the port. `every(period)` is the same " +
                             "signal at a slower rate, `values` its values alone. See `SignalState`.",
                         m.declared,
                     )

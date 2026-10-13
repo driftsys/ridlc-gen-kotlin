@@ -6,8 +6,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
@@ -213,24 +211,6 @@ class SignalStateTest {
         assertEquals(reads, f.channel.reads.size)
         assertEquals(22, state.read().value)
         assertEquals(reads + 1, f.channel.reads.size)
-    }
-
-    @Test
-    fun `while polling, a sample older than one period and one quantum is read again, as from a starved poller`() = runTest {
-        // A poller on a scheduler nothing advances: it never reads after the subscriber's first read.
-        val starved = CoroutineScope(StandardTestDispatcher(TestCoroutineScheduler()) + Job())
-        val f = Fixture(this, pollScope = starved)
-        val state = f.state()
-        subscribe(state)
-        f.channel.publish(22)
-        advanceTimeBy(110.milliseconds)
-        assertEquals(21, state.value.value, "one period and one quantum old: the last poll")
-        advanceTimeBy(1.milliseconds)
-        assertEquals(22, state.value.value, "older: a read of the port")
-        val reads = f.channel.reads.size
-        assertEquals(22, state.value.value, "the read is the sample now")
-        assertEquals(reads, f.channel.reads.size)
-        starved.cancel()
     }
 
     @Test

@@ -66,10 +66,9 @@ decoded is not decoded again.
 
 The rest of the state:
 
-- `client.temperature.value` is the last sample polled while the state polls and
-  that sample is at most one period and one quantum old, and a fresh read of the
-  port otherwise, so a poller starved of its thread never hands out an old
-  value. `client.temperature.read()` always reads the port.
+- `client.temperature.value` is the last sample polled while the state polls,
+  and a fresh read of the port otherwise. `client.temperature.read()` always
+  reads the port.
 - `client.temperature.every(1.seconds)` is the same signal polled every second:
   another shared state, which the client keeps while it polls and drops once it
   stopped, so a slider's worth of periods does not pile up. A period faster than
