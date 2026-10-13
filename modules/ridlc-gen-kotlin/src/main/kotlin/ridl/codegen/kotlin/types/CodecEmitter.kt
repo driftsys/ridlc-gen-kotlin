@@ -64,7 +64,11 @@ class CodecEmitter(private val model: Model, private val options: Options) {
 
     fun emit(): EmittedTypes {
         val path = pkg.replace('.', '/') + "/Codec.kt"
-        val roots = model.flatbuffers.rootsList
+        // A root that names an induced call struct has no declaration to read: its `declaration` is written as
+        // 0 and is ignored (driftsys/ridl#713). Its codec is emitted from the tuple walk below. One with no finite
+        // bound gets none, and the face refuses its interface before naming it.
+        val roots = model.flatbuffers.rootsList.filter { !it.hasTuple() }
+        val tupleRoots = model.flatbuffers.rootsList.filter { it.hasTuple() && it.hasMaxSize() }
         val codecs = mutableListOf<Declaration>()
         for (root in roots) {
             val declaration = model.getDeclarations(root.declaration)
@@ -95,9 +99,15 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         for ((declaration, root) in codecs.zip(roots.filter { it.hasMaxSize() })) {
             guarded(declaration.name.declared) { root(declaration, root.maxSize) }
         }
-        for (index in reachableTuples(codecs)) {
+        for (index in reachableTuples(codecs, tupleRoots.map { it.tuple })) {
             val tuple = model.getTuples(index)
-            guarded(tuple.name.rust) { record(tuple.name.rust, tuple.name.rust, tuple.fieldsList.mapIndexed { i, f -> i to f }, tuple.fieldsCount) }
+            guarded(tuple.name.rust) {
+                record(tuple.name.rust, tuple.name.rust, tuple.fieldsList.mapIndexed { i, f -> i to f }, tuple.fieldsCount)
+                // A tuple a root names crosses the wire on its own, so it has a codec as a declaration root has.
+                tupleRoots.firstOrNull { it.tuple == index }?.let { root ->
+                    codec(tuple.name.rust, tuple.visibility, "the codec of the struct induced for a call", root.maxSize)
+                }
+            }
         }
         if (errors.isNotEmpty()) return EmittedTypes(path, null, errors)
         for ((index, body) in patterns.withIndex()) {
@@ -129,8 +139,6 @@ class CodecEmitter(private val model: Model, private val options: Options) {
 
     private fun root(declaration: Declaration, maxSize: Int) {
         val name = declaration.name.camel
-        val type = ClassName(pkg, name)
-        val functions = Functions(pkg, name)
         when (declaration.kindCase) {
             Declaration.KindCase.STRUCT -> {
                 val slots = model.flatbuffers.tablesList.firstOrNull {
@@ -142,7 +150,14 @@ class CodecEmitter(private val model: Model, private val options: Options) {
             Declaration.KindCase.UNION -> union(declaration)
             else -> box(declaration)
         }
-        claims += Claim("${name}Codec", "the codec of declaration `${declaration.name.declared}`")
+        codec(name, declaration.visibility, "the codec of declaration `${declaration.name.declared}`", maxSize)
+    }
+
+    /** The `Payload` object of [name], whose encode, verify and decode helpers are already emitted. */
+    private fun codec(name: String, visibility: Visibility, source: String, maxSize: Int) {
+        val type = ClassName(pkg, name)
+        val functions = Functions(pkg, name)
+        claims += Claim("${name}Codec", source)
         val codec = TypeSpec.objectBuilder("${name}Codec")
             .addKdoc("The FlatBuffers codec of [%T].", type)
             .addSuperinterface(PAYLOAD.parameterizedBy(type, TABLE_VIEW))
@@ -175,7 +190,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
                     .addStatement("return %L(view.reader, view.table)", functions.decode)
                     .build(),
             )
-        if (declaration.visibility == Visibility.VISIBILITY_INTERNAL) codec.addModifiers(KModifier.INTERNAL)
+        if (visibility == Visibility.VISIBILITY_INTERNAL) codec.addModifiers(KModifier.INTERNAL)
         file.addType(codec.build())
     }
 
@@ -639,9 +654,13 @@ class CodecEmitter(private val model: Model, private val options: Options) {
      * `reachable_tuples` walks them: from each struct's fields, through
      * tuples, arrays and maps, never through a named reference.
      */
-    private fun reachableTuples(roots: List<Declaration>): List<Int> {
+    private fun reachableTuples(roots: List<Declaration>, tupleRoots: List<Int>): List<Int> {
         val seen = LinkedHashSet<Int>()
         val queue = ArrayDeque<Type>()
+        for (index in tupleRoots) {
+            val tuple = model.getTuples(index)
+            if (tuple.name.rust.isNotEmpty() && seen.add(index)) tuple.fieldsList.filter { it.hasType() }.forEach { queue += it.type }
+        }
         roots.filter { it.hasStruct() }.forEach { d -> d.struct.slotsList.filter { it.hasField() && it.field.hasType() }.forEach { queue += it.field.type } }
         while (queue.isNotEmpty()) {
             val type = queue.removeFirst()

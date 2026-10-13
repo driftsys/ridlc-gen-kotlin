@@ -32,7 +32,19 @@ object RoundTrip {
         val dispatch = StringBuilder()
         for (model in models) {
             val pkg = model.name.dotted
-            for (root in model.flatbuffers.rootsList.filter { it.hasMaxSize() }) {
+            for (root in model.flatbuffers.rootsList.filter { it.hasMaxSize() && it.hasTuple() }) {
+                // A call's induced argument or reply struct (driftsys/ridl#713): sampled as a struct is.
+                val tuple = model.getTuples(root.tuple)
+                if (tuple.visibility == Visibility.VISIBILITY_INTERNAL) continue
+                val type = "$pkg.${tuple.name.rust}"
+                val codec = "${type}Codec"
+                dispatch.append("        \"$type\" -> roundTrip($codec, hex)\n")
+                val writer = Writer(model, models)
+                for ((label, variant) in listOf("minimal" to SAMPLE_MINIMAL, "full" to SAMPLE_FULL)) {
+                    samples.append("        \"$type $label \" + encode($codec, ${writer.record(type, tuple.fieldsList, variant, variant)}),\n")
+                }
+            }
+            for (root in model.flatbuffers.rootsList.filter { it.hasMaxSize() && !it.hasTuple() }) {
                 val declaration = model.getDeclarations(root.declaration)
                 if (declaration.visibility == Visibility.VISIBILITY_INTERNAL) continue
                 val type = "$pkg.${declaration.name.camel}"
@@ -106,12 +118,7 @@ object RoundTrip {
                     "$type.${values[(values.size - 1 - i % values.size + values.size) % values.size].name.declared}"
                 }
                 declaration.hasEnumSet() -> if (variant == SAMPLE_MINIMAL) "$type.EMPTY" else "$type.of($type.DECLARED_MASK)"
-                declaration.hasStruct() -> {
-                    val fields = declaration.struct.slotsList.filter { it.hasField() }.map { it.field }
-                    "$type(" + fields.joinToString(", ") { f ->
-                        "${f.name.camel.replaceFirstChar(Char::lowercaseChar)} = ${position(f.type, variant, i)}"
-                    } + ")"
-                }
+                declaration.hasStruct() -> record(type, declaration.struct.slotsList.filter { it.hasField() }.map { it.field }, variant, i)
                 declaration.hasUnion() -> {
                     val arm = declaration.union.getArms(i % declaration.union.armsCount)
                     "$type.${arm.name.camel}(${named(arm.type, variant, i)})"
@@ -119,6 +126,12 @@ object RoundTrip {
                 else -> error("no sample for ${declaration.name.declared}")
             }
         }
+
+        /** A struct's or a tuple's constructor call over [fields]. */
+        fun record(type: String, fields: List<ridl.codegen.v1.ModelOuterClass.Field>, variant: Int, i: Int): String =
+            "$type(" + fields.joinToString(", ") { f ->
+                "${f.name.camel.replaceFirstChar(Char::lowercaseChar)} = ${position(f.type, variant, i)}"
+            } + ")"
 
         fun named(ref: ridl.codegen.v1.ModelOuterClass.TypeRef, variant: Int, i: Int): String {
             val (pkg, declaration) = if (ref.foreign) {

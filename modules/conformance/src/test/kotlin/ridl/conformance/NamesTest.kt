@@ -247,7 +247,8 @@ class NamesTest {
 
     @Test
     fun `X-8b the same members in a skipped face claim nothing and build`() {
-        val sources = generate("xeightb", "$twoMembers\n  command set(a: Level, b: Level) @[..50ms]\n}", warnings = 1)
+        // A clause over a call of two parameters is refused, which skips the face (driftsys/ridl#713 carries the call).
+        val sources = generate("xeightb", "$twoMembers\n  command set(a: Level, b: Level) @[..50ms] [\n    require a < 50\n  ]\n}", warnings = 1)
         compiles(sources, "xeightb")
     }
 

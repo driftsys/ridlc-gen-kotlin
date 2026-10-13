@@ -189,8 +189,18 @@ internal class Links(private val model: Model, private val pkg: String, private 
      * or a rule, its rules listed under it, one `@see` per see target, and
      * one `@since` per version. A see target that is not an item of this
      * output is a code span after `@see`.
+     *
+     * [fields] are the parameters a call sends as the struct the lowering
+     * induced for them (driftsys/ridl#713): one `@param args` lists each
+     * by name, with its doc and its rules, as the Rust backend's
+     * `# Parameters` section lists them.
      */
-    fun kdoc(parts: DocParts, sentence: String? = null, params: List<Pair<String, DocParts>> = emptyList()): String {
+    fun kdoc(
+        parts: DocParts,
+        sentence: String? = null,
+        params: List<Pair<String, DocParts>> = emptyList(),
+        fields: List<Pair<String, DocParts>> = emptyList(),
+    ): String {
         val paragraphs = mutableListOf<String>()
         if (parts.doc.isNotEmpty()) paragraphs += linked(parts.doc, parts.links)
         if (!sentence.isNullOrEmpty()) paragraphs += sentence
@@ -200,6 +210,12 @@ internal class Links(private val model: Model, private val pkg: String, private 
             if (param.doc.isEmpty() && param.rules.isEmpty()) continue
             tags += listOf("@param $name ${linked(param.doc, param.links)}".trimEnd()) +
                 param.rules.map { "- ${it.text}" }
+        }
+        if (fields.isNotEmpty()) {
+            tags += listOf("@param args The arguments, one property per parameter:") + fields.flatMap { (name, field) ->
+                val text = linked(field.doc, field.links)
+                listOf(if (text.isEmpty()) "- `$name`" else "- `$name`: $text") + field.rules.map { "  - ${it.text}" }
+            }
         }
         tags += parts.see.map { see -> "@see ${path(see.target) ?: "`${see.target}`"}" }
         tags += parts.since.map { "@since $it" }

@@ -500,7 +500,12 @@ class TypesEmitter internal constructor(
             tuple.hasDeclaration() ->
                 (listOf(model.getDeclarations(tuple.declaration.declaration).name.declared) + tuple.declaration.segmentsList)
                     .joinToString(".")
-            tuple.hasInteraction() -> tuple.interaction.segmentsList.joinToString(".")
+            tuple.hasInteraction() -> {
+                val path = tuple.interaction
+                val iface = model.interfacesList.getOrNull(path.`interface`)
+                val member = iface?.slotsList?.getOrNull(path.slot)?.takeIf { it.hasInteraction() }?.interaction
+                (listOfNotNull(iface?.declared?.declared, member?.name?.declared) + path.segmentsList).joinToString(".")
+            }
             else -> "an unknown position"
         }
     }

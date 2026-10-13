@@ -333,6 +333,20 @@ and each binding checks it once, beside the catalog, throwing
 own: it reads the port's. With FlatBuffers the one codec the plugin emits, a
 face built over a port of another encoding is refused.
 
+**A call sends one named type** (driftsys/ridl#713, ADR-0023 decisions 2 and 6
+as amended 2026-10-13). A command or query with exactly one parameter of a named
+type sends that type, and its method takes the parameter by its own name. Every
+other parameter list, none included, sends the struct the lowering induced for
+it, `<Iface><Call>Params`, and its methods take that struct as `args`; a tuple
+reply, and a query that declares no return type, reply with
+`<Iface><Call>Reply`. The lowering names both (ADR-0016, amendment of
+2026-10-13), and the plugin reads the name and never builds one. Each induced
+struct a call sends is a FlatBuffers root of its own, so `Codec.kt` gives it a
+`<Name>Codec` as it gives a declaration root one, and the size table reserves
+its `maxSize`. The face still skips an interface, with a warning, for an untyped
+parameter, a stream, a fallible `T | E` reply, and an induced struct with no
+finite FlatBuffers bound, as the Rust backend does.
+
 **What is deliberately the same as Rust.** The shape, the bounds rule, the
 correlation newtypes, the settlement table and the polling. The reason is the
 one the lanes plan gives for a second implementation: a face that differs from

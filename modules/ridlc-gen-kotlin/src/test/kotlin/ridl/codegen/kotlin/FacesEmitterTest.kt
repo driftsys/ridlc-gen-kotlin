@@ -33,7 +33,18 @@ import ridl.codegen.v1.ModelOuterClass.Timing
 import ridl.codegen.v1.ModelOuterClass.TimingMode
 import ridl.codegen.v1.ModelOuterClass.Spellings
 import ridl.codegen.v1.ModelOuterClass.Type
+import ridl.codegen.v1.ModelOuterClass.TupleRef
 import ridl.codegen.v1.ModelOuterClass.TypeRef
+import ridl.codegen.v1.ModelOuterClass.Fallible
+import ridl.codegen.v1.ModelOuterClass.FbRoot
+import ridl.codegen.v1.ModelOuterClass.FbUnbounded
+import ridl.codegen.v1.ModelOuterClass.Field
+import ridl.codegen.v1.ModelOuterClass.FlatBuffersProjection
+import ridl.codegen.v1.ModelOuterClass.InducedName
+import ridl.codegen.v1.ModelOuterClass.InducedTuple
+import ridl.codegen.v1.ModelOuterClass.InteractionPath
+import ridl.codegen.v1.ModelOuterClass.QueryShape
+import ridl.codegen.v1.ModelOuterClass.Reply
 import ridl.codegen.v1.Plugin
 
 /** What `Faces.kt` skips, and how: an interface the face cannot carry is a warning, not a failed package. */
@@ -57,7 +68,7 @@ class FacesEmitterTest {
     }
 
     @Test
-    fun `a call with two parameters skips its interface with a warning`() {
+    fun `a call whose parameter has no type skips its interface with a warning`() {
         val command = CommandShape.newBuilder()
             .addParams(Param.newBuilder().setName(spelled("a")))
             .addParams(Param.newBuilder().setName(spelled("b")))
@@ -65,7 +76,62 @@ class FacesEmitterTest {
         val emitted = FacesEmitter(model(command), options).emit()
         assertNull(emitted.text, "no interface is left to face")
         assertEquals(emptyList<String>(), emitted.errors)
-        assertTrue(emitted.warnings.single().contains("`kt.demo.Drive`") && "exactly one parameter" in emitted.warnings[0], emitted.warnings[0])
+        val warning = emitted.warnings.single()
+        assertTrue("`kt.demo.Drive`" in warning && "declares a parameter with no type" in warning, warning)
+    }
+
+    /**
+     * Package `kt.demo` with `Level` and interface `Drive`, whose command `go`
+     * takes two `Level`s and so sends `DriveGoParams`, the struct the
+     * lowering induced at `Model.tuples[0]` (driftsys/ridl#713); a root
+     * bounds it when [bounded].
+     */
+    private fun induced(bounded: Boolean): Model {
+        val param = { name: String -> Param.newBuilder().setName(spelled(name)).setType(Type.newBuilder().setNamed(level)) }
+        val field = { name: String -> Field.newBuilder().setName(spelled(name)).setType(Type.newBuilder().setNamed(level)) }
+        val command = CommandShape.newBuilder().addParams(param("a").setDoc("The first.")).addParams(param("b"))
+            .setRequestTuple(TupleRef.newBuilder().setIndex(0))
+        val tuple = InducedTuple.newBuilder()
+            .setName(InducedName.newBuilder().setRust("DriveGoParams"))
+            .addFields(field("a")).addFields(field("b"))
+            .setInteraction(InteractionPath.newBuilder().setInterface(0).setSlot(0).addSegments("Params"))
+        val root = FbRoot.newBuilder().setTuple(0)
+        if (bounded) root.setMaxSize(40) else root.setUnbounded(FbUnbounded.getDefaultInstance())
+        return model(command.build()).toBuilder().addDeclarations(scalar("Level")).addTuples(tuple)
+            .setFlatbuffers(FlatBuffersProjection.newBuilder().addRoots(root)).build()
+    }
+
+    @Test
+    fun `a call with any other parameter list sends the struct the lowering induced for it`() {
+        val text = checkNotNull(FacesEmitter(induced(bounded = true), options).emit().text)
+        assertTrue("public fun go(args: DriveGoParams) {" in text, text)
+        assertTrue("PayloadInfo(\"DriveGoParams\")" in text, "the member row names the induced struct\n$text")
+        assertTrue("listOf(DriveGoParamsCodec.maxSize.toULong())" in text, "the size table reserves its codec's bound\n$text")
+        assertTrue("fun go(args: DriveGoParams)\n" in text, "the provider takes it too\n$text")
+        val listed = "   * @param args The arguments, one property per parameter:\n   * - `a`: The first.\n   * - `b`\n   */\n"
+        assertEquals(3, Regex(Regex.escape(listed) + "  public (suspend )?fun go\\(").findAll(text).count(), "each call method lists the parameters\n$text")
+    }
+
+    @Test
+    fun `an induced struct with no finite bound skips its interface with a warning`() {
+        val emitted = FacesEmitter(induced(bounded = false), options).emit()
+        assertNull(emitted.text)
+        val warning = emitted.warnings.single()
+        assertTrue("`kt.demo.DriveGoParams` has no finite FlatBuffers bound" in warning, warning)
+    }
+
+    @Test
+    fun `a fallible reply skips its interface with a warning`() {
+        val query = QueryShape.newBuilder()
+            .addParams(Param.newBuilder().setName(spelled("level")).setType(Type.newBuilder().setNamed(level)))
+            .setRequest(Payload.newBuilder().setType(level).setFlatbuffersMaxSize(43))
+            .setReply(Reply.newBuilder().setFallible(Fallible.getDefaultInstance()))
+        val interaction = Interaction.newBuilder().setName(spelled("probe")).setQuery(query)
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(InteractionSlot.newBuilder().setOrdinal(1).setInteraction(interaction))
+        val emitted = FacesEmitter(demo().addDeclarations(scalar("Level")).addInterfaces(iface).build(), options).emit()
+        val warning = emitted.warnings.single()
+        assertTrue("query `probe`'s reply is a fallible `T | E`, which the face does not carry" in warning, warning)
     }
 
     @Test

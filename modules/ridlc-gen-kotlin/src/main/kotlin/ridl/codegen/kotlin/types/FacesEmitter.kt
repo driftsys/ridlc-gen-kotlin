@@ -483,16 +483,34 @@ class FacesEmitter internal constructor(
     }
 
     /** A named payload: its Kotlin type, its codec object, and its FlatBuffers size bound. */
-    private inner class Named(val ref: TypeRef, val maxSize: Int) {
-        val type: ClassName
-        val codec: ClassName
+    /**
+     * A payload the face sends or receives: a declared named type, or a
+     * struct the lowering induced for a call's parameter list or a query's
+     * reply (driftsys/ridl#713). [ref] is the declared type's reference, and
+     * `null` for an induced struct; [typeName] is what the member's
+     * `PayloadInfo` names, the reference as written or the induced name.
+     */
+    private inner class Named(val type: ClassName, val codec: ClassName, val typeName: String, val ref: TypeRef?)
 
-        init {
-            val (owner, declaration) = wires.declarationOf(ref)
-            type = ClassName(owner, declaration.name.camel)
-            codec = ClassName(owner, declaration.name.camel + "Codec")
-        }
+    private fun declared(ref: TypeRef): Named {
+        val (owner, declaration) = wires.declarationOf(ref)
+        return Named(ClassName(owner, declaration.name.camel), ClassName(owner, declaration.name.camel + "Codec"), ref.reference, ref)
     }
+
+    /** The struct induced at `Model.tuples[index]`, which `Codec.kt` gives a codec when its root is bounded. */
+    private fun induced(index: Int): Named {
+        val name = model.getTuples(index).name.rust
+        if (name.isEmpty()) refuse("an induced call struct has no name")
+        val bounded = model.flatbuffers.rootsList.any { it.hasTuple() && it.tuple == index && it.hasMaxSize() }
+        if (!bounded) refuse("`${model.name.dotted}.$name` has no finite FlatBuffers bound")
+        return Named(ClassName(pkg, name), ClassName(pkg, name + "Codec"), name, null)
+    }
+
+    /**
+     * The one argument of a call method: the declared parameter, sent as it
+     * is, or `args`, the induced struct whose fields are the parameters.
+     */
+    private class Argument(val name: String, val param: Param?, val payload: Named)
 
     private inner class Face(
         private val iface: Interface,
@@ -514,7 +532,7 @@ class FacesEmitter internal constructor(
         private fun named(payload: Payload?, what: String): Named {
             if (payload == null || !payload.hasType()) refuse("$what must be a single named type")
             if (!payload.hasFlatbuffersMaxSize()) refuse("$what `${payload.type.reference}` has no FlatBuffers bound")
-            return Named(payload.type, payload.flatbuffersMaxSize)
+            return declared(payload.type)
         }
 
         /**
@@ -525,26 +543,51 @@ class FacesEmitter internal constructor(
         private fun memberDoc(m: Member, sentence: String, param: Param? = null): String =
             links.kdoc(DocParts.of(m.interaction), sentence, listOfNotNull(param?.let { it.name.property to DocParts.of(it) }))
 
+        /** [memberDoc] for a call method, whose one argument is [argument]. */
+        private fun memberDoc(m: Member, sentence: String, argument: Argument): String {
+            if (argument.param != null) return memberDoc(m, sentence, argument.param)
+            val params = if (m.interaction.hasCommand()) m.interaction.command.paramsList else m.interaction.query.paramsList
+            return links.kdoc(DocParts.of(m.interaction), sentence, fields = params.map { it.name.property to DocParts.of(it) })
+        }
+
         private fun kind(m: Member): String = if (m.interaction.hasQuery()) "query" else "command"
 
         private fun signalPayload(m: Member) = named(m.interaction.signal.payload, "signal `${m.declared}`'s payload")
         private fun eventPayload(m: Member) = named(m.interaction.event.payload, "event `${m.declared}`'s payload")
 
-        private fun argument(m: Member): Pair<Param, Named> {
-            val (params, request) = if (m.interaction.hasCommand()) {
-                m.interaction.command.paramsList to m.interaction.command.request
-            } else {
-                m.interaction.query.paramsList to m.interaction.query.request
+        /**
+         * The call's argument: the single declared named parameter, or the
+         * struct the lowering induced for every other parameter list, none
+         * included (driftsys/ridl#713). Refused only for a parameter no
+         * struct field holds: one with no declared type, or a stream.
+         */
+        private fun argument(m: Member): Argument {
+            val command = m.interaction.command
+            val query = m.interaction.query
+            val isCommand = m.interaction.hasCommand()
+            val params = if (isCommand) command.paramsList else query.paramsList
+            if (if (isCommand) command.hasRequest() else query.hasRequest()) {
+                val request = if (isCommand) command.request else query.request
+                return Argument(params[0].name.property, params[0], named(request, "interaction `${m.declared}`'s parameter"))
             }
-            if (params.size != 1) refuse("interaction `${m.declared}` must declare exactly one parameter")
-            val hasRequest = if (m.interaction.hasCommand()) m.interaction.command.hasRequest() else m.interaction.query.hasRequest()
-            if (!hasRequest) refuse("interaction `${m.declared}`'s parameter must be a named type")
-            return params[0] to named(request, "interaction `${m.declared}`'s parameter")
+            if (if (isCommand) command.hasRequestTuple() else query.hasRequestTuple()) {
+                return Argument("args", null, induced(if (isCommand) command.requestTuple.index else query.requestTuple.index))
+            }
+            if (params.any { !it.hasType() }) refuse("interaction `${m.declared}` declares a parameter with no type")
+            refuse("interaction `${m.declared}` declares a stream parameter, which has no payload type")
         }
 
+        /**
+         * The query's reply: the declared named type, or the struct the
+         * lowering induced for a tuple reply or for no declared return type.
+         * A fallible `T | E` reply induces nothing and is refused.
+         */
         private fun reply(m: Member): Named {
-            if (!m.interaction.query.hasReplyPayload()) refuse("query `${m.declared}`'s reply must be a single named type")
-            return named(m.interaction.query.replyPayload, "query `${m.declared}`'s reply")
+            val query = m.interaction.query
+            if (query.hasReplyPayload()) return named(query.replyPayload, "query `${m.declared}`'s reply")
+            if (query.hasReplyTuple()) return induced(query.replyTuple.index)
+            if (query.reply.hasValue()) refuse("query `${m.declared}`'s reply must be a named type or a tuple")
+            refuse("query `${m.declared}`'s reply is a fallible `T | E`, which the face does not carry")
         }
 
         fun emit() {
@@ -586,7 +629,7 @@ class FacesEmitter internal constructor(
             // The model's `Catalog.package`, the name of the unit, as the Rust backend reads it: since ridl 0.7.0 a
             // unit can hold several source packages, so `Model.name` is not the catalog's name.
             val catalogName = model.catalog.`package`
-            val callCodecs = (commands.map { argument(it).second } + queries.flatMap { listOf(argument(it).second, reply(it)) })
+            val callCodecs = (commands.map { argument(it).payload } + queries.flatMap { listOf(argument(it).payload, reply(it)) })
                 .map { it.codec }.distinct()
             val eventCodecs = events.map { eventPayload(it).codec }.distinct()
             val rows = members.map { row(it) }.joinToCode(",\n")
@@ -754,13 +797,13 @@ class FacesEmitter internal constructor(
             val (kind, payloads) = when {
                 i.hasSignal() -> "Signal" to listOf(signalPayload(m))
                 i.hasEvent() -> "Event" to listOf(eventPayload(m))
-                i.hasCommand() -> "Command" to listOf(argument(m).second)
-                i.hasQuery() -> "Query" to listOf(argument(m).second, reply(m))
+                i.hasCommand() -> "Command" to listOf(argument(m).payload)
+                i.hasQuery() -> "Query" to listOf(argument(m).payload, reply(m))
                 i.hasFixed() -> "Fixed" to listOf(named(i.fixed.named.takeIf { i.fixed.hasNamed() }, "fixed `${m.declared}`'s payload"))
                 else -> refuse("`${m.declared}` is not an interaction this plugin reads")
             }
             val timing = if (i.hasFixed() || !i.hasTiming()) CodeBlock.of("null") else timing(i.timing)
-            val infos = payloads.map { CodeBlock.of("%T(%S)", PAYLOAD_INFO, it.ref.reference) }.joinToCode(", ")
+            val infos = payloads.map { CodeBlock.of("%T(%S)", PAYLOAD_INFO, it.typeName) }.joinToCode(", ")
             return CodeBlock.of(
                 "%T(%T(%Lu), %T.%L, %S, %L, listOf(%L))",
                 MEMBER, ORDINAL, m.ordinal, KIND, kind, m.declared, timing, infos,
@@ -778,8 +821,8 @@ class FacesEmitter internal constructor(
             val payloads = when {
                 i.hasSignal() -> listOf(signalPayload(m))
                 i.hasEvent() -> listOf(eventPayload(m))
-                i.hasCommand() -> listOf(argument(m).second)
-                i.hasQuery() -> listOf(argument(m).second, reply(m))
+                i.hasCommand() -> listOf(argument(m).payload)
+                i.hasQuery() -> listOf(argument(m).payload, reply(m))
                 else -> return CodeBlock.of("0uL")
             }
             return payloads.map { CodeBlock.of("%T.maxSize.toULong()", it.codec) }.joinToCode(" + ")
@@ -826,13 +869,13 @@ class FacesEmitter internal constructor(
                         .addSuperinterface(EVENT.parameterizedBy(payload.type)).addProperty(codecProperty(payload))
                 }
                 i.hasCommand() -> {
-                    val (_, arg) = argument(m)
+                    val arg = argument(m).payload
                     builder.addKdoc("Command `%L` of `%L`.", m.declared, iface.declared.declared)
                         .addSuperinterface(COMMAND.parameterizedBy(arg.type)).addProperty(codecProperty(arg))
                         .addFunction(clauseFun("require", ContractKind.CONTRACT_KIND_REQUIRE, m, arg, null))
                 }
                 i.hasQuery() -> {
-                    val (_, arg) = argument(m)
+                    val arg = argument(m).payload
                     val reply = reply(m)
                     builder.addKdoc("Query `%L` of `%L`.", m.declared, iface.declared.declared)
                         .addSuperinterface(QUERY.parameterizedBy(arg.type, reply.type))
@@ -859,11 +902,12 @@ class FacesEmitter internal constructor(
          */
         private fun channelInit(m: Member, payload: Named): CodeBlock {
             val signal = m.interaction.signal
-            val (owner, declaration) = wires.declarationOf(payload.ref)
+            val ref = checkNotNull(payload.ref) { "a signal's payload is a declared type" }
+            val (owner, declaration) = wires.declarationOf(ref)
             if (signal.hasDeclaredInit() && declaration.hasScalar() && signal.init.hasValue()) {
-                return inits.named(ClassName(owner, declaration.name.camel), declaration.scalar, signal.init.value, model.isForeign(payload.ref))
+                return inits.named(ClassName(owner, declaration.name.camel), declaration.scalar, signal.init.value, model.isForeign(ref))
             }
-            return inits.ofRef(payload.ref)
+            return inits.ofRef(ref)
         }
 
         // -- the clauses ---------------------------------------------------------
@@ -901,8 +945,9 @@ class FacesEmitter internal constructor(
                 comparison.hasParam() && comparison.param == 0 -> "args" to arg
                 else -> refuseClause("no accepted comparison")
             }
-            if (model.isForeign(named.ref)) refuseClause("the subject is declared in another package")
-            val (_, declaration) = wires.declarationOf(named.ref)
+            val ref = named.ref ?: refuseClause("the subject is not a named integer or float scalar")
+            if (model.isForeign(ref)) refuseClause("the subject is declared in another package")
+            val (_, declaration) = wires.declarationOf(ref)
             if (!declaration.hasScalar()) refuseClause("the subject is not a named integer or float scalar")
             val literal = when (declaration.scalar.class_) {
                 ScalarClass.SCALAR_CLASS_INTEGER -> {
@@ -928,7 +973,7 @@ class FacesEmitter internal constructor(
         private fun callClass(m: Member): ClassName = ClassName(pkg, "$name${m.camel}Call")
 
         private fun call(m: Member): TypeSpec {
-            val (_, arg) = argument(m)
+            val arg = argument(m).payload
             // Not the ridl parameter's name, which could be `port`.
             val value = "value"
             val query = m.interaction.hasQuery()
@@ -1269,10 +1314,11 @@ class FacesEmitter internal constructor(
                     .build()
             }
             for (m in commands + queries) {
-                val (param, arg) = argument(m)
-                val value = param.name.property
+                val argument = argument(m)
+                val arg = argument.payload
+                val value = argument.name
                 val f = FunSpec.builder(m.method).addParameter(value, arg.type)
-                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and waits for its outcome.", param))
+                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and waits for its outcome.", argument))
                 if (m.interaction.hasQuery()) {
                     f.returns(reply(m).type).addStatement("return %T(this.port, %N).block(this.timeoutBound)", callClass(m), value)
                 } else {
@@ -1325,10 +1371,11 @@ class FacesEmitter internal constructor(
                     .build()
             }
             for (m in commands + queries) {
-                val (param, arg) = argument(m)
-                val value = param.name.property
+                val argument = argument(m)
+                val arg = argument.payload
+                val value = argument.name
                 val f = FunSpec.builder(m.method).addModifiers(KModifier.SUSPEND).addParameter(value, arg.type)
-                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and suspends until its outcome.", param))
+                    .doc(memberDoc(m, "Calls ${kind(m)} `${m.declared}` and suspends until its outcome.", argument))
                 if (m.interaction.hasQuery()) {
                     f.returns(reply(m).type).addStatement("return this._calls.%M { %T(this._port, %N).await() }", WITH_LOCK, callClass(m), value)
                 } else {
@@ -1388,8 +1435,9 @@ class FacesEmitter internal constructor(
         }
 
         private fun send(m: Member): FunSpec {
-            val (param, arg) = argument(m)
-            val argName = param.name.property
+            val argument = argument(m)
+            val arg = argument.payload
+            val argName = argument.name
             val kind = if (m.interaction.hasCommand()) "command" else "query"
             return FunSpec.builder(m.method).addParameter(argName, arg.type).returns(correlation(m))
                 .addKdoc(
@@ -1460,32 +1508,34 @@ class FacesEmitter internal constructor(
             val builder = TypeSpec.interfaceBuilder(ClassName(pkg, "${name}Provider")).visibility()
                 .addKdoc("What an application implements to serve interface `%L`'s calls, driven by `serve` or `serveAsync`.", iface.declared.declared)
             for (m in commands) {
-                val (param, arg) = argument(m)
+                val argument = argument(m)
+                val arg = argument.payload
                 builder.addFunction(
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
-                        .addParameter(param.name.property, arg.type)
+                        .addParameter(argument.name, arg.type)
                         .doc(
                             memberDoc(
                                 m,
                                 "Serves command `${m.declared}`. A command has no failure the application reports (ridl " +
                                     "§6.1); arguments that break their constraints or `require` never reach it.",
-                                param,
+                                argument,
                             ),
                         ).build(),
                 )
             }
             for (m in queries) {
-                val (param, arg) = argument(m)
+                val argument = argument(m)
+                val arg = argument.payload
                 builder.addFunction(
                     FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT)
-                        .addParameter(param.name.property, arg.type)
+                        .addParameter(argument.name, arg.type)
                         .returns(reply(m).type)
                         .doc(
                             memberDoc(
                                 m,
                                 "Serves query `${m.declared}`. A reply that breaks an `ensure` clause is discarded, and " +
                                     "`ContractBroken` settled.",
-                                param,
+                                argument,
                             ),
                         )
                         .build(),
@@ -1542,7 +1592,7 @@ class FacesEmitter internal constructor(
             // The decoded argument is always `arg`: a ridl parameter's own name could shadow a local here.
             val value = "arg"
             for (m in commands) {
-                val (_, arg) = argument(m)
+                val arg = argument(m).payload
                 code.beginControlFlow("%L ->", ordinal(m))
                     .addStatement("callOutcome(%T, args).fold(", arg.codec)
                     .indent()
@@ -1561,7 +1611,7 @@ class FacesEmitter internal constructor(
                     .endControlFlow()
             }
             for (m in queries) {
-                val (_, arg) = argument(m)
+                val arg = argument(m).payload
                 val reply = reply(m)
                 code.beginControlFlow("%L ->", ordinal(m))
                     .addStatement("callOutcome(%T, args).fold(", arg.codec)

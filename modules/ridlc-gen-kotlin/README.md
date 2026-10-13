@@ -277,9 +277,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a
-  call with other than one named parameter, a reply that is not a named type.
-  The rest of the package is generated, as the Rust pipeline skips such an
-  interface with a `__RIDL_NO_FACE_*` note (E11.14 decision 2).
+  parameter with no type or a stream, a fallible `T | E` reply, a call struct
+  the lowering induced with no finite FlatBuffers bound. Since ridl 0.10
+  (driftsys/ridl#713) a call of any other parameter list sends its induced
+  `<Iface><Call>Params`, and a tuple reply its `<Iface><Call>Reply`; a call
+  method's KDoc lists the parameters under `@param args`, as the Rust face's
+  `# Parameters` section does. The rest of the package is generated, as the Rust
+  pipeline skips such an interface with a `__RIDL_NO_FACE_*` note (E11.14
+  decision 2).
 - **A channel's init is the signal's own `= value`** when it declares one over a
   named scalar, else the payload type's typl init, built from the model's `Init`
   facts. The Rust face always calls the payload's `Default`, and calls the
