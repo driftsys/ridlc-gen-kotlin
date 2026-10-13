@@ -1,5 +1,169 @@
 # Changelog
 
+## [0.2.0] (2026-10-13)
+
+### Features
+
+- **ridlc-gen-kotlin:** give an internal interface its descriptors and no face
+  ([4ea99bb])
+- **ridlc-gen-kotlin:** send a call's induced argument and reply structs
+  ([158d10c])
+- **ridl-rt-kt:** a watermark has no sequence number ([c58fd9a]), refs [#94]
+- **repo:** a size table per codec, and a face that reads its encoding from its
+  port ([9efde73])
+- **ridl-rt-kt:** a violation a peer reports has no type name ([d914ba8])
+- **ridlc-gen-kotlin:** generate the types alone when no encoding is named
+  ([8c9e4ba]), refs [#83]
+- **ridlc-gen-kotlin:** render doc links, rules, see and since in KDoc
+  ([6ab07e8]), closes [#86]
+- **ridlc-gen-kotlin:** read the ridl 0.10 codegen schema ([4114aae]), refs
+  [#88]
+- **ridlc-gen-kotlin:** read the encodings option ridl 0.9 sends ([baa8ddc]),
+  refs [#83]
+- **ridlc-gen-kotlin:** each signal is a shared state on the async client
+  ([56a45ab])
+- **ridl-rt-kt-coroutines:** a signal as a shared state on a polling grid
+  ([5bb5c05])
+
+### Bug Fixes
+
+- **samples:** the seqlock port states its encoding ([74eb785])
+- **ridl-rt-kt-coroutines:** read the port when a polled sample is too old
+  ([5ab1d81]), closes [#78]
+- **ridlc-gen-kotlin:** keep a signal read's sentence whole around its doc
+  ([baac551]), refs [#86]
+- **ridl-rt-kt:** a fixed member reserves nothing ([964dde4])
+- **conformance:** rerun the tests when the ridl binary changes ([6194200])
+- **ridl-rt-kt-coroutines:** stop a slow state after its linger, and fail
+  collectors a scope ends ([b51ef69])
+- **ridl-rt-kt-coroutines:** remember an idle state weakly, and outlive the
+  scope's end ([6c8fad5])
+- **ridlc-gen-kotlin:** check the async client's catalog without a poll client
+  ([2ef9f8e])
+- **ridl-rt-kt-coroutines:** close the signal-state races of the second review
+  ([7bd63c3])
+- **ridlc-gen-kotlin:** default scope and unshadowable members on the async
+  client ([4108c5a])
+- **ridl-rt-kt-coroutines:** harden signal states after review ([8ac9cee])
+
+### Documentation
+
+- **ridl-rt-kt:** record the ridl-rt 0.10 items Kotlin spells another way
+  ([1e0aaef])
+- **ridl-rt-kt:** say which transports leave a violation without a type name
+  ([b2aed1d])
+- **docs:** the linger holds for every period, and a scope's end fails
+  collectors ([7708459])
+- **docs:** a background scope for the signal states, and what a poll reads
+  ([094f783])
+- **ridl-rt-kt-coroutines:** the age of a cached value in the README ([e18a66e])
+- **ridl-rt-kt-coroutines:** the age of a cached signal value ([16ca606])
+- **docs:** the async client's default scope in the book and the demo
+  ([6ea4b3f])
+- **docs:** read the cabin signal as a shared state ([f997f02])
+- **repo:** format the 0.1.0 changelog ([7c97e46])
+
+### Refactoring
+
+- **ridl-rt-kt-coroutines:** one coroutine per polling, and drop a state that
+  stopped ([d721163]), closes 80 and #79.
+
+A `SignalState` now has one coroutine
+  for the whole of a polling: it sleeps
+until the next slot or the end of the
+  linger, whichever comes first, polls on a
+slot and stops at the end. The
+  stopper job and the polling flag are gone; the
+state keeps its subscriber
+  count, the poller and the moment the last
+subscriber left. The five races the
+  two reviews of #77 found had no second
+coroutine left to race with.
+
+The
+  rebuild on `shareIn` or `WhileSubscribed` that #80 proposed does not fit
+three
+  of the rules `SignalStateTest` pins, and the module README records why:
+the
+  sharing coroutine waits for the scope's life, a `MutableStateFlow` hands a
+new
+  collector its current value before any start command runs,
+  and
+`WhileSubscribed` issues a start only after a stop, so a collector back
+  within
+the linger after a failure would wait it out. All 26 tests pass
+  unchanged.
+
+Eviction follows from the one place a state goes idle (#79): a
+  state leaves
+`SignalStates` when its polling stops or fails, unless it is its
+  signal's
+default-period state, which stays so a generated property is one
+  instance. A
+dropped state a caller holds keeps working and is shared again
+  when collected
+again. A state never read holds no buffer. Three tests cover
+  the slider case, the held state and the failed one.
+- **ridl-rt-kt-coroutines:** name the staleness bound `bound` in effectivePeriod
+  ([208fb20])
+- **ridl-rt-kt-coroutines:** spell effectivePeriod as its four cases ([3ff3d2b])
+
+### BREAKING CHANGES
+
+- an `internal` interface no longer has an `internal` face.
+- `ridl.rt.port.Watermark` has no `seq`. Drop the argument.
+- a port a generated face is built over implements
+`ridl.rt.port.Encoded`; `EncodedSizes`, `PayloadInfo.maxSize`,
+`Encoding.maxSize`, `Member.reservation` and `Unsized` are removed;
+`tableBudget` takes an interface; a descriptor has `sizes(encoding)` in
+place of `MAX_BUFFER_SIZE` and `EVENT_SOURCE_BUFFER_SIZE`.
+- `ridl.rt.payload.Violation.typeName` is `String?`.
+- a package whose manifest names no encoding gets no
+Codec.kt and no Faces.kt; name `flatbuffers` in [backend.kotlin].
+- the `wire-encoding` option is refused as unknown; name
+the encoding with `encodings`.
+
+[0.2.0]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.1.0...v0.2.0
+[4ea99bb]: https://github.com/driftsys/ridlc-gen-kotlin/commit/4ea99bb
+[158d10c]: https://github.com/driftsys/ridlc-gen-kotlin/commit/158d10c
+[c58fd9a]: https://github.com/driftsys/ridlc-gen-kotlin/commit/c58fd9a
+[#94]: https://github.com/driftsys/ridlc-gen-kotlin/issues/94
+[9efde73]: https://github.com/driftsys/ridlc-gen-kotlin/commit/9efde73
+[d914ba8]: https://github.com/driftsys/ridlc-gen-kotlin/commit/d914ba8
+[8c9e4ba]: https://github.com/driftsys/ridlc-gen-kotlin/commit/8c9e4ba
+[#83]: https://github.com/driftsys/ridlc-gen-kotlin/issues/83
+[6ab07e8]: https://github.com/driftsys/ridlc-gen-kotlin/commit/6ab07e8
+[#86]: https://github.com/driftsys/ridlc-gen-kotlin/issues/86
+[4114aae]: https://github.com/driftsys/ridlc-gen-kotlin/commit/4114aae
+[#88]: https://github.com/driftsys/ridlc-gen-kotlin/issues/88
+[baa8ddc]: https://github.com/driftsys/ridlc-gen-kotlin/commit/baa8ddc
+[56a45ab]: https://github.com/driftsys/ridlc-gen-kotlin/commit/56a45ab
+[5bb5c05]: https://github.com/driftsys/ridlc-gen-kotlin/commit/5bb5c05
+[74eb785]: https://github.com/driftsys/ridlc-gen-kotlin/commit/74eb785
+[5ab1d81]: https://github.com/driftsys/ridlc-gen-kotlin/commit/5ab1d81
+[#78]: https://github.com/driftsys/ridlc-gen-kotlin/issues/78
+[baac551]: https://github.com/driftsys/ridlc-gen-kotlin/commit/baac551
+[964dde4]: https://github.com/driftsys/ridlc-gen-kotlin/commit/964dde4
+[6194200]: https://github.com/driftsys/ridlc-gen-kotlin/commit/6194200
+[b51ef69]: https://github.com/driftsys/ridlc-gen-kotlin/commit/b51ef69
+[6c8fad5]: https://github.com/driftsys/ridlc-gen-kotlin/commit/6c8fad5
+[2ef9f8e]: https://github.com/driftsys/ridlc-gen-kotlin/commit/2ef9f8e
+[7bd63c3]: https://github.com/driftsys/ridlc-gen-kotlin/commit/7bd63c3
+[4108c5a]: https://github.com/driftsys/ridlc-gen-kotlin/commit/4108c5a
+[8ac9cee]: https://github.com/driftsys/ridlc-gen-kotlin/commit/8ac9cee
+[1e0aaef]: https://github.com/driftsys/ridlc-gen-kotlin/commit/1e0aaef
+[b2aed1d]: https://github.com/driftsys/ridlc-gen-kotlin/commit/b2aed1d
+[7708459]: https://github.com/driftsys/ridlc-gen-kotlin/commit/7708459
+[094f783]: https://github.com/driftsys/ridlc-gen-kotlin/commit/094f783
+[e18a66e]: https://github.com/driftsys/ridlc-gen-kotlin/commit/e18a66e
+[16ca606]: https://github.com/driftsys/ridlc-gen-kotlin/commit/16ca606
+[6ea4b3f]: https://github.com/driftsys/ridlc-gen-kotlin/commit/6ea4b3f
+[f997f02]: https://github.com/driftsys/ridlc-gen-kotlin/commit/f997f02
+[7c97e46]: https://github.com/driftsys/ridlc-gen-kotlin/commit/7c97e46
+[d721163]: https://github.com/driftsys/ridlc-gen-kotlin/commit/d721163
+[208fb20]: https://github.com/driftsys/ridlc-gen-kotlin/commit/208fb20
+[3ff3d2b]: https://github.com/driftsys/ridlc-gen-kotlin/commit/3ff3d2b
+
 ## 0.1.0 (2026-10-09)
 
 ### Bug Fixes
