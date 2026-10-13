@@ -229,6 +229,18 @@ class FacesEmitterTest {
         assertEquals(3, Regex("Sets the level\\.").findAll(text).count(), "the blocking and suspending clients and the provider, not the poll face")
     }
 
+    @Test
+    fun `a signal's doc comes before the whole sentence of its read`() {
+        val signal = slot(1, "level", "Level", signal = true).apply { interactionBuilder.setDoc("The fill level.") }
+        val iface = Interface.newBuilder().setDeclared(spelled("Gauge")).setNumber(1).addSlots(signal)
+        val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
+        val text = checkNotNull(FacesEmitter(demo().addDeclarations(level).addInterfaces(iface).build(), options).emit().text)
+        val sentence = "Reads signal `level`, with the provenance, freshness and envelope the runtime resolved. A channel with no " +
+            "value under `Init` or `Invalid(Declared)` holds its init value; bytes that fail their check, none under any other " +
+            "provenance included, read as the init value under `Provenance.Invalid` with what was detected."
+        assertTrue("   * The fill level.\n   *\n   * $sentence\n   */\n  public fun level(): Sample<Level> {" in text, text)
+    }
+
     /** A signal, or an event, named [declared] and [camel], over one `Level`. */
     private fun slot(ordinal: Int, declared: String, camel: String, signal: Boolean) = InteractionSlot.newBuilder().setOrdinal(ordinal)
         .setInteraction(

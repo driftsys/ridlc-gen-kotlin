@@ -995,11 +995,12 @@ class FacesEmitter internal constructor(
                 builder.addFunction(
                     FunSpec.builder(m.method).returns(SAMPLE.parameterizedBy(payload.type))
                         .doc(
-                            "Reads signal `${m.declared}`, with the provenance, freshness and envelope the runtime resolved. " +
-                                "A channel with no value under `Init` or `Invalid(Declared)` holds its init value; bytes that " +
-                                "fail their check, none under any other provenance included, read as the init value under " +
-                                "`Provenance.Invalid` with what was detected."
-                                .let { if (pollFace) it else memberDoc(m, it) },
+                            (
+                                "Reads signal `${m.declared}`, with the provenance, freshness and envelope the runtime resolved. " +
+                                    "A channel with no value under `Init` or `Invalid(Declared)` holds its init value; bytes that " +
+                                    "fail their check, none under any other provenance included, read as the init value under " +
+                                    "`Provenance.Invalid` with what was detected."
+                                ).let { if (pollFace) it else memberDoc(m, it) },
                         )
                         .addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, payload.codec)
                         .addStatement("return sampled(%T, %T, port.read(%L, %L, buf), buf)", payload.codec, m.descriptor, number(), ordinal(m))
