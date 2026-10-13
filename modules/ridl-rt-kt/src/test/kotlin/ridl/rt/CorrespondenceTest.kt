@@ -81,16 +81,13 @@ import kotlin.reflect.full.isSubclassOf
  * variants, fields and methods under their Kotlin spellings.
  *
  * The rows are transcribed from `crates/ridl-rt/src` of the pinned release,
- * except the items ridl `main` added ahead of the release that carries them:
- * `port::Wakeable`, `port::Interest` and `error::Transport::Busy` at c2543c2
- * (story E11.16), and `sample::Continuity`, `sample::TrackerFull`,
- * `sample::EventSeqTracker` and `Member::call_deadline` at 87de8c6 (story
- * E11.19), `correlate` with `error::ClientError` and `error::ProviderError`
- * at eb41a7a (story E11.18), and the ridl-rt 0.10 items: `contract::Sizes`,
- * `Interaction::ROW` and `port::Encoded` (driftsys/ridl#851, #887).
- * Two Rust items have no row: `payload::Ref` and `payload::Encoded`, the
- * borrow-checked proof that a value is decoded only from checked bytes, whose
- * guarantee [Payload] gives by taking the view `verify` returned.
+ * ridl 0.10.0. Two Rust items have no row: `payload::Ref` and
+ * `payload::Encoded`, the borrow-checked proof that a value is decoded only
+ * from checked bytes, whose guarantee [Payload] gives by taking the view
+ * `verify` returned. Nor have the fixed-size buffer types, `Payload::Buffer`
+ * and `BUFFER` and `Sizes`' `ClaimBuffer`, `EventBuffer`, `CLAIM_BUFFER` and
+ * `EVENT_BUFFER`: a Kotlin caller allocates a `ByteBuffer` of the size the
+ * row's `maxSize` or `maxBufferSize` states (`modules/ridl-rt-kt/README.md`).
  */
 class CorrespondenceTest {
     private class Row(

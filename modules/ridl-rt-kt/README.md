@@ -49,7 +49,18 @@ with a size table per codec: `Sizes`, which a generated descriptor gives through
 `Interface.sizes(encoding)`, `Interaction.row`, and `reservation` and
 `tableBudget`, which no longer fail on a missing size. It adds `port.Encoded`,
 the encoding of the bytes a port carries, which a generated face reads from its
-port. `SizesTest` is `sizes.rs`, case for case.
+port. `SizesTest` is `sizes.rs`, case for case. `Violation.typeName` is
+nullable: a violation decoded from a frame carries no type name
+(driftsys/ridl#903). `Watermark` has no `seq` (driftsys/ridl#927); each
+`Changed` carries its own signal's sequence number.
+
+Rust's fixed-size buffer types have no Kotlin item: `Payload::Buffer` and
+`Payload::BUFFER` (ridl-rt 0.9), and `Sizes::ClaimBuffer`, `EventBuffer`,
+`CLAIM_BUFFER` and `EVENT_BUFFER`. Each is an array `[u8; N]` so that `no_std`
+code can hold a buffer without allocating; a Kotlin caller allocates a
+`ByteBuffer` of `maxSize`, `maxBufferSize` or `eventSourceBufferSize`, which is
+that array's length. Nor has `impl Encoded for &P`, a borrow Kotlin does not
+spell.
 
 ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
