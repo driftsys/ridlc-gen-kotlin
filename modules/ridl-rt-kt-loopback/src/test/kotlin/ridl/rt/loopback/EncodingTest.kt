@@ -14,7 +14,7 @@ import java.nio.ByteBuffer
 
 /**
  * The encoding a runtime's ports carry (driftsys/ridl#887):
- * `crates/ridl-loopback/tests/encoding.rs` on ridl `main`, under the same
+ * `crates/ridl-loopback/tests/encoding.rs` at ridl 0.10.0, under the same
  * names but the last, which Rust calls `the_encoding_is_a_type_and_not_a_value`:
  * here the encoding is a value. The aggregate and every role handle present [Encoded], so a
  * generated face reads the encoding from its port. The default is

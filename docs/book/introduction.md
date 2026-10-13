@@ -20,7 +20,7 @@ uses the cabin sample (`samples/cabin`) throughout:
 Every Kotlin and ridl block in these chapters is an excerpt of the sample, of
 `cabin.ridl`, or of the code the plugin generates for it, and the sample's
 `GuideTest` fails when one stops matching its source. The excerpts come from
-ridl `editor-v0.7.0`, the release this repository pins in
+ridl `editor-v0.10.0`, the release this repository pins in
 `modules/conformance/ridl-release`, and from the plugin built from this
 repository at the same commit as the book.
 

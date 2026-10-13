@@ -7,7 +7,7 @@ import ridl.rt.encoding.Encoding
 
 /**
  * The size table per codec: [Sizes], [reservation] and [tableBudget].
- * `crates/ridl-rt/tests/sizes.rs` of ridl `main`, case for case, but for
+ * `crates/ridl-rt/tests/sizes.rs` of ridl 0.10.0, case for case, but for
  * `a_static_table_is_sized_from_the_budget`, which tests `const fn` and has
  * no Kotlin spelling. The rows are numbers here: the Rust fixture writes them
  * as `MAX_SIZE` paths of fixture codecs, which this module has none of.

@@ -524,3 +524,212 @@ err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 ok:4f4193eccb556e77
+ok:5decf26db9765413
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:5decf26db9765413
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Contract(Violation { type_name: Some("Subsystems"), rule: Variant })
+ok:500cb26d111e2382
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:6eeed741eef9b5c3
+ok:28e4b9186d8c40fe
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:28e4b9186d8c40fe
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+err:Structure(OutOfBounds)
+ok:28e4b9186d8c40fe
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:5a4480fa134c58b6
+err:Structure(OutOfBounds)
+ok:5a4480fa134c58b6
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:28e4b9186d8c40fe
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Contract(Violation { type_name: Some("Subsystems"), rule: Variant })
+ok:71906e00777df5d7
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:5a4480fa134c58b6
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+err:Contract(Violation { type_name: Some("Level"), rule: Range })
+ok:471a054278e62ff7
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:28e4b9186d8c40fe
+ok:0c0df84735600037
