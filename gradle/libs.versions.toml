@@ -9,6 +9,7 @@ coroutines = "1.11.0"
 kotlin-compile-testing = "0.14.0"
 jmh = "1.37"
 champeau-jmh = "0.7.3"
+nmcp = "1.6.2"
 
 [libraries]
 kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
@@ -29,3 +30,5 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 jmh = { id = "me.champeau.jmh", version.ref = "champeau-jmh" }
+nmcp = { id = "com.gradleup.nmcp", version.ref = "nmcp" }
+nmcp-aggregation = { id = "com.gradleup.nmcp.aggregation", version.ref = "nmcp" }

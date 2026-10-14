@@ -75,11 +75,12 @@ The conformance tests download the pinned `ridl` release on first run; set
 ## Releases
 
 A `v<version>` tag runs the release workflow (CONTRIBUTING.md, "Releasing"). It
-publishes the four JVM libraries to this repository's GitHub Packages registry,
-creates a GitHub release with the plugin distribution, `install.sh`, the Android
-vendor package of the runtime and the conformance results, and publishes the
-book to Pages. Each push to `main` publishes the libraries' `-SNAPSHOT` version.
-The book's [Installing](docs/book/install.md) chapter shows how to consume each.
+publishes the four JVM libraries to Maven Central and to this repository's
+GitHub Packages registry, creates a GitHub release with the plugin distribution,
+`install.sh`, the Android vendor package of the runtime and the conformance
+results, and publishes the book to Pages. Each push to `main` publishes the
+libraries' `-SNAPSHOT` version to GitHub Packages. The book's
+[Installing](docs/book/install.md) chapter shows how to consume each.
 
 The repository is licensed under the root [MIT License](LICENSE). Module READMEs
 refer to this license rather than adding another license file.

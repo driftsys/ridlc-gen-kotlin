@@ -8,7 +8,7 @@ a runtime does behind each port, generic over a runtime, so any Kotlin runtime
 runs them from its own tests. It is the Kotlin spelling of
 `crates/ridl-rt-conformance` (story E11.20), a JVM library in the package
 `ridl.rt.conformance` over `ridl-rt-kt` and the JUnit Jupiter API, published as
-`io.github.driftsys.ridl:ridl-rt-kt-conformance` so that a runtime in another
+`org.driftsys.ridl:ridl-rt-kt-conformance` so that a runtime in another
 repository runs it. The repository is licensed under the root
 [MIT License](../../LICENSE).
 
@@ -25,17 +25,16 @@ a `@TestFactory`:
 @TestFactory fun trace() = traceSuite(MyFactory)
 ```
 
-A runtime in another repository takes the suite from this repository's GitHub
-Packages registry, which the book's
-[Installing](../../docs/book/install.md#the-runtime-libraries) chapter shows how
-to declare. `just publish-local` here puts it in the local Maven repository
-instead, for a change not yet on `main`. The runtime's build declares the suite
-in its test source set, with the JUnit engine that runs it:
+A runtime in another repository takes the suite from Maven Central, which the
+book's [Installing](../../docs/book/install.md#the-runtime-libraries) chapter
+shows how to declare. `just publish-local` here puts it in the local Maven
+repository instead, for a change not yet on `main`. The runtime's build declares
+the suite in its test source set, with the JUnit engine that runs it:
 
 ```kotlin
 dependencies {
-    implementation("io.github.driftsys.ridl:ridl-rt-kt:0.1.0-SNAPSHOT")
-    testImplementation("io.github.driftsys.ridl:ridl-rt-kt-conformance:0.1.0-SNAPSHOT")
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0")
+    testImplementation("org.driftsys.ridl:ridl-rt-kt-conformance:0.3.0")
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

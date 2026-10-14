@@ -565,6 +565,17 @@ Each decision names the alternative it rejected.
   as source.** Rejected: a git submodule of `driftsys/ridl`, because the plugin
   must prove it works against what a user installs, and a submodule drifts to a
   commit no release carries.
+- **D-K10. The four JVM libraries publish to Maven Central under
+  `org.driftsys.ridl`, and to GitHub Packages.** Central needs no token to
+  consume, which a runtime in another repository (§6) would otherwise have to
+  hold even for a public package. The namespace is `org.driftsys` because
+  Central grants `io.github.<organization>` only to a GitHub user account, while
+  the DNS record of `driftsys.org` proves `org.driftsys` for every group under
+  it. The release workflow uploads one signed deployment, which the Portal holds
+  until a maintainer releases it, since a released version is immutable; GitHub
+  Packages stays for the `-SNAPSHOT` versions of `main`. The cost accepted: the
+  group changed from `io.github.driftsys.ridl`, which `0.2.0` and earlier keep
+  on GitHub Packages, so a consumer changes its coordinates once.
 
 ## 10. Open items
 

@@ -86,6 +86,16 @@ publish-local:
 publish:
     ./gradlew publishAllPublicationsToGitHubPackagesRepository
 
+# The four JVM libraries, signed, as one deployment to the Maven Central Portal,
+# at the version gradle.properties names. Needs the Gradle properties
+# signingKey (ASCII-armored PGP private key) and signingPassword, and the
+# Portal user token as mavenCentralUsername and mavenCentralPassword (or the
+# environment variables MAVEN_CENTRAL_USERNAME and MAVEN_CENTRAL_PASSWORD).
+# The Portal validates the deployment and waits for a release from its
+# Deployments page; a released version is immutable.
+publish-central:
+    ./gradlew publishAggregationToCentralPortal
+
 # The conformance results as one release asset: the plugin's conformance tests
 # against the pinned ridl release and the port contract suite over the
 # loopback, packed by scripts/compliance-report.py into

@@ -40,11 +40,24 @@ just dist
 ## The runtime libraries
 
 The generated code compiles against `ridl-rt-kt`, and a client or provider needs
-a runtime that implements its ports. The four JVM libraries publish to this
-repository's GitHub Packages registry as `io.github.driftsys.ridl`. Each push to
-`main` publishes the `-SNAPSHOT` version, and each release publishes its own.
-GitHub Packages asks for a GitHub token that can read packages, even for a
-public package:
+a runtime that implements its ports. The four JVM libraries publish as
+`org.driftsys.ridl`: each release goes to Maven Central, and each push to `main`
+publishes the `-SNAPSHOT` version to this repository's GitHub Packages registry.
+A release needs no repository beyond `mavenCentral()`:
+
+```kts
+dependencies {
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0")
+    // Faces.kt's suspending client, its signal flows and serveAsync.
+    implementation("org.driftsys.ridl:ridl-rt-kt-coroutines:0.3.0")
+    // An in-process runtime, for tests and demos.
+    implementation("org.driftsys.ridl:ridl-rt-kt-loopback:0.3.0")
+}
+```
+
+Releases up to `0.2.0` are on GitHub Packages only, as
+`io.github.driftsys.ridl`. A `-SNAPSHOT` asks for a GitHub token that can read
+packages, even for a public package:
 
 ```kts
 repositories {
@@ -58,11 +71,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.driftsys.ridl:ridl-rt-kt:0.1.0-SNAPSHOT")
-    // Faces.kt's suspending client, its signal flows and serveAsync.
-    implementation("io.github.driftsys.ridl:ridl-rt-kt-coroutines:0.1.0-SNAPSHOT")
-    // An in-process runtime, for tests and demos.
-    implementation("io.github.driftsys.ridl:ridl-rt-kt-loopback:0.1.0-SNAPSHOT")
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0-SNAPSHOT")
 }
 ```
 
