@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0] (2026-10-14)
+
+### Features
+
+- **repo:** publish the libraries to Maven Central as org.driftsys.ridl
+  ([1b0e7e1])
+
+### BREAKING CHANGES
+
+- the group id of ridl-rt-kt, ridl-rt-kt-loopback, ridl-rt-kt-coroutines and
+  ridl-rt-kt-conformance is org.driftsys.ridl instead of
+  io.github.driftsys.ridl. Releases up to 0.2.0 keep the old group id on GitHub
+  Packages.
+
+[0.3.0]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.2.0...v0.3.0
+[1b0e7e1]: https://github.com/driftsys/ridlc-gen-kotlin/commit/1b0e7e1
+
 ## [0.2.0] (2026-10-13)
 
 ### Features
