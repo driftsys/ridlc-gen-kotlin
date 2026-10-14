@@ -1,5 +1,11 @@
 # ridlc-gen-kotlin
 
+[![ci](https://github.com/driftsys/ridlc-gen-kotlin/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/driftsys/ridlc-gen-kotlin/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/driftsys/ridlc-gen-kotlin)](https://github.com/driftsys/ridlc-gen-kotlin/releases/latest)
+[![Maven Central](https://img.shields.io/maven-central/v/org.driftsys.ridl/ridl-rt-kt?label=maven%20central)](https://central.sonatype.com/namespace/org.driftsys.ridl)
+[![book](https://img.shields.io/badge/book-driftsys.github.io-blue)](https://driftsys.github.io/ridlc-gen-kotlin/)
+[![license](https://img.shields.io/github/license/driftsys/ridlc-gen-kotlin)](LICENSE)
+
 The RIDL Kotlin plugin and its runtime library: `ridl build --plugin kotlin`
 runs `ridlc-gen-kotlin`, which reads a package's lowered model and generates
 Kotlin value objects, codecs and faces over `ridl-rt-kt`.
@@ -32,6 +38,47 @@ each release publishes it. The quickest install:
 curl -fsSL https://github.com/driftsys/ridlc-gen-kotlin/releases/latest/download/install.sh | bash
 ridl build --plugin kotlin   # runs ridlc-gen-kotlin from PATH
 ```
+
+## Using the libraries
+
+The four JVM libraries, `ridl-rt-kt`, `ridl-rt-kt-loopback`,
+`ridl-rt-kt-coroutines` and `ridl-rt-kt-conformance`, are published as
+`org.driftsys.ridl`.
+
+**Releases** are on
+[Maven Central](https://central.sonatype.com/namespace/org.driftsys.ridl), so a
+build needs only `mavenCentral()`:
+
+```kts
+repositories { mavenCentral() }
+
+dependencies {
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0")
+    implementation("org.driftsys.ridl:ridl-rt-kt-coroutines:0.3.0")   // optional: await, signal flows
+    testImplementation("org.driftsys.ridl:ridl-rt-kt-loopback:0.3.0") // optional: in-process runtime
+}
+```
+
+**Snapshots** of `main` (`-SNAPSHOT` versions) are on this repository's
+[GitHub Packages](https://github.com/orgs/driftsys/packages?repo_name=ridlc-gen-kotlin)
+registry, which asks for a GitHub token that can read packages, even for a
+public package:
+
+```kts
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/driftsys/ridlc-gen-kotlin")
+        credentials {
+            username = providers.gradleProperty("gpr.user").get()
+            password = providers.gradleProperty("gpr.key").get()
+        }
+    }
+}
+```
+
+Releases up to `0.2.0` are on GitHub Packages only, as
+`io.github.driftsys.ridl`. The book's
+[Installing](docs/book/install.md#the-runtime-libraries) chapter has the rest.
 
 ## Design
 
