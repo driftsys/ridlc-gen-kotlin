@@ -67,13 +67,23 @@ changelog by hand, from the list below.
 4. Commit as `chore(release): <version>` and tag `v<version>`.
 5. Push the commit through a pull request, then push the tag. The `release`
    workflow checks that the tag matches `gradle.properties`, runs `just build`
-   and `just rust-verdicts`, publishes the libraries to GitHub Packages, and
-   creates the GitHub release with the plugin distribution, `install.sh`, the
-   Android vendor package, the conformance results and their `SHA256SUMS`. It
-   runs that `install.sh` on the assets before it publishes anything, and then
-   publishes the book to GitHub Pages.
-6. Set `version` in `gradle.properties` to the next `-SNAPSHOT`, so the
+   and `just rust-verdicts`, uploads the signed libraries to the Maven Central
+   Portal, publishes them to GitHub Packages, and creates the GitHub release
+   with the plugin distribution, `install.sh`, the Android vendor package, the
+   conformance results and their `SHA256SUMS`. It runs that `install.sh` on the
+   assets before it publishes anything, and then publishes the book to GitHub
+   Pages.
+6. Open the Portal's Deployments page (`central.sonatype.com`), check the
+   validated deployment and release it. A released version is immutable, so that
+   click is the last chance to stop one.
+7. Set `version` in `gradle.properties` to the next `-SNAPSHOT`, so the
    `snapshot` job of the `ci` workflow publishes `main` again.
+
+The Central upload needs four repository secrets: `MAVEN_CENTRAL_USERNAME` and
+`MAVEN_CENTRAL_PASSWORD`, a Portal user token for the verified `org.driftsys`
+namespace, and `SIGNING_KEY` and `SIGNING_PASSWORD`, an ASCII-armored PGP
+private key (`gpg --export-secret-keys --armor <id>`) whose public key is on a
+keyserver, and its passphrase.
 
 A hand-written line survives every later `git std bump`, which only prepends;
 `git std changelog --full` regenerates the file from the commits and drops it.
