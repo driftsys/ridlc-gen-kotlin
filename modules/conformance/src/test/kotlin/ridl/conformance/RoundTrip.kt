@@ -115,9 +115,19 @@ object RoundTrip {
                 declaration.hasScalar() -> scalar(declaration.scalar, i, "$type", pkg, declaration)
                 declaration.hasEnum() -> {
                     val values = declaration.enum.valuesList
-                    "$type.${values[(values.size - 1 - i % values.size + values.size) % values.size].name.declared}"
+                    // An open enum's full sample is an undeclared value, so Rust's verdict covers one.
+                    if (declaration.enum.open && (variant == SAMPLE_FULL || values.isEmpty())) {
+                        "$type.fromValue(${100 + i}L)"
+                    } else {
+                        "$type.${values[(values.size - 1 - i % values.size + values.size) % values.size].name.declared}"
+                    }
                 }
-                declaration.hasEnumSet() -> if (variant == SAMPLE_MINIMAL) "$type.EMPTY" else "$type.of($type.DECLARED_MASK)"
+                declaration.hasEnumSet() -> when {
+                    variant == SAMPLE_MINIMAL -> "$type.EMPTY"
+                    // Bit 6 fits every width, and the fixture declares bit 0 alone.
+                    declaration.enumSet.open -> "$type.of($type.DECLARED_MASK or 64L)"
+                    else -> "$type.of($type.DECLARED_MASK)"
+                }
                 declaration.hasStruct() -> record(type, declaration.struct.slotsList.filter { it.hasField() }.map { it.field }, variant, i)
                 declaration.hasUnion() -> {
                     val arm = declaration.union.getArms(i % declaration.union.armsCount)

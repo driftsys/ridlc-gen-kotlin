@@ -1,0 +1,59 @@
+// The open enum and open enum set fixture.
+//
+// `Strict` and `DtcStatus` declare the same two values, and `StrictFlags`
+// and `Flags` declare the same one bit, so `StrictMsg` and `OpenMsg` have
+// one layout in every encoding. Bytes the open codec writes for an
+// undeclared value are therefore bytes the strict codec reads, and a strict
+// refusal of them shows that the wire carries the raw integer. Kept
+// self-contained, with no cross-package import, because the compile path
+// this fixture is read through (`ridlc::compile`) wraps one file as a
+// single-file synthetic package.
+
+package open.demo
+
+enum Strict {
+  INACTIVE = 0
+  ACTIVE   = 1
+}
+
+open enum DtcStatus {
+  INACTIVE = 0
+  ACTIVE   = 1
+}
+
+enumset StrictFlags {
+  A = 0
+}
+
+open enumset Flags {
+  A = 0
+}
+
+struct StrictMsg {
+  status : Strict
+  flags  : StrictFlags
+}
+
+struct OpenMsg {
+  status : DtcStatus
+  flags  : Flags
+}
+
+// An open enum with no declared value: every value is `Unknown`, and the
+// checker warns (TYPL-413).
+open enum Empty {}
+
+struct EmptyMsg {
+  e : Empty
+}
+
+// A packed collection of an open enum, for the element site of the codecs.
+struct OpenList {
+  statuses : [DtcStatus; 0..4]
+}
+
+// A packed collection of an open enum set, for the element site of the
+// FlatBuffers codec: the elements keep the width of the set.
+struct FlagsList {
+  sets : [Flags; 0..4]
+}

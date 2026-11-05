@@ -423,7 +423,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         Domain.Primitive, is Domain.Inline -> expr
         is Domain.Named -> if (domain.scalar.class_ == ScalarClass.SCALAR_CLASS_BYTES) "$expr.toByteArray()" else "$expr.value"
         is Domain.EnumOf -> "$expr.value"
-        is Domain.SetOf -> "$expr.bits"
+        is Domain.SetOf -> if (domain.narrow) "$expr.wireBits()" else "$expr.bits"
     }
 
     // -- verifying ---------------------------------------------------------------
@@ -561,11 +561,11 @@ class CodecEmitter(private val model: Model, private val options: Options) {
                 domain.type, value, VERIFY_ERROR, VIOLATION, domain.declared,
             )
         }
-        is Domain.EnumOf -> CodeBlock.builder()
+        is Domain.EnumOf -> if (domain.open) CodeBlock.of("") else CodeBlock.builder()
             .beginControlFlow("if (%T.fromValue(%L) == null)", domain.type, value)
             .addStatement("throw %T.Contract(%T(%S, %T.Variant))", VERIFY_ERROR, VIOLATION, domain.declared, RULE)
             .endControlFlow().build()
-        is Domain.SetOf -> CodeBlock.builder()
+        is Domain.SetOf -> if (domain.open) CodeBlock.of("") else CodeBlock.builder()
             .beginControlFlow("if (%L and %T.DECLARED_MASK.inv() != 0L)", value, domain.type)
             .addStatement("throw %T.Contract(%T(%S, %T.Variant))", VERIFY_ERROR, VIOLATION, domain.declared, RULE)
             .endControlFlow().build()
@@ -631,7 +631,11 @@ class CodecEmitter(private val model: Model, private val options: Options) {
 
     /** What an absent [wire] reads as: 0 in its domain, the first member for an enum `verify` refused it of. */
     private fun defaultOf(wire: Wire.ScalarWire): CodeBlock = when (val domain = wire.domain) {
-        is Domain.EnumOf -> CodeBlock.of("%T.%N", domain.type, enumEntry((domain.zero ?: domain.first).name))
+        is Domain.EnumOf -> if (domain.open) {
+            CodeBlock.of("%T.fromValue(0L)", domain.type)
+        } else {
+            CodeBlock.of("%T.%N", domain.type, enumEntry((domain.zero ?: domain.first!!).name))
+        }
         is Domain.SetOf -> CodeBlock.of("%T.EMPTY", domain.type)
         else -> construct(domain, CodeBlock.of("%L", wire.zero))
     }
@@ -640,8 +644,16 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     private fun construct(domain: Domain, raw: CodeBlock): CodeBlock = when (domain) {
         Domain.Primitive, is Domain.Inline -> raw
         is Domain.Named -> if (domain.scalar.plain) CodeBlock.of("%T(%L)", domain.type, raw) else CodeBlock.of("%T.unchecked(%L)", domain.type, raw)
-        is Domain.EnumOf -> CodeBlock.of("(%T.fromValue(%L) ?: %T.%N)", domain.type, raw, domain.type, enumEntry(domain.first.name))
-        is Domain.SetOf -> CodeBlock.of("(%T.ofOrNull(%L) ?: %T.EMPTY)", domain.type, raw, domain.type)
+        is Domain.EnumOf -> if (domain.open) {
+            CodeBlock.of("%T.fromValue(%L)", domain.type, raw)
+        } else {
+            CodeBlock.of("(%T.fromValue(%L) ?: %T.%N)", domain.type, raw, domain.type, enumEntry(domain.first!!.name))
+        }
+        is Domain.SetOf -> if (domain.open) {
+            CodeBlock.of("%T.of(%L)", domain.type, raw)
+        } else {
+            CodeBlock.of("(%T.ofOrNull(%L) ?: %T.EMPTY)", domain.type, raw, domain.type)
+        }
     }
 
     // -- tuples ---------------------------------------------------------------------
