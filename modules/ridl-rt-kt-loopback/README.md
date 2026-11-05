@@ -10,7 +10,7 @@ queue, no IO; the Kotlin spelling of `crates/ridl-loopback` (docs/design.md §3,
 [MIT License](../../LICENSE).
 
 `Loopback` is the aggregate handle a generated face is built over: it implements
-all twelve port interfaces by delegating to six role handles, `ReaderHandle`,
+all fourteen port interfaces by delegating to six role handles, `ReaderHandle`,
 `WriterHandle`, `SourceHandle`, `SinkHandle`, `CallerHandle` and
 `HandlerHandle`, which `split()` hands out and `reader()`, `writer()` and the
 other factories add; `attach()` adds a second aggregate on the same store.
@@ -22,7 +22,7 @@ other factories add; `attach()` adds a second aggregate on the same store.
 
 Stage K1c. The port contract tests any runtime can run are the suite of
 [`ridl-rt-kt-conformance`](../ridl-rt-kt-conformance/README.md), which
-`ConformanceTest` runs over this runtime, all 83 (driftsys/ridlc-gen-kotlin#8).
+`ConformanceTest` runs over this runtime, all 116 (driftsys/ridlc-gen-kotlin#8).
 `PortsTest` is what stays in `crates/ridl-loopback/tests/ports.rs` on ridl
 `main`, the tests only this runtime can express, each for the reason that file
 gives, plus the JVM-specific tests below.

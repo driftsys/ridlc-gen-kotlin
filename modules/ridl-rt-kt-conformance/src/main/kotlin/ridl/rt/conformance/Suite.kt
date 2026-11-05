@@ -6,23 +6,26 @@
 // `ridl.rt.port` states a runtime does behind a port. They are generic over a
 // [Factory], the one thing a runtime writes to run them. A runtime runs the
 // whole suite from its own tests with [suite], and the tests of the
-// extensions it implements with [scannableSuite], [coherentSuite] and
-// [wakeableSuite], and, when it carries the trace context, [traceSuite]:
+// extensions it implements with [scannableSuite], [coherentSuite],
+// [wakeableSuite] and [streamsSuite], and, when it carries the trace context,
+// [traceSuite]:
 //
 //     @TestFactory fun ports() = suite(MyFactory)
 //     @TestFactory fun scannable() = scannableSuite(MyFactory)
 //     @TestFactory fun trace() = traceSuite(MyFactory)
+//     @TestFactory fun streams() = streamsSuite(MyFactory)
 //
 // What the suite leaves out is the crate documentation's list, unchanged: what
 // the port contract leaves to a runtime (where the clock starts, what `advance`
 // does with a negative duration, which error the injected fault reports beyond
 // not being `UnknownClaim`); a handler that has served nothing; two event sinks
 // on one event channel; `FixedReader`; a member's limit other than the default
-// ceiling of its kind; anything a runtime reports from a catalog descriptor;
-// the threading model; a runtime's own API beyond the factory; a wake the
-// contract allows but does not require; which serving handlers a call wakes;
-// what a forget does to a call no handler has claimed, beyond giving its slot
-// back once withdrawn or settled; and the close of a handle.
+// ceiling of its kind; a stream number beyond the first two stream parameters,
+// and the size of a stream's window; anything a runtime reports from a catalog
+// descriptor; the threading model; a runtime's own API beyond the factory; a
+// wake the contract allows but does not require; which serving handlers a call
+// wakes; what a forget does to a call no handler has claimed, beyond giving its
+// slot back once withdrawn or settled; and the close of a handle.
 package ridl.rt.conformance
 
 import org.junit.jupiter.api.DynamicTest
@@ -41,6 +44,8 @@ import ridl.rt.port.Handler
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
+import ridl.rt.port.StreamCaller
+import ridl.rt.port.StreamHandler
 import ridl.rt.port.Wakeable
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Timestamp
@@ -111,7 +116,9 @@ public interface Factory<R>
      * a caller's. A call holds its slot from its send until it is reclaimed by
      * `Caller.forget`, at once for a settled call and at the settlement for a
      * call in flight (ADR-0021 decision 15), and a send with every slot held
-     * is refused with `SendError.Busy`. At least 1. `Factory::SLOTS`.
+     * is refused with `SendError.Busy`. A call whose provider still has a stream
+     * parameter to read keeps its slot past its forget. At least 1.
+     * `Factory::SLOTS`.
      *
      * The tests fill the table by sending this many calls, so a runtime whose
      * bound is large runs them more slowly, and one with no bound cannot run
@@ -230,3 +237,14 @@ public fun <R> traceSuite(factory: Factory<R>): List<DynamicTest>
     where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
           R : Handler =
     TraceContract(factory).dynamicTests()
+
+/**
+ * The tests of the two stream extensions: `suite!(F; streams)`. They need
+ * `StreamCaller`, `StreamHandler` and `Wakeable` on the runtime, because a
+ * stream test registers stream wakers. They ask nothing of the handles
+ * [factory] makes: every test drives both sides of a stream through the runtime.
+ */
+public fun <R> streamsSuite(factory: Factory<R>): List<DynamicTest>
+    where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
+          R : Handler, R : StreamCaller, R : StreamHandler, R : Wakeable =
+    StreamsContract(factory).dynamicTests()

@@ -8,10 +8,13 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import ridl.rt.contract.InterfaceNo
+import ridl.rt.contract.StreamNo
 import ridl.rt.error.Contract
 import ridl.rt.error.Transport
+import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
+import ridl.rt.port.REPLY_STREAM
 import ridl.rt.task.Waker
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -37,6 +40,10 @@ class CorrelateTest {
     /** Wakes what a table or registry operation handed back, as a runtime does after releasing its lock. */
     private fun wake(waker: Waker?) {
         waker?.wake()
+    }
+
+    private fun wake(wakers: List<Waker>) {
+        wakers.forEach(Waker::wake)
     }
 
     private val refused = Result.failure<Unit>(Contract.PreconditionFailed)
@@ -297,6 +304,160 @@ class CorrelateTest {
         assertEquals(1, count.wakes, "the reclaim hands back nothing more")
     }
 
+    // -- The `Stream` wakers kept in the slot. -------------------------------
+
+    private val param = StreamNo(1u)
+
+    @Test
+    fun `a stream waker is kept per slot and stream and handed back by settle`() {
+        val table = Table(2, null)
+        val c = table.insert(0u)!!
+        val reply = Count()
+        val paramCount = Count()
+        assertNull(table.wakeOnStream(c, REPLY_STREAM, reply))
+        assertNull(
+            table.wakeOnStream(c, param, paramCount),
+            "another stream of the call is another key: nothing is displaced",
+        )
+
+        assertEquals(Settled.Recorded(null), table.settle(c, ok))
+        wake(table.takeStreams(Table.slot(c)))
+        assertEquals(1 to 1, reply.wakes to paramCount.wakes)
+        assertEquals(0, table.takeStreams(Table.slot(c)).size)
+    }
+
+    @Test
+    fun `take stream takes one streams waker and leaves the others`() {
+        val table = Table(1, null)
+        val c = table.insert(0u)!!
+        val reply = Count()
+        val paramCount = Count()
+        table.wakeOnStream(c, REPLY_STREAM, reply)
+        table.wakeOnStream(c, param, paramCount)
+
+        wake(table.takeStream(c, param))
+        assertEquals(0 to 1, reply.wakes to paramCount.wakes)
+        assertNull(table.takeStream(c, param), "taking clears it")
+        wake(table.takeStream(c, REPLY_STREAM))
+        assertEquals(1 to 1, reply.wakes to paramCount.wakes)
+    }
+
+    @Test
+    fun `a stream waker is handed back by forget of a call in flight`() {
+        val table = Table(1, null)
+        val c = table.insert(0u)!!
+        val count = Count()
+        table.wakeOnStream(c, REPLY_STREAM, count)
+
+        assertEquals(Forgotten.Marked(null), table.forget(c))
+        wake(table.takeStreams(Table.slot(c)))
+        assertEquals(1, count.wakes, "every stream of a forgotten call stops")
+
+        wake(table.wakeOnStream(c, REPLY_STREAM, count))
+        assertEquals(2, count.wakes, "a registration on a forgotten call is handed back, not stored")
+        assertEquals(Settled.Reclaimed, table.settle(c, ok))
+        assertEquals(0, table.takeStreams(Table.slot(c)).size)
+    }
+
+    @Test
+    fun `a stream waker is handed back by the forget that reclaims a settled call`() {
+        val table = Table(1, null)
+        val c = table.insert(0u)!!
+        assertEquals(Settled.Recorded(null), table.settle(c, ok))
+        val count = Count()
+        assertNull(
+            table.wakeOnStream(c, param, count),
+            "a settled call's streams go on: a command's parameter stream outlives its acknowledgment",
+        )
+
+        assertEquals(Forgotten.Reclaimed, table.forget(c))
+        wake(table.takeStreams(Table.slot(c)))
+        assertEquals(1, count.wakes)
+    }
+
+    @Test
+    fun `a reclaimed slot holds no stream waker of its previous call`() {
+        val table = Table(1, null)
+        val old = table.insert(0u)!!
+        val count = Count()
+        table.settle(old, ok)
+        table.wakeOnStream(old, REPLY_STREAM, count)
+        // The runtime does not take the reclaimed slot's stream wakers here.
+        assertEquals(Forgotten.Reclaimed, table.forget(old))
+
+        val new = table.insert(0u)!!
+        assertEquals(Table.slot(old), Table.slot(new))
+        assertNull(table.takeStream(new, REPLY_STREAM))
+        assertEquals(0, table.takeStreams(Table.slot(new)).size)
+        assertNull(table.takeStream(old, REPLY_STREAM), "the old correlation is unknown")
+    }
+
+    @Test
+    fun `take stream on a stale correlation leaves the new calls waker in place`() {
+        val table = Table(1, null)
+        val old = table.insert(0u)!!
+        table.settle(old, ok)
+        assertEquals(Forgotten.Reclaimed, table.forget(old))
+        val new = table.insert(0u)!!
+        assertNull(table.wakeOnStream(new, REPLY_STREAM, Count()))
+        assertNull(table.takeStream(old, REPLY_STREAM), "a stale correlation takes nothing from the slot it once had")
+        assertNotNull(table.takeStream(new, REPLY_STREAM), "the new call's waker is still stored")
+    }
+
+    @Test
+    fun `take streams of a slot the table does not have yields nothing`() {
+        val table = Table(1, null)
+        val c = table.insert(0u)!!
+        assertNull(table.wakeOnStream(c, REPLY_STREAM, Count()))
+        assertEquals(0, table.takeStreams(1).size)
+        assertEquals(0, table.takeStreams(Int.MAX_VALUE).size)
+        assertEquals(1, table.takeStreams(Table.slot(c)).size, "the slot the table has still holds its waker")
+    }
+
+    @Test
+    fun `registering the same task on a stream is a refresh that hands back nothing`() {
+        val table = Table(1, null)
+        val c = table.insert(0u)!!
+        val count = Count()
+        assertNull(table.wakeOnStream(c, REPLY_STREAM, count))
+        assertNull(table.wakeOnStream(c, REPLY_STREAM, count))
+        assertNull(table.wakeOnStream(c, REPLY_STREAM, count), "the same object wakes the same task")
+        assertEquals(0, count.wakes)
+
+        val otherCount = Count()
+        wake(table.wakeOnStream(c, REPLY_STREAM, otherCount))
+        assertEquals(
+            1 to 0,
+            count.wakes to otherCount.wakes,
+            "another task displaces the stored waker, which is handed back",
+        )
+    }
+
+    @Test
+    fun `a stream registration on an unknown call is handed back`() {
+        val table = Table(1, null)
+        val count = Count()
+        wake(table.wakeOnStream(Correlation(0), REPLY_STREAM, count))
+        assertEquals(1, count.wakes)
+        assertNull(table.takeStream(Correlation(0), REPLY_STREAM))
+    }
+
+    @Test
+    fun `a stream past the slots capacity is handed back unstored`() {
+        val table = Table(1, null)
+        val c = table.insert(0u)!!
+        val count = Count()
+        for (no in 0 until STREAM_WAKERS) {
+            assertNull(table.wakeOnStream(c, StreamNo(no.toUByte()), count))
+        }
+        val past = StreamNo(STREAM_WAKERS.toUByte())
+        wake(table.wakeOnStream(c, past, count))
+        assertEquals(1, count.wakes, "with no cell free the waker is woken at once, as a spurious wake")
+        assertNull(table.takeStream(c, past))
+        wake(table.takeStream(c, REPLY_STREAM))
+        assertNull(table.wakeOnStream(c, past, count), "a cell freed by a take is reused")
+    }
+
     // -- `Waiters`. ----------------------------------------------------------
 
     private val iface = InterfaceNo(1u)
@@ -374,6 +535,17 @@ class CorrelateTest {
         wake(waiters.register(Interest.Outcome(Correlation(0)), count))
         assertEquals(1, count.wakes, "the table holds `Outcome`, not `Waiters`")
         assertNull(waiters.take(Interest.Outcome(Correlation(0))))
+        assertEquals(0, waiters.takeAll().size, "nothing was stored")
+    }
+
+    @Test
+    fun `a stream key is not stored and is handed back to be woken`() {
+        val waiters = Waiters()
+        val count = Count()
+        wake(waiters.register(Interest.Stream(Correlation(0), REPLY_STREAM), count))
+        wake(waiters.register(Interest.ClaimStream(ClaimId(0), REPLY_STREAM), count))
+        assertEquals(2, count.wakes, "a stream's waker is kept with its call, not in `Waiters`")
+        assertNull(waiters.take(Interest.Stream(Correlation(0), REPLY_STREAM)))
         assertEquals(0, waiters.takeAll().size, "nothing was stored")
     }
 

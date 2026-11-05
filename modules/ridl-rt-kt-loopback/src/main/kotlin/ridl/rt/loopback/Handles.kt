@@ -43,7 +43,10 @@ import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Kind
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.StreamNo
 import ridl.rt.encoding.Encoding
+import ridl.rt.error.CallError
+import ridl.rt.error.Contract
 import ridl.rt.port.Attached
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
@@ -59,12 +62,17 @@ import ridl.rt.port.EventSource
 import ridl.rt.port.FixedReader
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
+import ridl.rt.port.Pull
+import ridl.rt.port.PushError
 import ridl.rt.port.RawOccurrence
 import ridl.rt.port.RawSample
+import ridl.rt.port.ReadError
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SettleError
 import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
+import ridl.rt.port.StreamCaller
+import ridl.rt.port.StreamHandler
 import ridl.rt.port.Wakeable
 import ridl.rt.port.Watermark
 import ridl.rt.port.WriteError
@@ -74,9 +82,27 @@ import ridl.rt.trace.TraceContext
 import java.nio.ByteBuffer
 import java.util.TreeMap
 
+/** The push error of an operation on a call or a claim the store does not hold. */
+private val UNKNOWN = PushError.Contract(Contract.UnknownInteraction)
+
 /** Wakes what a store operation returned, after the monitor was left. */
 private fun wake(wakers: Iterable<Waker>) {
     for (waker in wakers) waker.wake()
+}
+
+/**
+ * Runs [block] under the store's monitor with a list for the wakers it must
+ * wake, and wakes them once the monitor is left, whether [block] returned or
+ * threw: `endClaim` settles the claim, which wakes the caller, before it throws
+ * the stream's verdict.
+ */
+private inline fun <T> Store.waking(block: Store.(MutableList<Waker>) -> T): T {
+    val wakers = mutableListOf<Waker>()
+    try {
+        return locked { block(wakers) }
+    } finally {
+        wake(wakers)
+    }
 }
 
 /**
@@ -238,7 +264,7 @@ public class CallerHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
     override val encoding: Encoding,
-) : Encoded, Caller, Clock, Wakeable, AutoCloseable {
+) : Encoded, StreamCaller, Clock, Wakeable, AutoCloseable {
     private val id: Int = store.locked { openCaller() }
     private var seq: ULong = 0u
 
@@ -264,6 +290,23 @@ public class CallerHandle internal constructor(
         wake(store.wakeList { forget(c, it) })
     }
 
+    override fun pull(c: Correlation, s: StreamNo, out: ByteBuffer): Pull = store.waking {
+        pull(callerSlot(c) ?: throw ReadError.Contract(Contract.UnknownInteraction), Side.Caller, s, out, it)
+    }
+
+    override fun push(c: Correlation, s: StreamNo, chunk: ByteBuffer): Int {
+        val bytes = chunk.remainingBytes()
+        return store.waking { push(callerSlot(c) ?: throw UNKNOWN, Side.Caller, s, bytes, it) }
+    }
+
+    override fun end(c: Correlation, s: StreamNo): Unit = store.waking {
+        end(callerSlot(c) ?: throw UNKNOWN, Side.Caller, s, it)
+    }
+
+    override fun abort(c: Correlation, s: StreamNo, e: CallError): Unit = store.waking {
+        abort(callerSlot(c) ?: throw UNKNOWN, Side.Caller, s, e, it)
+    }
+
     override fun close() {
         wake(store.wakeList { closeCaller(id, it) })
     }
@@ -276,13 +319,15 @@ public class CallerHandle internal constructor(
      * already known, or a correlation no call in flight has, wakes it at once.
      * Stores the one `Slot` waker while every slot of the call table is
      * taken, which a reclaimed slot wakes, and wakes it at once while a slot
-     * is free. Every other kind is woken at once.
+     * is free. Stores one `Stream` waker per stream of a call, with the call.
+     * Every other kind is woken at once.
      */
     override fun wakeOn(what: Interest, waker: Waker) {
         when (what) {
             is Interest.Outcome -> wake(store.wakeList { waitOutcome(what.correlation, waker, it) })
             Interest.Slot -> wake(store.wakeList { waitSlot(id, waker, it) })
-            is Interest.Event, is Interest.Claim, is Interest.Stream, is Interest.ClaimStream -> waker.wake()
+            is Interest.Stream -> wake(store.wakeList { waitStream(what.correlation, what.no, waker, it) })
+            is Interest.Event, is Interest.Claim, is Interest.ClaimStream -> waker.wake()
         }
     }
 }
@@ -300,14 +345,17 @@ public class CallerHandle internal constructor(
  * [close] does what the Rust handle's drop does: it removes the handler, its
  * served set and its waker from the store, and returns every claim it had
  * taken and not settled to the waiting calls, where another handler that
- * serves the member takes it (ADR-0021 decision 5). A claim it was only
- * offered, through `ReadError.ShortClaim`, never left the waiting calls.
+ * serves the member takes it (ADR-0021 decision 5). A claim on which it moved
+ * a stream is not returned: its unfinished streams stop with
+ * `Transport.Interrupted`, and the call settles with that error. A claim it
+ * was only offered, through `ReadError.ShortClaim`, never left the waiting
+ * calls.
  */
 public class HandlerHandle internal constructor(
     private val store: Store,
     override val catalog: CatalogRef,
     override val encoding: Encoding,
-) : Encoded, Handler, Wakeable, AutoCloseable {
+) : Encoded, StreamHandler, Wakeable, AutoCloseable {
     private val id: Int = store.locked { openHandler() }
 
     /** The members `serve` was called with, in the order served, with no duplicate. */
@@ -322,17 +370,34 @@ public class HandlerHandle internal constructor(
 
     override fun settle(claim: ClaimId, outcome: Result<ByteBuffer>) {
         val stored = outcome.toStored()
-        wake(store.wakeList { settle(id, claim, stored, it) })
+        store.waking { settle(id, claim, stored, it) }
     }
+
+    override fun pullClaim(claim: ClaimId, s: StreamNo, out: ByteBuffer): Pull = store.waking {
+        pull(claimSlot(id, claim) ?: throw ReadError.Contract(Contract.UnknownInteraction), Side.Provider, s, out, it)
+    }
+
+    override fun pushClaim(claim: ClaimId, s: StreamNo, chunk: ByteBuffer): Int {
+        val bytes = chunk.remainingBytes()
+        return store.waking { push(claimSlot(id, claim) ?: throw UNKNOWN, Side.Provider, s, bytes, it) }
+    }
+
+    override fun endClaim(claim: ClaimId, s: StreamNo): Unit = store.waking { endClaim(id, claim, s, it) }
+
+    override fun abortClaim(claim: ClaimId, s: StreamNo, e: CallError): Unit = store.waking { abortClaim(id, claim, s, e, it) }
 
     /**
      * Stores the one `Claim` waker, whatever the interface: a send of a call
      * this handler serves wakes it, and such a call already waiting wakes it
-     * at once. Every other kind is woken at once.
+     * at once. Stores one `ClaimStream` waker per stream of a claim. Every other
+     * kind is woken at once.
      */
     override fun wakeOn(what: Interest, waker: Waker) {
-        if (what !is Interest.Claim) return waker.wake()
-        wake(store.wakeList { waitClaim(id, waker, it) })
+        when (what) {
+            is Interest.Claim -> wake(store.wakeList { waitClaim(id, waker, it) })
+            is Interest.ClaimStream -> wake(store.wakeList { waitClaimStream(id, what.claim, what.no, waker, it) })
+            else -> waker.wake()
+        }
     }
 
     override fun close() {

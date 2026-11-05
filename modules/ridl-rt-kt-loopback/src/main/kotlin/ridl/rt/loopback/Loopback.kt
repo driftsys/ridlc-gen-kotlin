@@ -5,8 +5,10 @@ package ridl.rt.loopback
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.StreamNo
 import ridl.rt.contract.defaultCeiling
 import ridl.rt.encoding.Encoding
+import ridl.rt.error.CallError
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
 import ridl.rt.port.Check
@@ -21,10 +23,13 @@ import ridl.rt.port.EventSource
 import ridl.rt.port.FixedReader
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
+import ridl.rt.port.Pull
 import ridl.rt.port.RawOccurrence
 import ridl.rt.port.RawSample
 import ridl.rt.port.ScannableSignals
 import ridl.rt.port.SignalWriter
+import ridl.rt.port.StreamCaller
+import ridl.rt.port.StreamHandler
 import ridl.rt.port.Wakeable
 import ridl.rt.port.Watermark
 import ridl.rt.sample.Duration
@@ -51,7 +56,7 @@ public class Handles internal constructor(
 
 /**
  * The in-process reference runtime: every port of `ridl-rt-kt` over one
- * in-memory store, and the aggregate handle that implements all twelve port
+ * in-memory store, and the aggregate handle that implements all fourteen port
  * interfaces by delegating to the six role handles it holds. It is what a
  * generated `Client`, `Publisher` or `dispatch` is built over in a test.
  *
@@ -62,7 +67,8 @@ public class Handles internal constructor(
  * holds no catalog descriptor, so it never reports `NotOwner`, never a
  * `Contract` error except from an unprovisioned [readFixed], and every value's
  * freshness is `Unbounded`.
- * Nothing detaches, so `Detached` never appears. Two things are bounded. The
+ * Nothing detaches, so `Detached` never appears. Three things are bounded. A
+ * stream's [STREAM_WINDOW]: a push into a full one returns 0. The
  * call table's [SLOTS]: a send with every slot taken throws `SendError.Busy`.
  * And the size of a payload: a sending port refuses a payload longer than its
  * member's limit with `TooLarge` — the limit [setLimit] gave the member, else
@@ -91,8 +97,8 @@ public class Loopback private constructor(
     override val catalog: CatalogRef,
     override val encoding: Encoding,
     private val store: Store,
-) : Encoded, Clock, SignalWriter, EventSource, EventSink, Caller, Handler, FixedReader, ScannableSignals, CoherentSignals,
-    Wakeable {
+) : Encoded, Clock, SignalWriter, EventSource, EventSink, StreamCaller, StreamHandler, FixedReader, ScannableSignals,
+    CoherentSignals, Wakeable {
     /**
      * A runtime over a new, empty store, whose ports carry [encoding]:
      * FlatBuffers unless another is named. `Loopback::new`, and
@@ -216,14 +222,12 @@ public class Loopback private constructor(
         store.locked { failNextSettle() }
     }
 
-    // The twelve port implementations, each one a delegation.
+    // The fourteen port implementations, each one a delegation.
 
     override fun wakeOn(what: Interest, waker: Waker): Unit = when (what) {
-        is Interest.Outcome, Interest.Slot -> handles.caller.wakeOn(what, waker)
+        is Interest.Outcome, Interest.Slot, is Interest.Stream -> handles.caller.wakeOn(what, waker)
         is Interest.Event -> handles.source.wakeOn(what, waker)
-        is Interest.Claim -> handles.handler.wakeOn(what, waker)
-        // No stream port yet, so no stream changes: nothing to wait for.
-        is Interest.Stream, is Interest.ClaimStream -> waker.wake()
+        is Interest.Claim, is Interest.ClaimStream -> handles.handler.wakeOn(what, waker)
     }
 
     override fun now(): Timestamp = handles.reader.now()
@@ -274,6 +278,22 @@ public class Loopback private constructor(
 
     override fun reply(c: Correlation, out: ByteBuffer): Result<Int>? = handles.caller.reply(c, out)
 
+    override fun pull(c: Correlation, s: StreamNo, out: ByteBuffer): Pull = handles.caller.pull(c, s, out)
+
+    override fun push(c: Correlation, s: StreamNo, chunk: ByteBuffer): Int = handles.caller.push(c, s, chunk)
+
+    override fun end(c: Correlation, s: StreamNo): Unit = handles.caller.end(c, s)
+
+    override fun abort(c: Correlation, s: StreamNo, e: CallError): Unit = handles.caller.abort(c, s, e)
+
+    override fun pullClaim(claim: ClaimId, s: StreamNo, out: ByteBuffer): Pull = handles.handler.pullClaim(claim, s, out)
+
+    override fun pushClaim(claim: ClaimId, s: StreamNo, chunk: ByteBuffer): Int = handles.handler.pushClaim(claim, s, chunk)
+
+    override fun endClaim(claim: ClaimId, s: StreamNo): Unit = handles.handler.endClaim(claim, s)
+
+    override fun abortClaim(claim: ClaimId, s: StreamNo, e: CallError): Unit = handles.handler.abortClaim(claim, s, e)
+
     override fun forget(c: Correlation): Unit = handles.caller.forget(c)
 
     override fun serve(iface: InterfaceNo, ords: List<Ordinal>): Unit = handles.handler.serve(iface, ords)
@@ -308,5 +328,15 @@ public class Loopback private constructor(
          * handle forgets its calls too.
          */
         public const val SLOTS: Int = 16
+
+        /**
+         * The number of non-empty chunks one stream of a call holds, pushed
+         * and not yet pulled. A push of a non-empty chunk into a stream that
+         * holds this many returns 0 and takes nothing, and the receiver's next
+         * pull frees room for one. An empty chunk is always taken, whatever the
+         * window holds. Four is small, so that a test reaches the bound in a
+         * few pushes, as with [SLOTS].
+         */
+        public const val STREAM_WINDOW: Int = 4
     }
 }
