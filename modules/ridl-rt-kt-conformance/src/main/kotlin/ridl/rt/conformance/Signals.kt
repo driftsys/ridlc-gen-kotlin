@@ -14,6 +14,7 @@ import ridl.rt.port.Handler
 import ridl.rt.port.ReadError
 import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
+import ridl.rt.port.WriteError
 import ridl.rt.sample.Cause
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Envelope
@@ -37,6 +38,7 @@ public class SignalsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`a set after a touch replaces it`,
         ::`touch on a channel with no publication publishes nothing`,
         ::`a short buffer reports what the read needs and consumes nothing`,
+        ::`a value longer than the signal limit is refused and not staged`,
     )
 
     /** A committed value reads back, live. */
@@ -217,5 +219,25 @@ public class SignalsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
         assertEquals(ReadError.Short(4), assertThrows<ReadError.Short> { rt.read(IFACE, ORD, out(2)) })
         assertEquals(4, rt.read(IFACE, ORD, out(8)).len)
+    }
+
+    /**
+     * A value longer than the signal's limit is refused with the limit, and
+     * nothing is staged. The suite attaches to a catalog with no descriptor,
+     * so the limit is the default ceiling of a signal, 3,840 bytes (ADR-0030
+     * decision 16); a value of exactly that length is accepted.
+     */
+    public fun `a value longer than the signal limit is refused and not staged`() {
+        val rt = runtime()
+        assertEquals(
+            WriteError.TooLarge(3_840),
+            assertThrows<WriteError> { rt.set(IFACE, ORD, out(3_841)) },
+            "one byte above the default ceiling of a signal is refused",
+        )
+        rt.commit()
+
+        assertEquals(Provenance.Init, rt.read(IFACE, ORD, out(8)).provenance, "the refused value was not staged")
+
+        rt.set(IFACE, ORD, out(3_840))
     }
 }

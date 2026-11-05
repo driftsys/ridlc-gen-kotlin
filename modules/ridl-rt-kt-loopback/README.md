@@ -14,14 +14,15 @@ all twelve port interfaces by delegating to six role handles, `ReaderHandle`,
 `WriterHandle`, `SourceHandle`, `SinkHandle`, `CallerHandle` and
 `HandlerHandle`, which `split()` hands out and `reader()`, `writer()` and the
 other factories add; `attach()` adds a second aggregate on the same store.
-`advance` drives the clock by hand, `provisionFixed` supplies a `fixed`, and
+`advance` drives the clock by hand, `provisionFixed` supplies a `fixed`,
+`setLimit` gives a member a limit other than its kind's default ceiling, and
 `failNextSettle` injects the one fault the runtime has.
 
 ## Status
 
 Stage K1c. The port contract tests any runtime can run are the suite of
 [`ridl-rt-kt-conformance`](../ridl-rt-kt-conformance/README.md), which
-`ConformanceTest` runs over this runtime, all 41 (driftsys/ridlc-gen-kotlin#8).
+`ConformanceTest` runs over this runtime, all 79 (driftsys/ridlc-gen-kotlin#8).
 `PortsTest` is what stays in `crates/ridl-loopback/tests/ports.rs` on ridl
 `main`, the tests only this runtime can express, each for the reason that file
 gives, plus the JVM-specific tests below.

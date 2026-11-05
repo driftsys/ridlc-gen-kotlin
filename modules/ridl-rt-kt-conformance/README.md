@@ -99,6 +99,19 @@ each entry carries its own signal's sequence number, not the generation, and the
 scannable arm gains `scan stops at the first interface that does not fit`: 5
 scannable cases and 75 in all.
 
+ridl 0.15 (driftsys/ridl#1132, ADR-0030 decision 16): the base arm gains
+`a value
+longer than the signal limit is refused and not staged`,
+`an occurrence longer
+than the event limit is refused and not raised`,
+`arguments longer than the call
+limit are refused and not sent` and
+`a reply longer than the call limit is
+refused and not recorded`: 46 base cases
+and 79 in all. The suite attaches to a catalog with no descriptor, so they pin
+the default ceiling of each kind; a limit other than that is a runtime's own
+API, in the loopback `Loopback.setLimit`.
+
 The case of a forget before any claim accepts either a call still presented and
 settled or a withdrawn one, and checks that the runtime then accepts exactly
 `slots` further sends, so the forgotten call gave its slot back.

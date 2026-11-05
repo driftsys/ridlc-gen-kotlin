@@ -91,6 +91,45 @@ public enum class Kind(public val value: Int) {
     }
 }
 
+/**
+ * The default ceiling of a `signal` and an `event`, in bytes of encoded
+ * payload: one 4,096-byte page minus 256 bytes of header (ADR-0030 decision
+ * 16). `ridl_rt::contract::SIGNAL_EVENT_CEILING`.
+ *
+ * The three ceilings are values of the catalog rule, exported so that a
+ * transport resolves the limit of a member whose descriptor row carries none;
+ * a member's limit is the one a `[limits.interaction]` entry gives it, else
+ * the default ceiling of its kind. They are not a guard of a codec: no
+ * `encode` or `verify` compares a length with them.
+ */
+public const val SIGNAL_EVENT_CEILING: Int = 3_840
+
+/**
+ * The default ceiling of a `command` and a `query`, in bytes of encoded
+ * payload: four 4,096-byte pages minus 256 bytes of header (ADR-0030 decision
+ * 16). See [SIGNAL_EVENT_CEILING]. `ridl_rt::contract::CALL_CEILING`.
+ */
+public const val CALL_CEILING: Int = 16_128
+
+/**
+ * The default ceiling of a `fixed`, in bytes of encoded payload: sixteen
+ * 4,096-byte pages minus 256 bytes of header (ADR-0030 decision 16). See
+ * [SIGNAL_EVENT_CEILING]. `ridl_rt::contract::FIXED_CEILING`.
+ */
+public const val FIXED_CEILING: Int = 65_280
+
+/**
+ * The default ceiling of an interaction of [kind], in bytes of encoded
+ * payload (ADR-0030 decision 16): the limit of a member that no
+ * `[limits.interaction]` entry gives one.
+ * `ridl_rt::contract::default_ceiling`.
+ */
+public fun defaultCeiling(kind: Kind): Int = when (kind) {
+    Kind.Signal, Kind.Event -> SIGNAL_EVENT_CEILING
+    Kind.Command, Kind.Query -> CALL_CEILING
+    Kind.Fixed -> FIXED_CEILING
+}
+
 /** An interface's descriptor. `ridl_rt::contract::Interface`. */
 public interface Interface {
     /** The catalog the interface belongs to. */

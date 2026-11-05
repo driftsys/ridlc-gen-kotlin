@@ -59,6 +59,8 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`a handler cannot settle another handlers claim`,
         ::`two handlers each receive only what they served`,
         ::`a call sent without a context arrives without one`,
+        ::`arguments longer than the call limit are refused and not sent`,
+        ::`a reply longer than the call limit is refused and not recorded`,
     )
 
     private fun ok(vararg values: Int): Result<ByteBuffer> = Result.success(bytes(*values))
@@ -505,5 +507,66 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
         rt.query(IFACE, ORD, bytes(2), null)
         assertNull(rt.claim().trace, "the query")
+    }
+
+    /**
+     * Arguments longer than the call's limit are refused with the limit, and
+     * nothing is sent: no handler is presented a claim, and no slot is taken.
+     * The suite attaches to a catalog with no descriptor, so the limit is the
+     * default ceiling of a command and a query, 16,128 bytes (ADR-0030
+     * decision 16); arguments of exactly that length are sent.
+     */
+    public fun `arguments longer than the call limit are refused and not sent`() {
+        val rt = runtime()
+        rt.serve(IFACE, listOf(ORD))
+        assertEquals(
+            SendError.TooLarge(16_128),
+            assertThrows<SendError> { rt.command(IFACE, ORD, out(16_129), null) },
+            "one byte above the default ceiling of a command is refused",
+        )
+        assertEquals(
+            SendError.TooLarge(16_128),
+            assertThrows<SendError> { rt.query(IFACE, ORD, out(16_129), null) },
+            "one byte above the default ceiling of a query is refused",
+        )
+
+        val buf = out(16_384)
+        assertNull(rt.nextClaim(buf), "a refused call is presented to no handler")
+
+        val c = rt.command(IFACE, ORD, out(16_128), null)
+        val claim = rt.claim(buf)
+        assertEquals(16_128, claim.len)
+        rt.settle(claim.id, ok())
+        rt.forget(c)
+
+        fill(rt)
+        assertEquals(
+            SendError.Busy,
+            assertThrows<SendError> { rt.command(IFACE, ORD, bytes(1), null) },
+            "the refused calls took no slot: the table fills with slots calls",
+        )
+    }
+
+    /**
+     * A reply longer than the call's limit is refused with the limit, no
+     * outcome is recorded, and the claim stays settleable with a reply within
+     * the limit. The limit is the default ceiling of a query, 16,128 bytes, as
+     * for the arguments; a reply of exactly that length is recorded.
+     */
+    public fun `a reply longer than the call limit is refused and not recorded`() {
+        val rt = runtime()
+        rt.serve(IFACE, listOf(ORD))
+        val correlation = rt.query(IFACE, ORD, bytes(1), null)
+        val claim = rt.claim()
+
+        assertEquals(
+            SettleError.TooLarge(16_128),
+            assertThrows<SettleError> { rt.settle(claim.id, Result.success(out(16_129))) },
+            "one byte above the default ceiling of a query is refused",
+        )
+        assertNull(rt.reply(correlation, out(16_384)), "a refused settle records no outcome")
+
+        rt.settle(claim.id, Result.success(out(16_128)))
+        assertEquals(16_128, rt.reply(correlation, out(16_384))?.getOrThrow())
     }
 }

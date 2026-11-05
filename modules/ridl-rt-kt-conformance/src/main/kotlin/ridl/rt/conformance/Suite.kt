@@ -17,12 +17,12 @@
 // the port contract leaves to a runtime (where the clock starts, what `advance`
 // does with a negative duration, which error the injected fault reports beyond
 // not being `UnknownClaim`); a handler that has served nothing; two event sinks
-// on one event channel; `FixedReader`; anything a runtime reports from a
-// catalog descriptor; the threading model; a runtime's own API beyond the
-// factory; a wake the contract allows but does not require; which serving
-// handlers a call wakes; what a forget does to a call no handler has claimed,
-// beyond giving its slot back once withdrawn or settled; and the close of a
-// handle.
+// on one event channel; `FixedReader`; a member's limit other than the default
+// ceiling of its kind; anything a runtime reports from a catalog descriptor;
+// the threading model; a runtime's own API beyond the factory; a wake the
+// contract allows but does not require; which serving handlers a call wakes;
+// what a forget does to a call no handler has claimed, beyond giving its slot
+// back once withdrawn or settled; and the close of a handle.
 package ridl.rt.conformance
 
 import org.junit.jupiter.api.DynamicTest
