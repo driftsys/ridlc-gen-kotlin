@@ -1,0 +1,93 @@
+// The fixture of streamed replies of named elements, bytes and text
+// (docs/design/interaction-face.md). `Log` declares one query whose reply is
+// a stream of a named struct, beside a plain command, so its face carries the
+// caller side of the stream and a `Provider` and a `serve` for both members.
+// `Plain` declares one query with a named reply and no stream, so its
+// `Client` and its `serve` are the proof that the stream bounds are added
+// only to an interface that declares a stream member. `Twin` declares two
+// queries whose replies are streams, so its face holds one stream slot per
+// member and its `serve` drives both sources.
+//
+// Kept self-contained, for the reason `interaction_face.ridl` gives.
+
+package face.stream
+
+/// A control level.
+type Level : integer [0..100]
+
+/// One reading of the log.
+struct Reading {
+  level : Level
+  flag  : boolean
+}
+
+/// A summary computed from uploaded readings.
+struct Summary {
+  count : integer
+  total : integer
+}
+
+/// A log of readings, read as a stream.
+interface Log {
+  /// The readings up to `limit`, oldest first.
+  query history(limit: Level): <Reading> @[..200ms] [
+    require limit > 0
+  ]
+  /// Clears the log.
+  command clear(level: Level) @[..50ms]
+  /// Uploads readings.
+  command upload(data: <Reading>) @[..1s]
+  /// Summarizes uploaded readings.
+  query summarize(data: <Reading>): Summary @[..100ms]
+  /// Returns readings while they are uploaded.
+  query pipe(data: <Reading>): <Reading> @[..1s]
+  /// Returns a level computed from uploaded readings.
+  query checked(data: <Reading>): Level @[..100ms] [
+    ensure result <= 50
+  ]
+}
+
+/// An interface with no stream, for the port-bound test. Named to sort after
+/// `Log`: provisional interface numbers follow the sorted names.
+interface Plain {
+  /// The latest reading.
+  query latest(limit: Level): Reading @[..200ms]
+}
+
+/// Two streamed replies on one interface, for the test that `serve` drives
+/// the source of each. Named to sort after `Plain`.
+interface Twin {
+  /// The readings up to `limit`, oldest first.
+  query left(limit: Level): <Reading> @[..200ms]
+  /// The levels up to `limit`, oldest first.
+  query right(limit: Level): <Level> @[..200ms]
+}
+
+
+/// A document identifier.
+type Id : integer [0..100]
+
+/// Upload metadata.
+struct Info {
+  id : Id
+}
+
+/// Documents read as bytes or text.
+interface Docs {
+  /// Fetches the document bytes.
+  query fetch(id: Id): <bytes> @[..1s]
+  /// Fetches the document text.
+  query text(id: Id): <string> @[..1s]
+  /// Stores bytes.
+  command put(info: Info, data: <bytes>) @[..1s]
+  /// Stores text.
+  command note(data: <string>) @[..1s]
+}
+
+/// Upload queries with raw byte and text chunks.
+interface RawQueries {
+  /// Counts uploaded bytes.
+  query sum(data: <bytes>): Summary @[..100ms]
+  /// Returns readings while text is uploaded.
+  query pipe(data: <string>): <Reading> @[..1s]
+}

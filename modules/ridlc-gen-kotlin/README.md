@@ -301,14 +301,25 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   parameters under `@param args`, as the Rust face's `# Parameters` section
   does. The rest of the package is generated, as the Rust pipeline skips such an
   interface with a `__RIDL_NO_FACE_*` note (E11.14 decision 2).
-- **A member with a stream is left out of the face without a warning**, as the
-  Rust backend left it out before its stream faces (#105): no method, no call,
-  no typed descriptor, and `serve` registers it nowhere. Since ridl 0.15 such a
-  member has a request, so only `Interaction.streams` tells it apart, and a
-  plain call would send it without its stream. Its row of `members` stays, and
-  its size rows count its request and, unless the reply is the stream, its
-  reply. The row does not list the streams yet: `ridl-rt-kt`'s `Member` has no
-  `streams`.
+- **A stream is a `Flow`, on the async client and the provider alone** (O-K5). A
+  reply stream makes the method return `Flow<T>`, sent when it is collected; a
+  stream parameter makes it take one, after the call's `args`. `T` is the
+  element, `ByteArray` for `<bytes>` and `String` for `<string>`. The provider's
+  method mirrors it, and `serveAsync` drives each stream as a child coroutine,
+  so an interface with a stream has no blocking `serve`, and its blocking client
+  carries no streamed member, as in the Rust face. The logic is in
+  `ridl-rt-kt-coroutines`' `Streams.kt`; the emitted code names the call and its
+  `StreamChunks`. Two departures from Rust: a value longer than a chunk is split
+  by the runtime, where a Rust `ByteSource` chooses, and an `ensure` clause is
+  not read on a streamed reply, as there. A provider's flow that fails stops its
+  stream with `Transport.Interrupted`, and does not end `serveAsync`, unlike a
+  plain provider method's exception: a `Flow` that fails is how Kotlin stops
+  one.
+- **A member with several stream parameters is left out of the face without a
+  warning**, as the Rust backend leaves it out (driftsys/ridl#1224): no method,
+  no call, no typed descriptor, and `serve` registers it nowhere. Its row of
+  `members` stays, with its `streams`, and its size rows count its request and,
+  unless the reply is the stream, its reply.
 - **A channel's init is the signal's own `= value`** when it declares one over a
   named scalar, else the payload type's typl init, built from the model's `Init`
   facts. The Rust face always calls the payload's `Default`, and calls the

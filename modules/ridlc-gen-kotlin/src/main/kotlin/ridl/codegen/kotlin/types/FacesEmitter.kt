@@ -3,6 +3,7 @@ package ridl.codegen.kotlin.types
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.BOOLEAN
+import com.squareup.kotlinpoet.BYTE_ARRAY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -80,6 +81,25 @@ private val PAYLOAD = ClassName("$RT.payload", "Payload")
 private val SIGNAL_READER = ClassName("$RT.port", "SignalReader")
 private val CHECK = ClassName("$RT.port", "Check")
 private val PAYLOAD_CHECK = MemberName("$RT.payload", "check")
+private val STREAM_CALLER = ClassName("$RT.port", "StreamCaller")
+private val STREAM_HANDLER = ClassName("$RT.port", "StreamHandler")
+private val STREAM_CALL = ClassName("$RT.coroutines", "StreamCall")
+private val ELEMENT_CHUNKS = MemberName("$RT.coroutines", "elementChunks")
+private val BYTE_CHUNKS = MemberName("$RT.coroutines", "byteChunks")
+private val TEXT_CHUNKS = MemberName("$RT.coroutines", "textChunks")
+private val CLAIM_STREAM = MemberName("$RT.coroutines", "claimStream")
+private val DRIVE_REPLY = MemberName("$RT.coroutines", "driveReply")
+private val CONSUME_UPLOAD = MemberName("$RT.coroutines", "consumeUpload")
+private val SETTLE_UPLOAD = MemberName("$RT.coroutines", "settleUpload")
+private val FLOW = ClassName("kotlinx.coroutines.flow", "Flow")
+private val COROUTINE_SCOPE_OF = MemberName("kotlinx.coroutines", "coroutineScope")
+private val LAUNCH = MemberName("kotlinx.coroutines", "launch")
+
+/** The chunk bound of a byte or text stream whose member has no limit of its own: `CALL_CEILING`. */
+private const val CALL_STREAM_LIMIT = 16_128
+
+/** The shortest limit of a byte or text stream, which must hold a whole UTF-8 character. */
+private const val SHORTEST_RAW_LIMIT = 4
 private val SIGNAL_WRITER = ClassName("$RT.port", "SignalWriter")
 private val EVENT_SOURCE = ClassName("$RT.port", "EventSource")
 private val EVENT_SINK = ClassName("$RT.port", "EventSink")
@@ -524,6 +544,9 @@ class FacesEmitter internal constructor(
      */
     private class Argument(val name: String, val param: Param?, val payload: Named)
 
+    /** How the face carries a member's streams: a reply stream, a stream parameter, or both. */
+    private enum class StreamShapeKind { Reply, Upload, Duplex }
+
     private inner class Face(
         private val iface: Interface,
         private val types: MutableList<TypeSpec>,
@@ -537,9 +560,16 @@ class FacesEmitter internal constructor(
             Member(slot.ordinal, slot.interaction, ClassName(pkg, name + slot.interaction.name.camel))
         }
 
-        // A member with a stream keeps its descriptor and its size rows, and has no place in the face (#105): a plain
-        // call would send it without its stream. Since ridl 0.15 such a member has a request, so `streams` alone says so.
+        // A member with a stream is not a plain call (#105), which would send it without its stream. Since ridl 0.15 such
+        // a member has a request, so `streams` alone says so. It keeps its descriptor and its size rows either way.
         private val faced = members.filter { it.interaction.streamsCount == 0 }
+        /**
+         * The members with a stream the face carries, as the Rust face's
+         * `supported_stream_reply`, `_command` and `_query` name them: every
+         * other stream member stays out, a member with several stream
+         * parameters first (driftsys/ridl#1224).
+         */
+        private val streamed = members.filter { streamShape(it) != null }
         private val signals = faced.filter { it.interaction.hasSignal() }
         private val events = faced.filter { it.interaction.hasEvent() }
         private val commands = faced.filter { it.interaction.hasCommand() }
@@ -607,6 +637,59 @@ class FacesEmitter internal constructor(
             refuse("query `${m.declared}`'s reply is a fallible `T | E`, which the face does not carry")
         }
 
+        /** How the face carries [m]'s streams, or `null` when it has none or a form the face does not carry. */
+        private fun streamShape(m: Member): StreamShapeKind? {
+            val i = m.interaction
+            val streams = i.streamsList
+            if (streams.isEmpty() || !streams.all(::carried)) return null
+            val reply = streams.firstOrNull { it.no == 0 }
+            val parameters = streams.filter { it.no != 0 }
+            return when {
+                i.hasQuery() && reply != null && parameters.isEmpty() -> StreamShapeKind.Reply
+                parameters.size != 1 || parameters[0].no != 1 -> null
+                i.hasCommand() -> StreamShapeKind.Upload
+                !i.hasQuery() -> null
+                reply == null -> StreamShapeKind.Upload
+                reply.form == StreamForm.STREAM_FORM_ELEMENTS -> StreamShapeKind.Duplex
+                else -> null
+            }
+        }
+
+        private fun carried(stream: StreamShape): Boolean = when (stream.form) {
+            StreamForm.STREAM_FORM_ELEMENTS -> stream.hasElement()
+            StreamForm.STREAM_FORM_BYTES, StreamForm.STREAM_FORM_TEXT -> true
+            else -> false
+        }
+
+        private fun replyStream(m: Member): StreamShape = m.interaction.streamsList.first { it.no == 0 }
+
+        private fun parameterStream(m: Member): StreamShape = m.interaction.streamsList.first { it.no == 1 }
+
+        /** The Kotlin type of one value of [stream]: its element, or a run of bytes or text. */
+        private fun streamValue(stream: StreamShape): TypeName = when (stream.form) {
+            StreamForm.STREAM_FORM_BYTES -> BYTE_ARRAY
+            StreamForm.STREAM_FORM_TEXT -> STRING
+            else -> declared(stream.element).type
+        }
+
+        /** The `StreamChunks` of [stream] on [m]: a byte or text stream's chunk is bounded by the member's limit. */
+        private fun chunks(m: Member, stream: StreamShape): CodeBlock {
+            val limit = if (m.interaction.hasLimit()) m.interaction.limit else CALL_STREAM_LIMIT
+            return when (stream.form) {
+                StreamForm.STREAM_FORM_ELEMENTS -> CodeBlock.of("%M(%T)", ELEMENT_CHUNKS, declared(stream.element).codec)
+                else -> {
+                    if (limit < SHORTEST_RAW_LIMIT) refuse("byte or text stream member `${m.declared}` has limit $limit, below $SHORTEST_RAW_LIMIT")
+                    CodeBlock.of("%M(%L)", if (stream.form == StreamForm.STREAM_FORM_BYTES) BYTE_CHUNKS else TEXT_CHUNKS, limit)
+                }
+            }
+        }
+
+        /** The name of [m]'s stream parameter: a Kotlin parameter beside its argument. */
+        private fun streamParameter(m: Member): String {
+            val params = if (m.interaction.hasCommand()) m.interaction.command.paramsList else m.interaction.query.paramsList
+            return params.first { it.type.hasStream() }.name.property
+        }
+
         /** What a call's rows name: its argument, then a query's reply, which a streamed reply does not have. */
         private fun callPayloads(m: Member): List<Named> {
             val streamedReply = m.interaction.streamsList.any { it.no == 0 }
@@ -614,20 +697,23 @@ class FacesEmitter internal constructor(
         }
 
         fun emit() {
-            val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty()
+            val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty() || streamed.isNotEmpty()
             val of = "interface `${iface.declared.declared}`"
             add(descriptor(), "the descriptor of $of")
             members.forEachIndexed { row, m ->
-                if (m in faced) add(interaction(m, row), "the descriptor of member `${m.declared}` of $of")
+                if (m in faced || m in streamed) add(interaction(m, row), "the descriptor of member `${m.declared}` of $of")
             }
             // An internal interface has its descriptors, `internal`, and no face (driftsys/ridl#832): the Rust
             // backend's rule, mirrored although an `internal` Kotlin face could name its `internal` types.
             if (internal) return
-            val hasCalls = commands.isNotEmpty() || queries.isNotEmpty()
+            val hasCalls = commands.isNotEmpty() || queries.isNotEmpty() || streamed.isNotEmpty()
             for (m in commands + queries) add(call(m), "the call of member `${m.declared}` of $of")
             if (waits) {
-                add(client(ClassName(pkg, "${name}PollClient"), pollFace = true), "the poll client of $of")
-                add(blockingClient(), "the client of $of")
+                // An interface of stream members alone has nothing a poll or blocking client carries.
+                if (events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty() || signals.isNotEmpty()) {
+                    add(client(ClassName(pkg, "${name}PollClient"), pollFace = true), "the poll client of $of")
+                    add(blockingClient(), "the client of $of")
+                }
                 add(asyncClient(), "the async client of $of")
             } else if (signals.isNotEmpty()) {
                 add(client(ClassName(pkg, "${name}Client"), pollFace = false), "the client of $of")
@@ -713,7 +799,7 @@ class FacesEmitter internal constructor(
                 )
             }
             if (events.isNotEmpty()) builder.addType(eventType()).addFunction(takeEvent())
-            if (commands.isNotEmpty() || queries.isNotEmpty()) {
+            if (commands.isNotEmpty() || queries.isNotEmpty() || streamed.isNotEmpty()) {
                 builder.addProperty(
                     PropertySpec.builder("SERVE_BUDGET", INT, KModifier.PRIVATE, KModifier.CONST).initializer("32")
                         .addKdoc(
@@ -722,8 +808,10 @@ class FacesEmitter internal constructor(
                                 "ends lets its dispatcher run other coroutines between passes.",
                         ).build(),
                 )
-                builder.addFunction(dispatch()).addFunction(claimServed()).addFunction(servePass()).addFunction(serve())
-                    .addFunction(serveAsync())
+                builder.addFunction(dispatch()).addFunction(claimServed()).addFunction(servePass())
+                // A stream needs a coroutine to run in, so an interface that carries one has no blocking `serve`.
+                if (streamed.isEmpty()) builder.addFunction(serve())
+                builder.addFunction(serveAsync())
             }
             return builder.build()
         }
@@ -781,20 +869,69 @@ class FacesEmitter internal constructor(
             .addParameter("handler", HANDLER)
             .addStatement(
                 "try { handler.serve(number, listOf(%L)) } catch (e: %T) { throw %T.Serve(e) }",
-                (commands + queries).map { ordinal(it) }.joinToCode(", "), SERVE_ERROR, PROVIDER_ERROR,
+                (commands + queries + streamed).map { ordinal(it) }.joinToCode(", "), SERVE_ERROR, PROVIDER_ERROR,
             )
             .build()
 
+        /**
+         * The start of a member with a stream, once its arguments passed: each
+         * stream runs in [scope], so `dispatch` goes on to the next claim. A
+         * command's acknowledgment comes first, as for a plain command.
+         */
+        private fun drive(m: Member, value: String): CodeBlock {
+            val code = CodeBlock.builder()
+            val parameter = if (streamShape(m) == StreamShapeKind.Reply) {
+                null
+            } else {
+                CodeBlock.of("%M(handler, claim.id, %L)", CLAIM_STREAM, chunks(m, parameterStream(m)))
+            }
+            val args = listOfNotNull(CodeBlock.of("%L", value), parameter).joinToCode(", ")
+            when {
+                streamShape(m) != StreamShapeKind.Upload -> {
+                    code.addStatement(
+                        "scope.%M { %M(handler, claim.id, %L, provider.%N(%L)) }",
+                        LAUNCH, DRIVE_REPLY, chunks(m, replyStream(m)), m.method, args,
+                    )
+                    code.addStatement("true")
+                }
+                m.interaction.hasQuery() -> {
+                    val reply = reply(m)
+                    code.beginControlFlow("scope.%M", LAUNCH)
+                        .beginControlFlow("%M(handler, claim.id)", SETTLE_UPLOAD)
+                        .addStatement("val reply = provider.%N(%L)", m.method, args)
+                        .addStatement("if (!%T.ensure(%L, reply)) throw %T.ContractBroken", m.descriptor, value, CONTRACT)
+                        .addStatement("encoded(%T, reply)", reply.codec)
+                        .endControlFlow()
+                        .endControlFlow()
+                        .addStatement("true")
+                }
+                else -> {
+                    code.addStatement("val ok = settle(handler, claim.id, %T.success(%T.allocate(0)))", RESULT, BYTE_BUFFER)
+                        .addStatement("scope.%M { %M(handler, claim.id) { provider.%N(%L) } }", LAUNCH, CONSUME_UPLOAD, m.method, args)
+                        .addStatement("ok")
+                }
+            }
+            return code.build()
+        }
+
+        /** What a handler of this interface must be: a stream extension and `Wakeable` only for an interface with a carried stream. */
+        private fun handlerBounds(wakes: Boolean): List<TypeName> = buildList {
+            add(if (streamed.isNotEmpty()) STREAM_HANDLER else HANDLER)
+            if (wakes) add(WAKEABLE)
+            add(ENCODED)
+        }
+
         /** One pass of `serve`: registers for the next claim, then settles the claims waiting, at most [SERVE_BUDGET]. */
         private fun servePass(): FunSpec {
-            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE, ENCODED))
+            val h = TypeVariableName("H", handlerBounds(wakes = true))
             return FunSpec.builder("servePass").addModifiers(KModifier.PRIVATE).addTypeVariable(h)
                 .addParameter("handler", h).addParameter("provider", ClassName(pkg, "${name}Provider"))
                 .addParameter("buffer", BYTE_BUFFER).addParameter("until", VALUE_TIME_MARK.copy(nullable = true))
+                .apply { if (streamed.isNotEmpty()) addParameter("scope", COROUTINE_SCOPE) }
                 .addParameter("waker", WAKER)
                 .returns(NOTHING.copy(nullable = true))
                 .addStatement("handler.wakeOn(%T.Claim(number), waker)", INTEREST)
-                .addStatement("dispatch(handler, provider, buffer, until, SERVE_BUDGET) { waker.wake() }")
+                .addStatement("dispatch(handler, provider, buffer, %Luntil, SERVE_BUDGET) { waker.wake() }", if (streamed.isNotEmpty()) "scope, " else "")
                 .addStatement("return null")
                 .build()
         }
@@ -932,6 +1069,19 @@ class FacesEmitter internal constructor(
                     builder.addKdoc("Command `%L` of `%L`.", m.declared, iface.declared.declared)
                         .addSuperinterface(COMMAND.parameterizedBy(arg.type)).addProperty(codecProperty(arg))
                         .addFunction(clauseFun("require", ContractKind.CONTRACT_KIND_REQUIRE, m, arg, null))
+                }
+                i.hasQuery() && streamShape(m).let { it == StreamShapeKind.Reply || it == StreamShapeKind.Duplex } -> {
+                    val arg = argument(m).payload
+                    // A streamed reply has no one value an `ensure` clause reads, as in the Rust face.
+                    builder.addKdoc("Query `%L` of `%L`, whose reply is a stream.", m.declared, iface.declared.declared)
+                        .addSuperinterface(QUERY.parameterizedBy(arg.type, streamValue(replyStream(m))))
+                        .addProperty(codecProperty(arg))
+                        .addFunction(clauseFun("require", ContractKind.CONTRACT_KIND_REQUIRE, m, arg, null))
+                        .addFunction(
+                            FunSpec.builder("ensure").addModifiers(KModifier.OVERRIDE)
+                                .addParameter("args", arg.type).addParameter("reply", streamValue(replyStream(m))).returns(BOOLEAN)
+                                .addStatement("return true").build(),
+                        )
                 }
                 i.hasQuery() -> {
                     val arg = argument(m).payload
@@ -1153,7 +1303,7 @@ class FacesEmitter internal constructor(
         }
 
         private fun serveAsync(): FunSpec {
-            val h = TypeVariableName("H", listOf(HANDLER, WAKEABLE, ENCODED))
+            val h = TypeVariableName("H", handlerBounds(wakes = true))
             return FunSpec.builder("serveAsync").addModifiers(KModifier.SUSPEND).addTypeVariable(h)
                 .addKdoc(
                     "Serves interface `%L`'s calls, suspending between claims. It never returns normally: it ends by " +
@@ -1167,7 +1317,14 @@ class FacesEmitter internal constructor(
                 .addStatement("checkEncoding(handler.encoding)")
                 .addStatement("claimServed(handler)")
                 .addStatement("val buffer = %T.allocate(sizes(handler.encoding).maxBufferSize)", BYTE_BUFFER)
-                .addStatement("return %M<%T>({}) { waker -> servePass(handler, provider, buffer, null, waker) }", AWAIT_POLL, NOTHING)
+                .apply {
+                    if (streamed.isEmpty()) {
+                        addStatement("return %M<%T>({}) { waker -> servePass(handler, provider, buffer, null, waker) }", AWAIT_POLL, NOTHING)
+                    } else {
+                        // Each stream is a child: cancelling this coroutine stops every stream it still drives.
+                        addStatement("return %M { %M<%T>({}) { waker -> servePass(handler, provider, buffer, null, this, waker) } }", COROUTINE_SCOPE_OF, AWAIT_POLL, NOTHING)
+                    }
+                }
                 .build()
         }
 
@@ -1176,11 +1333,12 @@ class FacesEmitter internal constructor(
          * waits, a call sends and waits on the clock; and the encoding of the
          * port's bytes, which the face reads (driftsys/ridl#887).
          */
-        private fun waitingBounds(): List<TypeName> = buildList {
+        private fun waitingBounds(streams: Boolean = false): List<TypeName> = buildList {
             if (signals.isNotEmpty()) add(SIGNAL_READER)
             if (events.isNotEmpty()) add(EVENT_SOURCE)
-            if (commands.isNotEmpty() || queries.isNotEmpty()) {
-                add(CALLER)
+            val carriesStreams = streams && streamed.isNotEmpty()
+            if (commands.isNotEmpty() || queries.isNotEmpty() || carriesStreams) {
+                add(if (carriesStreams) STREAM_CALLER else CALLER)
                 add(CLOCK)
             }
             add(WAKEABLE)
@@ -1416,7 +1574,7 @@ class FacesEmitter internal constructor(
         }
 
         private fun asyncClient(): TypeSpec {
-            val p = TypeVariableName("P", waitingBounds())
+            val p = TypeVariableName("P", waitingBounds(streams = true))
             val builder = TypeSpec.classBuilder(ClassName(pkg, "${name}AsyncClient")).visibility()
                 .addKdoc(
                     "The suspending client of interface `%L`: each call suspends until its outcome and throws `ClientError` " +
@@ -1434,15 +1592,15 @@ class FacesEmitter internal constructor(
                 .addInitializerBlock(binding())
             if (signals.isNotEmpty()) {
                 builder.addProperty(signalStatesProperty())
-                signalStates(Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal))
+                signalStates(Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(streams = true), internal))
             }
-            if (commands.isNotEmpty() || queries.isNotEmpty()) {
+            if (commands.isNotEmpty() || queries.isNotEmpty() || streamed.isNotEmpty()) {
                 builder.addProperty(PropertySpec.builder("_calls", MUTEX, KModifier.PRIVATE).initializer("%T()", MUTEX).build())
             }
             if (events.isNotEmpty()) {
                 // The port keeps one event waker per handle: two waits at once would displace and wake each other forever.
                 builder.addProperty(PropertySpec.builder("_events", MUTEX, KModifier.INTERNAL).initializer("%T()", MUTEX).build())
-                val receiver = Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal)
+                val receiver = Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(streams = true), internal)
                 subscriptions(receiver, port = "_port")
                 extensions.functions += receiver.extension("nextEvent").addModifiers(KModifier.SUSPEND).returns(self.nestedClass("Event"))
                     .addKdoc(
@@ -1469,7 +1627,53 @@ class FacesEmitter internal constructor(
                 }
                 builder.addFunction(f.build())
             }
+            for (m in streamed) builder.addFunction(streamMethod(m))
             return builder.build()
+        }
+
+        /**
+         * A member with a stream on the async client: a reply stream returns a
+         * `Flow`, sent when it is collected, and a stream parameter takes one.
+         * The blocking client carries no streamed member, as in the Rust face.
+         */
+        private fun streamMethod(m: Member): FunSpec {
+            val argument = argument(m)
+            val value = argument.name
+            val query = m.interaction.hasQuery()
+            val call = CodeBlock.of(
+                "%T(this._port, this._calls, %L, %L, %L, %T.member.callDeadline()) { request(%T.require(%N), %T, %N) }",
+                STREAM_CALL, number(), ordinal(m), query, m.descriptor, m.descriptor, value, argument.payload.codec, value,
+            )
+            val f = FunSpec.builder(m.method).addParameter(value, argument.payload.type)
+            return when (streamShape(m)!!) {
+                StreamShapeKind.Reply -> f.returns(FLOW.parameterizedBy(streamValue(replyStream(m))))
+                    .doc(memberDoc(m, "Calls query `${m.declared}` when it is collected, and emits its reply stream. A failed call throws `ClientError`; a collector that stops early interrupts the stream.", argument))
+                    .addStatement("return %L.reply(%L)", call, chunks(m, replyStream(m)))
+                StreamShapeKind.Duplex -> {
+                    val data = streamParameter(m)
+                    f.addParameter(data, FLOW.parameterizedBy(streamValue(parameterStream(m))))
+                        .returns(FLOW.parameterizedBy(streamValue(replyStream(m))))
+                        .doc(memberDoc(m, "Calls query `${m.declared}` when it is collected, uploads [$data] while it emits the reply stream. A failed call throws `ClientError`.", argument))
+                        .addStatement("return %L.duplex(%L, %N, %L)", call, chunks(m, parameterStream(m)), data, chunks(m, replyStream(m)))
+                }
+                StreamShapeKind.Upload -> {
+                    val data = streamParameter(m)
+                    f.addModifiers(KModifier.SUSPEND).addParameter(data, FLOW.parameterizedBy(streamValue(parameterStream(m))))
+                    if (query) {
+                        val reply = reply(m)
+                        f.returns(reply.type)
+                            .doc(memberDoc(m, "Calls query `${m.declared}`, uploads [$data], and suspends until its reply. A failed call throws `ClientError`.", argument))
+                            .addStatement(
+                                "return %L.uploadQuery(%L, %N, %T.maxSize) { %T.decode(%T.verify(it)) }",
+                                call, chunks(m, parameterStream(m)), data, reply.codec, reply.codec, reply.codec,
+                            )
+                    } else {
+                        f.doc(memberDoc(m, "Calls command `${m.declared}`, uploads [$data], and suspends until its acknowledgment. A failed call throws `ClientError`.", argument))
+                            .addStatement("%L.upload(%L, %N)", call, chunks(m, parameterStream(m)), data)
+                    }
+                    f
+                }
+            }.build()
         }
 
         private fun eventType(): TypeSpec {
@@ -1627,7 +1831,25 @@ class FacesEmitter internal constructor(
                         .build(),
                 )
             }
+            for (m in streamed) builder.addFunction(streamProvider(m))
             return builder.build()
+        }
+
+        /** The provider method of a member with a stream: a stream parameter arrives as a `Flow`, and a reply stream leaves as one. */
+        private fun streamProvider(m: Member): FunSpec {
+            val argument = argument(m)
+            val shape = streamShape(m)!!
+            val f = FunSpec.builder(m.method).addModifiers(KModifier.ABSTRACT).addParameter(argument.name, argument.payload.type)
+            if (shape != StreamShapeKind.Reply) f.addParameter(streamParameter(m), FLOW.parameterizedBy(streamValue(parameterStream(m))))
+            when {
+                shape != StreamShapeKind.Upload -> f.returns(FLOW.parameterizedBy(streamValue(replyStream(m))))
+                    .doc(memberDoc(m, "Serves query `${m.declared}`: the flow it returns is the reply stream, and its end settles the claim.", argument))
+                m.interaction.hasQuery() -> f.addModifiers(KModifier.SUSPEND).returns(reply(m).type)
+                    .doc(memberDoc(m, "Serves query `${m.declared}`. Collecting the stream parameter throws the `CallError` it stopped with, which settles the call.", argument))
+                else -> f.addModifiers(KModifier.SUSPEND)
+                    .doc(memberDoc(m, "Serves command `${m.declared}`, already acknowledged. Collecting the stream parameter throws the `CallError` it stopped with.", argument))
+            }
+            return f.build()
         }
 
         /**
@@ -1722,6 +1944,23 @@ class FacesEmitter internal constructor(
                     .addStatement(")")
                     .endControlFlow()
             }
+            for (m in streamed) {
+                val arg = argument(m).payload
+                code.beginControlFlow("%L ->", ordinal(m))
+                    .addStatement("callOutcome(%T, args).fold(", arg.codec)
+                    .indent()
+                    .beginControlFlow("{ %L ->", value)
+                    .beginControlFlow("if (!%T.require(%L))", m.descriptor, value)
+                    .addStatement("settle(handler, claim.id, %T.failure(%T.PreconditionFailed))", RESULT, CONTRACT)
+                    .nextControlFlow("else")
+                    .add(drive(m, value))
+                    .endControlFlow()
+                    .endControlFlow()
+                    .addStatement(", { settle(handler, claim.id, %T.failure(it)) },", RESULT)
+                    .unindent()
+                    .addStatement(")")
+                    .endControlFlow()
+            }
             code.addStatement("else -> settle(handler, claim.id, %T.failure(%T.UnknownInteraction))", RESULT, CONTRACT)
                 .endControlFlow()
                 .addStatement("if (accepted) settled += 1")
@@ -1746,8 +1985,9 @@ class FacesEmitter internal constructor(
                         "still be waiting, and it calls [onBudgetSpent] (driftsys/ridl#568).",
                     iface.declared.declared,
                 )
-                .addModifiers(KModifier.INTERNAL).addTypeVariable(TypeVariableName("H", listOf(HANDLER, ENCODED)))
+                .addModifiers(KModifier.INTERNAL).addTypeVariable(TypeVariableName("H", handlerBounds(wakes = streamed.isNotEmpty())))
                 .addParameter("handler", TypeVariableName("H")).addParameter("provider", provider).addParameter("buffer", BYTE_BUFFER)
+                .apply { if (streamed.isNotEmpty()) addParameter("scope", COROUTINE_SCOPE) }
                 .addParameter(ParameterSpec.builder("until", VALUE_TIME_MARK.copy(nullable = true)).defaultValue("null").build())
                 .addParameter(ParameterSpec.builder("budget", INT).defaultValue("%T.MAX_VALUE", INT).build())
                 .addParameter(ParameterSpec.builder("onBudgetSpent", LambdaTypeName.get(returnType = UNIT)).defaultValue("{}").build())
