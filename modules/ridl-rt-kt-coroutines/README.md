@@ -35,6 +35,14 @@ also covers a client: when its outcome or event lands while its own poll runs,
 it reads the value on the next poll, one dispatch later. `AwaitPollTest` pins
 both cases on one thread.
 
+`Streams.kt` is the suspending side of the stream ports (ridl §12, O-K5): what a
+generated async client and `serveAsync` run on. `StreamCall` sends a call and
+carries its streams as `Flow`s, `claimStream`, `driveReply`, `consumeUpload` and
+`settleUpload` are the provider's side, and `StreamChunks` maps a stream's
+values to chunks: `elementChunks`, `byteChunks` and `textChunks`. `FacesTest`
+drives them over the loopback, and `StreamChunksTest` pins the split of bytes
+and text.
+
 `SignalState<T>` is a signal as a shared `StateFlow` of its samples (#76), what
 a generated `<signal>` property of an async client returns; a client keeps its
 states in one `SignalStates`, one per signal and period. The runtime has no

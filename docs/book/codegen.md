@@ -81,6 +81,21 @@ public enum class Health(
     public fun fromValue(`value`: Long): Health? = entries.firstOrNull { it.value == value }
 ```
 
+An `open enum` accepts values it does not name, so it is a sealed interface,
+with an `Unknown` case that keeps the integer and writes it back unchanged:
+
+```text
+when (val status = DtcStatus.fromValue(raw)) {
+    DtcStatus.ACTIVE -> // ...
+    DtcStatus.INACTIVE -> // ...
+    is DtcStatus.Unknown -> log("a newer status: ${status.value}")
+}
+```
+
+`fromValue` is not nullable there, and gives the declared case for every
+declared value. An `open enumset` keeps every bit, and `unknownBits` reads the
+ones no member names.
+
 ## Structs
 
 <!-- excerpt: ridl/cabin.ridl -->
@@ -260,6 +275,36 @@ Some operations are extension functions in the same package rather than members:
 blocking client's `timeout` property, each signal's state on the suspending
 client, and `commit`, `invalidate<Signal>` and `touch<Signal>` on the publisher.
 Import them by name, or import `veh.cabin.*`.
+
+### Streams
+
+A member with a stream is a `Flow` on the suspending client and on the provider.
+With `query history(limit: Level): <Reading>` and
+`command upload(data: <Reading>)`:
+
+```text
+// A reply stream is sent when it is collected, and paced by the collector.
+client.history(Level.of(10)).collect { println(it) }
+
+// A stream parameter comes after the call's arguments.
+client.upload(LogUploadParams(), flowOf(first, second))
+
+class Logs : LogProvider {
+    override fun history(limit: Level): Flow<Reading> = flow { /* emit */ }
+
+    override suspend fun upload(args: LogUploadParams, data: Flow<Reading>) {
+        data.collect(::store)
+    }
+}
+```
+
+`<bytes>` is a `Flow<ByteArray>` and `<string>` a `Flow<String>`; a value longer
+than a chunk is split, text between characters. A failed call throws
+`ClientError`, and a collector that stops early interrupts the stream. A
+provider collecting a stream parameter gets the `CallError` it stopped with.
+Serve such an interface with `serveAsync` over a runtime that carries streams:
+it has no blocking `serve`, and its blocking client has no streamed member. A
+member with several stream parameters is not generated yet.
 
 ## Documentation
 
