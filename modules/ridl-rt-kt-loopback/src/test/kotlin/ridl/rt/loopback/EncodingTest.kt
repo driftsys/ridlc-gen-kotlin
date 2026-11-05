@@ -76,6 +76,6 @@ class EncodingTest {
         assertArrayEquals(byteArrayOf(2), back.array().copyOf(flatSample.len))
         assertEquals(Provenance.Init, flat.read(InterfaceNo(1u), Ordinal(1u), ByteBuffer.allocate(8)).provenance)
 
-        assertEquals("repr-c", encodingOf(Loopback(catalog, Encoding.ReprC)))
+        assertEquals("podbuf", encodingOf(Loopback(catalog, Encoding.Podbuf)))
     }
 }

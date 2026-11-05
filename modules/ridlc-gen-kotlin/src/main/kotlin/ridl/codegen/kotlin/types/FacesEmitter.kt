@@ -34,6 +34,8 @@ import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.Param
 import ridl.codegen.v1.ModelOuterClass.Payload
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import ridl.codegen.v1.ModelOuterClass.StreamForm
+import ridl.codegen.v1.ModelOuterClass.StreamShape
 import ridl.codegen.v1.ModelOuterClass.Timing
 import ridl.codegen.v1.ModelOuterClass.TimingMode
 import ridl.codegen.v1.ModelOuterClass.TypeRef
@@ -54,6 +56,9 @@ private val KIND = ClassName("$RT.contract", "Kind")
 private val TIMING = ClassName("$RT.contract", "Timing")
 private val TIMING_MODE = ClassName("$RT.contract", "TimingMode")
 private val PAYLOAD_INFO = ClassName("$RT.contract", "PayloadInfo")
+private val STREAM_INFO = ClassName("$RT.contract", "StreamInfo")
+private val STREAM_NO = ClassName("$RT.contract", "StreamNo")
+private val STREAM_FORM = ClassName("$RT.contract", "StreamForm")
 private val SIZES = ClassName("$RT.contract", "Sizes")
 private val ENCODING = ClassName("$RT.encoding", "Encoding")
 private val ENCODED = ClassName("$RT.port", "Encoded")
@@ -832,9 +837,37 @@ class FacesEmitter internal constructor(
             val timing = if (i.hasFixed() || !i.hasTiming()) CodeBlock.of("null") else timing(i.timing)
             val infos = payloads.map { CodeBlock.of("%T(%S)", PAYLOAD_INFO, it.typeName) }.joinToCode(", ")
             return CodeBlock.of(
-                "%T(%T(%Lu), %T.%L, %S, %L, listOf(%L))",
-                MEMBER, ORDINAL, m.ordinal, KIND, kind, m.declared, timing, infos,
+                "%T(%T(%Lu), %T.%L, %S, %L, listOf(%L), %L)",
+                MEMBER, ORDINAL, m.ordinal, KIND, kind, m.declared, timing, infos, streamInfos(i),
             )
+        }
+
+        /**
+         * The `streams` of one member's row: one `StreamInfo` per stream, in
+         * the model's order. The element is the package-qualified name under
+         * `Elements` and `""` under `Bytes` and `Text`.
+         */
+        private fun streamInfos(i: Interaction): CodeBlock {
+            if (i.streamsCount == 0) return CodeBlock.of("emptyList()")
+            val entries = i.streamsList.map { stream ->
+                val (form, element) = when (stream.form) {
+                    StreamForm.STREAM_FORM_BYTES -> "Bytes" to ""
+                    StreamForm.STREAM_FORM_TEXT -> "Text" to ""
+                    else -> "Elements" to streamElement(stream)
+                }
+                CodeBlock.of("%T(%T(%Lu), %T.%L, %S)", STREAM_INFO, STREAM_NO, stream.no, STREAM_FORM, form, element)
+            }
+            return CodeBlock.of("listOf(%L)", entries.joinToCode(", "))
+        }
+
+        /** The package-qualified canonical name of a stream's element type; a reference no package declares keeps its canonical string. */
+        private fun streamElement(stream: StreamShape): String {
+            val element = stream.element
+            return if (element.resolved && element.`package`.isNotEmpty()) {
+                "${element.`package`}.${element.reference.substringAfterLast('.')}"
+            } else {
+                element.reference
+            }
         }
 
         /**

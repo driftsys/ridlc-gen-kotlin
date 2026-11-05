@@ -59,7 +59,7 @@ class BehaviourTest {
     @Test
     fun `each encoding has the frame's tag and the cargo feature's name`() {
         assertEquals(listOf(1, 2, 3), Encoding.entries.map { it.tag })
-        assertEquals(listOf("flatbuffers", "proto3", "repr-c"), Encoding.entries.map { it.encodingName })
+        assertEquals(listOf("flatbuffers", "proto3", "podbuf"), Encoding.entries.map { it.encodingName })
         assertEquals(Encoding.Proto3, Encoding.fromTag(2))
     }
 
@@ -97,6 +97,7 @@ class BehaviourTest {
             Transport.Down -> "down"
             Transport.Corrupt -> "corrupt"
             Transport.Busy -> "busy"
+            Transport.Interrupted -> "interrupted"
         }
         assertEquals("precondition", name(Contract.PreconditionFailed))
         assertEquals("corrupt", name(Transport.Corrupt))

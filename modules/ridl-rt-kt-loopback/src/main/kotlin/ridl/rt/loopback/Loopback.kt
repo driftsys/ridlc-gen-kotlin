@@ -222,6 +222,8 @@ public class Loopback private constructor(
         is Interest.Outcome, Interest.Slot -> handles.caller.wakeOn(what, waker)
         is Interest.Event -> handles.source.wakeOn(what, waker)
         is Interest.Claim -> handles.handler.wakeOn(what, waker)
+        // No stream port yet, so no stream changes: nothing to wait for.
+        is Interest.Stream, is Interest.ClaimStream -> waker.wake()
     }
 
     override fun now(): Timestamp = handles.reader.now()

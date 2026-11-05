@@ -275,6 +275,8 @@ public data class Member(
      * row of [Sizes.reservations] is `0`.
      */
     public val payloads: List<PayloadInfo>,
+    /** One entry per stream of the member, in ascending [StreamNo]; empty for a member with no stream. */
+    public val streams: List<StreamInfo>,
 ) {
     /**
      * The member's `timing.max`: on a `command` or a `query` the response
@@ -292,6 +294,20 @@ public data class Member(
      * of which is a call deadline, so call it on a `command` or a `query`.
      */
     public fun callDeadline(): Duration? = timing?.max
+
+    /**
+     * The rate floor of the member's [timing] ([Timing.rateFloor]). `null` when
+     * the member has no timing or its timing declares no `min`.
+     * `ridl_rt::contract::Member::rate_floor`.
+     */
+    public fun rateFloor(): Duration? = timing?.rateFloor()
+
+    /**
+     * The staleness bound of the member's [timing] ([Timing.stalenessBound]).
+     * `null` when the member has no timing or its timing declares no `max`.
+     * `ridl_rt::contract::Member::staleness_bound`.
+     */
+    public fun stalenessBound(): Duration? = timing?.stalenessBound()
 }
 
 /**
@@ -345,6 +361,60 @@ public data class Timing(
     public val min: Duration?,
     /** The upper bound. `null` when the IR leaves it unset. */
     public val max: Duration?,
+) {
+    /**
+     * The rate floor: [min], the shortest interval between two publications of
+     * a signal or two raises of an event (ridl §9). `null` when the range
+     * declares no lower bound. Under [TimingMode.StrictPeriodic] it is the
+     * period. `min` is read whatever the member's kind.
+     * `ridl_rt::contract::Timing::rate_floor`.
+     */
+    public fun rateFloor(): Duration? = min
+
+    /**
+     * The staleness bound: [max], the longest a signal's value stays fresh
+     * without a new publication (ridl §9). `null` when the range declares no
+     * upper bound. Under [TimingMode.StrictPeriodic] it is the period. `max` is
+     * read whatever the member's kind.
+     * `ridl_rt::contract::Timing::staleness_bound`.
+     */
+    public fun stalenessBound(): Duration? = max
+}
+
+/**
+ * The number of a stream on its call (ridl §12). `0` names the reply stream
+ * ([ridl.rt.port.REPLY_STREAM]); `k` from `1` names the `k`-th stream parameter,
+ * counting only the stream parameters, in declaration order.
+ * `ridl_rt::contract::StreamNo`.
+ */
+@JvmInline
+public value class StreamNo(public val value: UByte) : Comparable<StreamNo> {
+    override fun compareTo(other: StreamNo): Int = value.compareTo(other.value)
+}
+
+/**
+ * The form of a stream (ridl §12). A member with no stream has no form: its
+ * [Member.streams] is empty. `ridl_rt::contract::StreamForm`.
+ */
+public enum class StreamForm {
+    /** A stream of elements of a named type: `<T>`. */
+    Elements,
+
+    /** A stream of bytes: `<bytes>`. */
+    Bytes,
+
+    /** A stream of text: `<string>`. */
+    Text,
+}
+
+/** One stream of a member. `ridl_rt::contract::StreamInfo`. */
+public data class StreamInfo(
+    /** The stream's number on the call. */
+    public val no: StreamNo,
+    /** The stream's form. */
+    public val form: StreamForm,
+    /** The canonical name of the element type under [StreamForm.Elements]; `""` otherwise. */
+    public val element: String,
 )
 
 /**

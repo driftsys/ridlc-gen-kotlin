@@ -71,6 +71,25 @@ public sealed class EncodeError(message: String) : RidlError(message) {
      */
     public data class Capacity(public val needed: Int, public val available: Int) :
         EncodeError("the encoding needs $needed bytes and the buffer has $available")
+
+    /**
+     * The value breaks a typl constraint: `INVALID_VALUE`, ridl §10.2. The
+     * mirror of [VerifyError.Contract]: the encoder refused the value and
+     * reports the rule the receiver's `verify` would have reported for it.
+     */
+    public data class Contract(public val violation: Violation) : EncodeError("INVALID_VALUE: $violation")
+
+    /** The output buffer does not start at the alignment the encoding requires. */
+    public data object Unaligned : EncodeError("the output buffer is not at the encoding's alignment")
+
+    /**
+     * The encoder asked for a layout the encoding does not allow, or stored a
+     * value outside the bytes it had reserved: a defect in the generated
+     * encoder, not in the value or in the output buffer. [at] is the offset of
+     * the first offending store, or the size the encoder asked for when that
+     * size is not allowed.
+     */
+    public data class Layout(public val at: Int) : EncodeError("the encoder broke the layout at $at")
 }
 
 /** A check that failed. `ridl_rt::payload::VerifyError`. */
@@ -114,6 +133,33 @@ public enum class Malformed {
      * a payload above the interaction's limit.
      */
     TooLarge,
+
+    /**
+     * A varint is longer than ten bytes, has a tenth byte above 1, or holds a
+     * value wider than the scalar of its field.
+     */
+    Varint,
+
+    /** A tag names field number 0, a wire type proto3 does not have, or one the known field's type does not take. */
+    WireType,
+
+    /** A field that is not repeated appears twice, or a union message carries two arms, or one arm twice. */
+    Duplicate,
+
+    /**
+     * A podbuf buffer is shorter than its 8-byte preamble, or the preamble's
+     * `head_size` is not a multiple of 8 or reaches past the end of the buffer.
+     */
+    Preamble,
+
+    /** A podbuf array or map descriptor states an `elem_size` the rules for its element type do not allow. */
+    Stride,
+
+    /** A podbuf string does not end in a NUL byte, or holds a NUL byte before its end. */
+    Terminator,
+
+    /** The keys of a podbuf map are not in strictly increasing order. */
+    KeyOrder,
 }
 
 /** A value that breaks a typl constraint. `ridl_rt::payload::Violation`. */
@@ -150,6 +196,9 @@ public enum class Rule {
 
     /** A map holds more than one entry with the same key. */
     Unique,
+
+    /** A text chunk of a `<string>` stream is not valid UTF-8 (ADR-0032 decision 12). */
+    Utf8,
 }
 
 /**

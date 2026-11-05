@@ -56,6 +56,15 @@ public sealed class Transport(message: String) : CallError(message) {
      * specification §9.6).
      */
     public data object Busy : Transport("the providing runtime refused the call at admission; retry later")
+
+    /**
+     * A stream stopped without its end, on purpose or because the call was
+     * forgotten. A producer stops its stream with this outcome through
+     * `abort` or `abortClaim`, and a caller's `forget` stops every stream of
+     * the call that was not ended with it. It is also the outcome of a call
+     * whose handler was dropped after it moved one of the call's streams.
+     */
+    public data object Interrupted : Transport("the stream stopped without its end")
 }
 
 /**
