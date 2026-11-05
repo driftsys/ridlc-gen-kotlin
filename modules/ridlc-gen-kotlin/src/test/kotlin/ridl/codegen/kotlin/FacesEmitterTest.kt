@@ -302,8 +302,9 @@ class FacesEmitterTest {
         val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
         val text = checkNotNull(FacesEmitter(demo().addDeclarations(level).addInterfaces(iface).build(), options).emit().text)
         val sentence = "Reads signal `level`, with the provenance, freshness and envelope the runtime resolved. A channel with no " +
-            "value under `Init` or `Invalid(Declared)` holds its init value; bytes that fail their check, none under any other " +
-            "provenance included, read as the init value under `Provenance.Invalid` with what was detected."
+            "value under `Init` or `Invalid` holds its init value. A payload that fails its check is `Provenance.Invalid` with " +
+            "what was detected: the runtime keeps the last good value, or the init value when there is none " +
+            "(`SignalReader.checkWith`)."
         assertTrue("   * The fill level.\n   *\n   * $sentence\n   */\n  public fun level(): Sample<Level> {" in text, text)
     }
 

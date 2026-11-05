@@ -57,8 +57,42 @@ public interface Clock {
     public fun now(): Timestamp
 }
 
-/** Signals, consumer side. `ridl_rt::port::SignalReader`. */
+/**
+ * A payload check registered by a generated binding. `ridl_rt::port::Check`.
+ *
+ * [check] takes the payload from the buffer's position to its limit, and throws
+ * the [ridl.rt.sample.Detection] when the payload fails. It calls no port, so a
+ * runtime may call it while holding its own lock.
+ */
+public fun interface Check {
+    /** @throws ridl.rt.sample.Detection when [bytes] fail the check. */
+    public fun check(bytes: ByteBuffer)
+}
+
+/**
+ * Signals, consumer side. `ridl_rt::port::SignalReader`.
+ *
+ * The binding registers a check through [checkWith], so the runtime keeps the
+ * last good bytes when a payload fails. A [ReadError] reports the read itself.
+ */
 public interface SignalReader : Attached {
+    /**
+     * Registers or replaces the check for one signal.
+     *
+     * From this call on, the runtime calls [check] on every payload it receives
+     * for this signal under `Live`, before replacing its held value. When the
+     * check passes, the payload becomes the value. When it throws a detection,
+     * the runtime keeps the last good bytes (no bytes when there are none),
+     * reports `Invalid(Cause.Detected(detection))`, and takes the rejected
+     * publication's envelope. A later passing `Live` payload restores `Live`.
+     *
+     * A held `Live` value is checked at once. When it fails, its bytes are
+     * cleared and its provenance becomes `Invalid(Cause.Detected(detection))`
+     * with the held envelope. Registration is not a publication: it advances no
+     * generation and changes no `seq`. A second call replaces the check.
+     */
+    public fun checkWith(iface: InterfaceNo, ord: Ordinal, check: Check)
+
     /**
      * Copies the signal's current value into [out] from its position and
      * returns its provenance, its freshness and its envelope.

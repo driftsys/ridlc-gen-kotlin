@@ -47,6 +47,7 @@ import ridl.rt.encoding.Encoding
 import ridl.rt.port.Attached
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
+import ridl.rt.port.Check
 import ridl.rt.port.Claim
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
@@ -92,6 +93,10 @@ public class ReaderHandle internal constructor(
 
     /** Wakes every key at once: no role of this handle observes one. */
     override fun wakeOn(what: Interest, waker: Waker): Unit = waker.wake()
+
+    override fun checkWith(iface: InterfaceNo, ord: Ordinal, check: Check) {
+        store.locked { checkWith(Key(iface, ord), check) }
+    }
 
     override fun read(iface: InterfaceNo, ord: Ordinal, out: ByteBuffer): RawSample =
         store.locked { read(Key(iface, ord), out) }

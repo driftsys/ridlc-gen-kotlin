@@ -73,6 +73,8 @@ private val TRANSPORT = ClassName("$RT.error", "Transport")
 private val VERIFY_ERROR = ClassName("$RT.payload", "VerifyError")
 private val PAYLOAD = ClassName("$RT.payload", "Payload")
 private val SIGNAL_READER = ClassName("$RT.port", "SignalReader")
+private val CHECK = ClassName("$RT.port", "Check")
+private val PAYLOAD_CHECK = MemberName("$RT.payload", "check")
 private val SIGNAL_WRITER = ClassName("$RT.port", "SignalWriter")
 private val EVENT_SOURCE = ClassName("$RT.port", "EventSource")
 private val EVENT_SINK = ClassName("$RT.port", "EventSink")
@@ -283,15 +285,15 @@ class FacesEmitter internal constructor(
             FunSpec.builder("sampled").addModifiers(KModifier.PRIVATE).addTypeVariable(t).addTypeVariable(v)
                 .addKdoc(
                     "The sample of [signal] a read copied into [buf], with the provenance, freshness and envelope the " +
-                        "runtime resolved. A channel with no value under `Init` or `Invalid(Declared)` holds its init value; " +
-                        "bytes that fail their check, none under any other provenance included, read as the init value under " +
-                        "`Provenance.Invalid` with what was detected.",
+                        "runtime resolved. A channel with no value under `Init` or `Invalid` holds its init value; the last " +
+                        "good value under `Invalid` is decoded as it is; bytes that fail their check here, none under `Live` " +
+                        "included, read as the init value under `Provenance.Invalid` with what was detected.",
                 )
                 .addParameter("codec", PAYLOAD.parameterizedBy(t, v)).addParameter("signal", SIGNAL.parameterizedBy(t))
                 .addParameter("raw", RAW_SAMPLE).addParameter("buf", BYTE_BUFFER).returns(SAMPLE.parameterizedBy(t))
                 .beginControlFlow(
-                    "if (raw.len == 0 && (raw.provenance == %T.Init || raw.provenance == %T.Invalid(%T.Declared)))",
-                    PROVENANCE, PROVENANCE, CAUSE,
+                    "if (raw.len == 0 && (raw.provenance == %T.Init || raw.provenance is %T.Invalid))",
+                    PROVENANCE, PROVENANCE,
                 )
                 .addStatement("return %T(signal.init(), raw.provenance, raw.freshness, raw.envelope)", SAMPLE)
                 .endControlFlow()
@@ -693,6 +695,7 @@ class FacesEmitter internal constructor(
             // What only the face uses: an internal interface has none.
             if (internal) return builder.build()
             builder.addFunction(checkCatalog()).addFunction(checkEncoding())
+            if (signals.isNotEmpty()) builder.addFunction(bindChecks())
             for (m in commands + queries) {
                 builder.addType(
                     TypeSpec.classBuilder(correlation(m).simpleName)
@@ -1057,7 +1060,7 @@ class FacesEmitter internal constructor(
                 .addTypeVariable(p)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("port", p).build())
                 .addProperty(PropertySpec.builder("port", p, KModifier.INTERNAL).initializer("port").build())
-                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self))
+                .addInitializerBlock(binding())
             for (m in signals) {
                 val payload = signalPayload(m)
                 builder.addFunction(
@@ -1065,9 +1068,9 @@ class FacesEmitter internal constructor(
                         .doc(
                             (
                                 "Reads signal `${m.declared}`, with the provenance, freshness and envelope the runtime resolved. " +
-                                    "A channel with no value under `Init` or `Invalid(Declared)` holds its init value; bytes that " +
-                                    "fail their check, none under any other provenance included, read as the init value under " +
-                                    "`Provenance.Invalid` with what was detected."
+                                    "A channel with no value under `Init` or `Invalid` holds its init value. A payload that fails " +
+                                    "its check is `Provenance.Invalid` with what was detected: the runtime keeps the last good " +
+                                    "value, or the init value when there is none (`SignalReader.checkWith`)."
                                 ).let { if (pollFace) it else memberDoc(m, it) },
                         )
                         .addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, payload.codec)
@@ -1169,6 +1172,32 @@ class FacesEmitter internal constructor(
          * process's. An idle state runs no coroutine, so the default scope
          * needs no cancelling.
          */
+        /**
+         * `bindChecks`, the descriptor's registration of one check per signal
+         * with the runtime (driftsys/ridl#1237), so a payload that fails is
+         * rejected before it replaces the value the runtime holds: the Rust
+         * `Client::new`. A client that reads signals calls it once per binding.
+         */
+        private fun bindChecks(): FunSpec = FunSpec.builder("bindChecks").addModifiers(KModifier.INTERNAL)
+            .addKdoc(
+                "Registers the check of every signal of interface `%L` with [port], so the runtime keeps a signal's " +
+                    "last good value when a payload fails. Every client that reads signals calls it once per binding.",
+                iface.declared.declared,
+            )
+            .addParameter("port", SIGNAL_READER)
+            .apply {
+                for (m in signals) {
+                    addStatement("port.checkWith(%L, %L, %T { %M(%T, it) })", number(), ordinal(m), CHECK, PAYLOAD_CHECK, signalPayload(m).codec)
+                }
+            }
+            .build()
+
+        /** What a client's constructor runs: the two comparisons, then the signals' checks when it reads any. */
+        private fun binding(): CodeBlock = CodeBlock.builder()
+            .add("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self)
+            .apply { if (signals.isNotEmpty()) add("%T.bindChecks(port)\n", self) }
+            .build()
+
         private fun signalConstructor(p: TypeVariableName): FunSpec = FunSpec.constructorBuilder().addParameter("port", p)
             .addParameter(
                 ParameterSpec.builder("scope", COROUTINE_SCOPE)
@@ -1239,7 +1268,7 @@ class FacesEmitter internal constructor(
                 .addTypeVariable(p)
                 .primaryConstructor(signalConstructor(p))
                 .addProperty(PropertySpec.builder("_port", p, KModifier.INTERNAL).initializer("port").build())
-                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self))
+                .addInitializerBlock(binding())
                 .addProperty(signalStatesProperty())
                 .build()
         }
@@ -1369,7 +1398,7 @@ class FacesEmitter internal constructor(
                 .primaryConstructor(if (signals.isNotEmpty()) signalConstructor(p) else FunSpec.constructorBuilder().addParameter("port", p).build())
                 // Every member name starts with `_`, which no ridl identifier does: no signal's extension is shadowed (#76).
                 .addProperty(PropertySpec.builder("_port", p, KModifier.INTERNAL).initializer("port").build())
-                .addInitializerBlock(CodeBlock.of("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self))
+                .addInitializerBlock(binding())
             if (signals.isNotEmpty()) {
                 builder.addProperty(signalStatesProperty())
                 signalStates(Receiver(ClassName(pkg, "${name}AsyncClient"), waitingBounds(), internal))

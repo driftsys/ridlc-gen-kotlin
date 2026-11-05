@@ -112,6 +112,15 @@ and 79 in all. The suite attaches to a catalog with no descriptor, so they pin
 the default ceiling of each kind; a limit other than that is a runtime's own
 API, in the loopback `Loopback.setLimit`.
 
+ridl 0.15 (driftsys/ridl#1237): `SignalReader.checkWith` is required, and the
+base arm gains `a payload that fails its check keeps the last good value`,
+`a payload
+that fails its check before any good value copies nothing`,
+`a check registered
+over a held value checks it` and
+`a touch after a failed check keeps the
+detection`: 50 base cases and 83 in all.
+
 The case of a forget before any claim accepts either a call still presented and
 settled or a withdrawn one, and checks that the runtime then accepts exactly
 `slots` further sends, so the forgotten call gave its slot back.
