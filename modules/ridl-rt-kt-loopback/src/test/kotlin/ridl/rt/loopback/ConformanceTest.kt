@@ -5,6 +5,7 @@ import org.junit.jupiter.api.TestFactory
 import ridl.rt.conformance.Factory
 import ridl.rt.conformance.coherentSuite
 import ridl.rt.conformance.scannableSuite
+import ridl.rt.conformance.streamsSuite
 import ridl.rt.conformance.suite
 import ridl.rt.conformance.traceSuite
 import ridl.rt.conformance.wakeableSuite
@@ -17,8 +18,7 @@ import ridl.rt.sample.Duration
 /**
  * The port contract suite of `ridl-rt-kt-conformance`, run over this runtime:
  * `crates/ridl-loopback/tests/conformance.rs`. Every test the suite has runs
- * here, including those of the three extensions, which the loopback
- * implements. The tests of what only this runtime can express are in
+ * here, including those of the extensions, which the loopback implements. The tests of what only this runtime can express are in
  * `PortsTest`.
  */
 class ConformanceTest {
@@ -53,4 +53,7 @@ class ConformanceTest {
 
     @TestFactory
     fun `the trace context`(): List<DynamicTest> = traceSuite(LoopbackFactory)
+
+    @TestFactory
+    fun `the streams extension`(): List<DynamicTest> = streamsSuite(LoopbackFactory)
 }

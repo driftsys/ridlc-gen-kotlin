@@ -18,6 +18,7 @@ package ridl.rt.loopback
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Kind
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.StreamNo
 import ridl.rt.contract.defaultCeiling
 import ridl.rt.correlate.Forgotten
 import ridl.rt.correlate.Settled
@@ -32,6 +33,9 @@ import ridl.rt.port.Claim
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
+import ridl.rt.port.Pull
+import ridl.rt.port.PushError
+import ridl.rt.port.REPLY_STREAM
 import ridl.rt.port.RaiseError
 import ridl.rt.port.RawOccurrence
 import ridl.rt.port.RawSample
@@ -48,6 +52,7 @@ import ridl.rt.sample.Freshness
 import ridl.rt.sample.Provenance
 import ridl.rt.sample.Timestamp
 import ridl.rt.task.Waker
+import ridl.rt.task.noopWaker
 import ridl.rt.trace.TraceContext
 import java.nio.ByteBuffer
 import java.util.ArrayDeque
@@ -66,6 +71,74 @@ internal sealed interface Staged {
     data object Invalidate : Staged
 
     data object Touch : Staged
+}
+
+/** The outcome a forget records on every stream of the call. */
+private val INTERRUPTED: CallError = Transport.Interrupted
+
+/** One side of a call's streams: the caller, which holds the correlation, or the provider, which holds the claim. */
+internal enum class Side {
+    Caller,
+    Provider,
+    ;
+
+    val other: Side get() = if (this == Caller) Provider else Caller
+
+    companion object {
+        /** The side that pushes to stream [s]: the provider for the reply stream, and the caller for a stream parameter. */
+        fun producer(s: StreamNo): Side = if (s == REPLY_STREAM) Provider else Caller
+    }
+}
+
+/**
+ * One stream of one call: the chunks pushed and not yet pulled, and how the
+ * stream stopped, if it did. The caller's `Interest.Stream` waker of the stream
+ * is kept in the call table, with the call; the provider's
+ * `Interest.ClaimStream` waker is kept here.
+ */
+private class StreamState {
+    val chunks = ArrayDeque<ByteArray>()
+
+    /** `true` once the producer ended the stream. */
+    var ended = false
+
+    /** The outcome the stream stopped with and the side that stopped it: an abort, a settlement with an error of the reply stream, or a forget. */
+    var stopped: Pair<CallError, Side>? = null
+
+    /** The provider's `Interest.ClaimStream` waker. */
+    var claimWaker: Waker? = null
+
+    /** `true` once the provider pulled `End` or `Failed` from the stream. */
+    var drained = false
+
+    /** Whether the window has no room for another non-empty chunk. */
+    val full: Boolean get() = chunks.count { it.isNotEmpty() } >= Loopback.STREAM_WINDOW
+
+    /** Whether the stream ended or stopped. */
+    val finished: Boolean get() = ended || stopped != null
+
+    /**
+     * What a push, an end or an abort of [side] answers when the stream no
+     * longer takes one: `Failed` with the outcome the other side stopped it
+     * with, and `Ended` after its end or this side's own stop.
+     */
+    fun closed(side: Side): PushError? {
+        val (error, by) = stopped ?: return if (ended) PushError.Ended else null
+        return if (by != side) PushError.Failed(error) else PushError.Ended
+    }
+
+    /**
+     * Drops the unread chunks of a stream parameter the provider is done with,
+     * stops it with `Transport.Interrupted` by the provider's side unless it
+     * already finished, and counts it as read.
+     */
+    fun release() {
+        chunks.clear()
+        if (!finished) stopped = INTERRUPTED to Side.Provider
+        drained = true
+    }
+
+    fun takeClaimWaker(): Waker? = claimWaker.also { claimWaker = null }
 }
 
 internal enum class CallKind(
@@ -183,6 +256,73 @@ internal class Store {
          * given. `null` until then.
          */
         var claim: Long? = null
+
+        /**
+         * The handler that settled the claim. A settled claim's streams go on
+         * until the call is forgotten — a command is settled at its
+         * acknowledgment — so this handler still addresses them by the claim
+         * id.
+         */
+        var settledBy: Int? = null
+
+        /** The call's streams, by stream number. A stream has an entry from the first operation that names it. */
+        val streams = TreeMap<StreamNo, StreamState>()
+
+        /**
+         * `true` while the caller's `forget` waits for the provider: the call
+         * is forgotten, but the table is not told until the provider has pulled
+         * every stream parameter to its end or its handler is closed, so the
+         * slot is not reclaimed before then. [forgotten] is set as well.
+         */
+        var pendingForget: Boolean = false
+
+        /** `true` once a query was settled, or a command settled with an error: its stream parameters are released. */
+        var parametersReleased: Boolean = false
+
+        /**
+         * `true` once the provider moved one of the call's streams: it pulled
+         * a chunk, an end or a failure, pushed or ended a stream, or aborted
+         * one. A closed handler's call with this mark is interrupted rather
+         * than presented again, because another handler would read partial
+         * streams. A pull that answers `Pending` and a registration move
+         * nothing.
+         */
+        var providerUsedStreams: Boolean = false
+
+        /**
+         * Releases the stream parameters of a query at its settlement, and of
+         * a command at a settlement with an error, which refuses the whole
+         * call: the provider is done with them, so their unread chunks are
+         * dropped and every unfinished one stops with `Transport.Interrupted`,
+         * by the provider's side. A stream parameter first named afterwards
+         * starts in the same state. The provider's waker of each released
+         * stream goes on [wake], because the stream will not change again.
+         */
+        fun releaseParameters(wake: MutableList<Waker>) {
+            parametersReleased = true
+            for ((no, stream) in streams) {
+                if (no != REPLY_STREAM) {
+                    stream.release()
+                    stream.takeClaimWaker()?.let(wake::add)
+                }
+            }
+        }
+
+        /** Whether the provider still has a stream parameter to pull to its end. */
+        fun undrained(): Boolean = streams.any { (no, stream) -> no != REPLY_STREAM && !stream.drained }
+
+        /**
+         * Stream [s] of the call, made empty when nothing has named it yet. A
+         * stream first named after the caller forgot the call starts stopped
+         * with `Transport.Interrupted`, as the forget stopped every stream the
+         * call had.
+         */
+        fun stream(s: StreamNo): StreamState = streams.getOrPut(s) {
+            StreamState().also {
+                if (forgotten) it.stopped = INTERRUPTED to Side.Caller
+                if (parametersReleased && s != REPLY_STREAM) it.release()
+            }
+        }
     }
 
     private var now = Timestamp(0)
@@ -480,18 +620,27 @@ internal class Store {
      * an unknown or forgotten one. The table decides which.
      */
     fun waitOutcome(c: Correlation, waker: Waker, wake: MutableList<Waker>) {
+        if (forgottenPending(c)) {
+            wake += waker
+            return
+        }
         table.wakeOn(c, waker)?.let(wake::add)
     }
+
+    /** Whether [c] is a call whose `forget` waits for the provider: the table still holds it, but the caller released it. */
+    private fun forgottenPending(c: Correlation): Boolean = calls[Table.slot(c)]?.let { it.correlation == c && it.pendingForget } ?: false
 
     fun ack(c: Correlation): Result<Unit>? {
         // The table answers `null` for a call in flight, forgotten, or not
         // held; a correlation it answers for has its entry here.
         val outcome = table.outcome(c) ?: return null
+        if (forgottenPending(c)) return null
         // A query's correlation always answers `null` here: its outcome comes from `reply`.
         return outcome.takeIf { entry(c).kind == CallKind.Command }
     }
 
     fun reply(c: Correlation, out: ByteBuffer): Result<Int>? {
+        if (forgottenPending(c)) return null
         val outcome = table.outcome(c) ?: return null
         return outcome.map {
             val bytes = entry(c).reply
@@ -504,8 +653,11 @@ internal class Store {
      * Releases the caller's interest in a correlation, the one operation that
      * frees a slot. What it does depends on where the call is:
      *
-     * - **Settled**: nothing is left to happen to it, so its slot is
-     *   reclaimed now.
+     * - **Settled**: its slot is reclaimed now, unless the provider still has
+     *   a stream parameter to pull to its end, as for a command acknowledged
+     *   whose stream parameter is not drained. Then [deferForget] marks it
+     *   forgotten and keeps its slot until the provider is done with every
+     *   stream parameter or its handler is closed.
      * - **Claimed by a handler and not settled**: it is marked forgotten and
      *   keeps its slot. The provider still settles it, and the slot is
      *   reclaimed when that settlement lands. If the handler is closed first,
@@ -529,11 +681,49 @@ internal class Store {
      * no handler's `Claim` waiter, because it adds no call to claim.
      */
     fun forget(c: Correlation, wake: MutableList<Waker>) {
+        if (forgottenPending(c)) return
+        interruptStreams(c, wake)
         if (!offered(c) && pending.remove(c)) return withdraw(c, wake)
+        if (deferForget(c, wake)) return
+        forgetInTable(c, wake)
+    }
+
+    /**
+     * Defers the `forget` of a call that a handler holds or settled while the
+     * provider has a stream parameter to pull to its end: the call is marked
+     * forgotten here and not in the table, so its slot stays taken. Its
+     * `Outcome` waker and its `Stream` wakers are woken now, as a forget wakes
+     * them. Answers whether it deferred.
+     */
+    private fun deferForget(c: Correlation, wake: MutableList<Waker>): Boolean {
+        val slot = Table.slot(c)
+        val entry = calls[slot] ?: return false
+        val held = entry.claim?.let { it in claims } == true || entry.settledBy != null
+        if (entry.correlation != c || entry.forgotten || !held || !entry.undrained()) return false
+        entry.forgotten = true
+        entry.pendingForget = true
+        // The table hands back the stored `Outcome` waker when another is
+        // registered in its place; the no-op waker left behind wakes nothing.
+        table.wakeOn(c, noopWaker())?.let(wake::add)
+        wake += table.takeStreams(slot)
+        return true
+    }
+
+    /** Completes a deferred `forget` once the provider has pulled every stream parameter to its end. */
+    private fun releaseIfDrained(slot: Int, wake: MutableList<Waker>) {
+        val entry = calls[slot] ?: return
+        if (!entry.pendingForget || entry.undrained()) return
+        entry.pendingForget = false
+        forgetInTable(entry.correlation, wake)
+    }
+
+    /** The table's part of a `forget`: a settled call's slot is reclaimed, and a call in flight is marked, so that its settlement reclaims it. */
+    private fun forgetInTable(c: Correlation, wake: MutableList<Waker>) {
         when (val forgotten = table.forget(c)) {
             Forgotten.Reclaimed -> reclaimed(c, wake)
             is Forgotten.Marked -> {
                 forgotten.waker?.let(wake::add)
+                wake += table.takeStreams(Table.slot(c))
                 entry(c).forgotten = true
             }
             Forgotten.Unknown -> {}
@@ -570,9 +760,13 @@ internal class Store {
      * Drops what the loopback kept for a reclaimed slot, and takes every
      * caller's `Slot` waker: the first to send again takes the slot, and the
      * others find the table full and register again (note F-5, no queue).
+     * Every stream waker of the call is taken as well, so that no task waits
+     * on a stream that is gone.
      */
     private fun reclaimed(c: Correlation, wake: MutableList<Waker>) {
-        calls.remove(Table.slot(c))
+        val slot = Table.slot(c)
+        wake += table.takeStreams(slot)
+        calls.remove(slot)?.streams?.values?.forEach { stream -> stream.claimWaker?.let(wake::add) }
         for (waiters in callers.values) waiters.take(Interest.Slot)?.let(wake::add)
     }
 
@@ -585,7 +779,9 @@ internal class Store {
      * slot reclaimed now, and one a handler has claimed is marked, so its
      * settlement reclaims the slot. No handle can read the outcome of a call
      * whose caller is gone, and a slot kept for it would be lost to every
-     * other caller.
+     * other caller. One exception holds the slot longer: a call whose provider
+     * still has a stream parameter to read keeps its slot until the provider is
+     * done with it or its handler is closed ([deferForget]).
      */
     fun closeCaller(id: Int, wake: MutableList<Waker>) {
         callers.remove(id)
@@ -605,7 +801,9 @@ internal class Store {
      * returns to the waiting calls, in its place by send order and under the
      * id it was first presented with, so another handler that serves the
      * member can take it, and every handler that serves the member has its
-     * `Claim` waker returned. A claim it had only been offered, through
+     * `Claim` waker returned, unless the handler already moved one of the
+     * call's streams: such a call is interrupted instead ([interruptClaim]). A
+     * claim it had only been offered, through
      * `ReadError.ShortClaim`, never left the waiting calls, so it is neither
      * re-inserted nor woken for; its id stays on the entry for the next
      * presentation (driftsys/ridl#569). A claim whose call the caller forgot
@@ -617,6 +815,29 @@ internal class Store {
      */
     fun closeHandler(id: Int, wake: MutableList<Waker>) {
         handlers.remove(id)
+        val released = mutableListOf<Correlation>()
+        // The closed handler's `ClaimStream` wakers, of the claims it holds and
+        // of those it settled, are taken; a settled claim's streams are no
+        // longer addressable.
+        for ((slot, entry) in calls) {
+            val holds = entry.claim?.let { claims[it] }?.handler == id
+            if (!holds && entry.settledBy != id) continue
+            if (entry.settledBy == id) {
+                entry.settledBy = null
+                // No provider is left to read the stream parameters of the
+                // settled claim: they are released, as a query's settlement
+                // releases them, and the caller's waiters on them are woken.
+                // The reply stream of a settled claim already ended or stopped.
+                entry.releaseParameters(wake)
+                wake += table.takeStreams(slot)
+                if (entry.pendingForget) {
+                    entry.pendingForget = false
+                    released += entry.correlation
+                }
+            }
+            for (stream in entry.streams.values) stream.takeClaimWaker()?.let(wake::add)
+        }
+        for (c in released) forgetInTable(c, wake)
         val held = claims.filterValues { it.handler == id }.keys.toList()
         for (claim in held) {
             val owner = claims.remove(claim)!!
@@ -629,9 +850,41 @@ internal class Store {
                 continue
             }
             if (!owner.taken) continue
+            if (entry.providerUsedStreams) {
+                // This handler already moved the call's streams, so another
+                // handler cannot take the call over without reading partial
+                // streams.
+                interruptClaim(owner.call, wake)
+                continue
+            }
             val at = pending.indexOfFirst { entry(it).sent > entry.sent }.let { if (it < 0) pending.size else it }
             pending.add(at, owner.call)
             wakeHandlersServing(entry.key, wake)
+        }
+    }
+
+    /**
+     * Ends a taken call whose handler was closed after its streams were used:
+     * every unfinished stream stops with `Transport.Interrupted`, by the
+     * provider's side, and the call settles with the same error, which wakes
+     * its `Outcome` waker and its `Stream` wakers.
+     */
+    private fun interruptClaim(c: Correlation, wake: MutableList<Waker>) {
+        val entry = entry(c)
+        // As any settlement with an error does: every unfinished stream
+        // parameter stops, and one first named afterwards starts stopped.
+        entry.releaseParameters(wake)
+        // It stops the reply stream too, whether or not anything named it yet.
+        val reply = entry.stream(REPLY_STREAM)
+        if (!reply.finished) reply.stopped = INTERRUPTED to Side.Provider
+        reply.takeClaimWaker()?.let(wake::add)
+        when (val settled = table.settle(c, Result.failure(INTERRUPTED))) {
+            is Settled.Recorded -> {
+                settled.waker?.let(wake::add)
+                wake += table.takeStreams(Table.slot(c))
+            }
+            Settled.Reclaimed -> reclaimed(c, wake)
+            Settled.Unknown -> error("a held claim names a call in flight")
         }
     }
 
@@ -709,9 +962,10 @@ internal class Store {
     /**
      * Records a claim's outcome. The claim is looked up before an injected
      * failure is consumed, and an injected failure leaves the claim
-     * settleable. A recorded outcome wakes the call's `Outcome` waker; the
-     * settlement of a call the caller forgot records nothing and reclaims its
-     * slot.
+     * settleable. A recorded outcome wakes the call's `Outcome` waker, ends the
+     * reply stream, or stops it with the error, after the chunks already pushed,
+     * and wakes every `Stream` waker of the call. The settlement of a call the
+     * caller forgot records nothing and reclaims its slot.
      */
     fun settle(handler: Int, claim: ClaimId, outcome: Result<ByteArray>, wake: MutableList<Waker>) {
         val owner = claims[claim.value]
@@ -732,8 +986,27 @@ internal class Store {
         if (!owner.taken) pending.remove(owner.call)
         when (val settled = table.settle(owner.call, outcome.map { })) {
             is Settled.Recorded -> {
-                outcome.onSuccess { entry(owner.call).reply = it }
+                val entry = entry(owner.call)
+                outcome.onSuccess { entry.reply = it }
+                entry.settledBy = handler
+                // A query's settlement is its end, and a settlement with an
+                // error refuses the whole call: either way the provider is
+                // done with the stream parameters. A command's settlement
+                // with no error is its acknowledgment, and its stream
+                // parameters go on after it.
+                if (entry.kind == CallKind.Query || outcome.isFailure) entry.releaseParameters(wake)
+                // The settlement ends the reply stream, or stops it with the
+                // error, after the chunks already pushed.
+                val reply = entry.stream(REPLY_STREAM)
+                if (!reply.finished) {
+                    outcome.fold(
+                        onSuccess = { reply.ended = true },
+                        onFailure = { reply.stopped = (it as CallError) to Side.Provider },
+                    )
+                }
                 settled.waker?.let(wake::add)
+                wake += table.takeStreams(Table.slot(owner.call))
+                releaseIfDrained(Table.slot(owner.call), wake)
             }
             // The caller released it while it was in flight: it was still
             // presented and is still settled, and the slot goes with it.
@@ -744,6 +1017,224 @@ internal class Store {
 
     fun failNextSettle() {
         failNextSettle = true
+    }
+
+    // -- streams ------------------------------------------------------------
+
+    /**
+     * The slot of the call the caller holds under [c]: `null` for a correlation
+     * the table does not hold, of a generation the slot no longer has, or that
+     * the caller forgot.
+     */
+    fun callerSlot(c: Correlation): Int? {
+        val slot = Table.slot(c)
+        return slot.takeIf { calls[it]?.let { entry -> entry.correlation == c && !entry.forgotten } == true }
+    }
+
+    /**
+     * The slot of the call [handler] holds under [claim]: a claim it took and
+     * has not settled, or one it settled whose call the caller has not forgotten
+     * yet. A claim only offered through `ReadError.ShortClaim` has no streams
+     * yet: the handler takes it first, so that a call whose offer moves to
+     * another handler, or returns to the waiting calls, has no stream that one
+     * holder has partly read.
+     */
+    fun claimSlot(handler: Int, claim: ClaimId): Int? {
+        val (slot, entry) = calls.entries.firstOrNull { it.value.claim == claim.value } ?: return null
+        val owner = claims[claim.value]
+        val holder = if (owner != null) owner.handler.takeIf { owner.taken } else entry.settledBy
+        return slot.takeIf { holder == handler }
+    }
+
+    /** Takes the waker of [side] on stream [s] of the call in [slot]: the caller's from the call table, the provider's from the stream. */
+    private fun takeStreamWaker(slot: Int, s: StreamNo, side: Side): Waker? {
+        val entry = calls[slot] ?: return null
+        return when (side) {
+            Side.Caller -> table.takeStream(entry.correlation, s)
+            Side.Provider -> entry.streams[s]?.takeClaimWaker()
+        }
+    }
+
+    /**
+     * Copies the next chunk of stream [s] of the call in [slot] into [out], for
+     * [side], which must be the stream's receiver. A chunk taken wakes the
+     * producer, whose window it frees.
+     */
+    fun pull(slot: Int, side: Side, s: StreamNo, out: ByteBuffer, wake: MutableList<Waker>): Pull {
+        if (Side.producer(s) == side) throw ReadError.Contract(Contract.UnknownInteraction)
+        val entry = calls.getValue(slot)
+        val stream = entry.stream(s)
+        val front = stream.chunks.peekFirst()
+        if (front == null) {
+            val stopped = stream.stopped
+            val pull = when {
+                stream.ended -> Pull.End
+                stopped != null -> Pull.Failed(stopped.first)
+                else -> return Pull.Pending
+            }
+            if (side == Side.Provider) {
+                stream.drained = true
+                entry.providerUsedStreams = true
+                releaseIfDrained(slot, wake)
+            }
+            return pull
+        }
+        copyInto(front, out)
+        stream.chunks.removeFirst()
+        if (side == Side.Provider) entry.providerUsedStreams = true
+        takeStreamWaker(slot, s, side.other)?.let(wake::add)
+        return Pull.Chunk(front.size)
+    }
+
+    /**
+     * Offers one chunk to stream [s] of the call in [slot], for [side], which
+     * must be the stream's producer. A chunk taken wakes the receiver.
+     */
+    fun push(slot: Int, side: Side, s: StreamNo, chunk: ByteArray, wake: MutableList<Waker>): Int {
+        if (Side.producer(s) != side) throw PushError.Contract(Contract.UnknownInteraction)
+        val entry = calls.getValue(slot)
+        if (side == Side.Provider && entry.forgotten) throw PushError.Failed(INTERRUPTED)
+        val stream = entry.stream(s)
+        stream.closed(side)?.let { throw it }
+        admit(entry.key, entry.kind.kind, chunk.size, PushError::TooLarge)
+        // An empty chunk is always taken: the window bounds the non-empty chunks only.
+        if (chunk.isNotEmpty() && stream.full) return 0
+        stream.chunks.addLast(chunk)
+        if (side == Side.Provider) entry.providerUsedStreams = true
+        takeStreamWaker(slot, s, side.other)?.let(wake::add)
+        return chunk.size
+    }
+
+    /** Ends stream [s] of the call in [slot], for [side], which must be the stream's producer. The end wakes the receiver. */
+    fun end(slot: Int, side: Side, s: StreamNo, wake: MutableList<Waker>) {
+        if (Side.producer(s) != side) throw PushError.Contract(Contract.UnknownInteraction)
+        val entry = calls.getValue(slot)
+        if (side == Side.Provider && entry.forgotten) throw PushError.Failed(INTERRUPTED)
+        val stream = entry.stream(s)
+        stream.closed(side)?.let { throw it }
+        // The provider produces only the reply stream, and reaches this end
+        // only for a claim already settled, whose reply stream the settlement
+        // finished: so the provider never gets past `closed`.
+        stream.ended = true
+        takeStreamWaker(slot, s, side.other)?.let(wake::add)
+    }
+
+    /** Stops stream [s] of the call in [slot] with [error], from either side. The stop wakes the other side. */
+    fun abort(slot: Int, side: Side, s: StreamNo, error: CallError, wake: MutableList<Waker>) {
+        val entry = calls.getValue(slot)
+        if (side == Side.Provider) entry.providerUsedStreams = true
+        val stream = entry.stream(s)
+        val receiver = Side.producer(s) != side
+        if (stream.finished) {
+            // A receiver's abort of a stream that already ended or stopped
+            // changes nothing for the producer; the receiver is done with the
+            // stream all the same, so its unread chunks are dropped, and a
+            // provider that refuses a stream parameter this way does not hold
+            // the call's slot.
+            if (receiver) {
+                stream.chunks.clear()
+                if (side == Side.Provider) {
+                    stream.drained = true
+                    releaseIfDrained(slot, wake)
+                }
+            }
+            throw PushError.Ended
+        }
+        stream.stopped = error to side
+        // A receiver that refuses the stream reads none of what it refused:
+        // its later pulls answer `Failed` with its own outcome.
+        if (receiver) stream.chunks.clear()
+        // A stream the provider stopped itself needs no more reading by it.
+        if (side == Side.Provider) stream.drained = true
+        takeStreamWaker(slot, s, side.other)?.let(wake::add)
+        if (side == Side.Provider) releaseIfDrained(slot, wake)
+    }
+
+    /**
+     * `endClaim`: on the reply stream of a claim still held, the claim's
+     * settlement with no reply bytes, which ends the stream; on any other
+     * stream, or a claim already settled, an end.
+     */
+    fun endClaim(handler: Int, claim: ClaimId, s: StreamNo, wake: MutableList<Waker>) {
+        val slot = claimSlot(handler, claim) ?: throw PushError.Contract(Contract.UnknownInteraction)
+        if (s != REPLY_STREAM || claim.value !in claims) return end(slot, Side.Provider, s, wake)
+        // The claim is settled whatever the stream's verdict, so that a
+        // provider whose reply stream was stopped does not hold the call's
+        // slot; the verdict is the answer.
+        val entry = calls.getValue(slot)
+        val verdict = if (entry.forgotten) PushError.Failed(INTERRUPTED) else entry.stream(s).closed(Side.Provider)
+        // After the caller refused the reply stream, the claim settles with
+        // that refusal as its outcome.
+        val outcome = if (verdict is PushError.Failed) Result.failure(verdict.error) else Result.success(ByteArray(0))
+        settleForStream(handler, claim, outcome, wake)
+        verdict?.let { throw it }
+    }
+
+    /**
+     * `abortClaim`: on the reply stream of a claim still held, the claim's
+     * settlement with [error], which stops the stream; on any other stream, or
+     * a claim already settled, an abort.
+     */
+    fun abortClaim(handler: Int, claim: ClaimId, s: StreamNo, error: CallError, wake: MutableList<Waker>) {
+        val slot = claimSlot(handler, claim) ?: throw PushError.Contract(Contract.UnknownInteraction)
+        if (s != REPLY_STREAM || claim.value !in claims) return abort(slot, Side.Provider, s, error, wake)
+        // The claim is settled whatever the stream's state, as in `endClaim`.
+        val finished = calls.getValue(slot).stream(s).finished
+        settleForStream(handler, claim, Result.failure(error), wake)
+        if (finished) throw PushError.Ended
+    }
+
+    /** [settle], with the push error a settlement through `endClaim` or `abortClaim` throws when it is refused. */
+    private fun settleForStream(handler: Int, claim: ClaimId, outcome: Result<ByteArray>, wake: MutableList<Waker>) {
+        try {
+            settle(handler, claim, outcome, wake)
+        } catch (e: SettleError) {
+            throw when (e) {
+                SettleError.UnknownClaim -> PushError.Contract(Contract.UnknownInteraction)
+                is SettleError.TooLarge -> PushError.TooLarge(e.cap)
+                SettleError.Detached -> PushError.Detached
+            }
+        }
+    }
+
+    /** Stores the caller's `Interest.Stream(c, s)` waker with the call, in the table, which wakes it at once for a correlation it does not hold or that the caller forgot. */
+    fun waitStream(c: Correlation, s: StreamNo, waker: Waker, wake: MutableList<Waker>) {
+        if (forgottenPending(c)) {
+            wake += waker
+            return
+        }
+        table.wakeOnStream(c, s, waker)?.let(wake::add)
+    }
+
+    /**
+     * Stores the provider's `Interest.ClaimStream(claim, s)` waker with the
+     * stream, or wakes it at once when [handler] holds no such claim or the
+     * caller forgot the call, or the stream ended, stopped or was released, since
+     * it will not change again.
+     */
+    fun waitClaimStream(handler: Int, claim: ClaimId, s: StreamNo, waker: Waker, wake: MutableList<Waker>) {
+        val entry = claimSlot(handler, claim)?.let(calls::getValue)
+        if (entry == null || entry.forgotten) {
+            wake += waker
+            return
+        }
+        val stream = entry.stream(s)
+        stream.claimWaker = replace(stream.claimWaker, waker, stream.finished, wake)
+    }
+
+    /**
+     * Stops every stream of the call the caller holds under [c] with
+     * `Transport.Interrupted`, except one already ended or stopped, and takes
+     * the provider's waker of each stream. A correlation the caller does not
+     * hold changes nothing, so a stale one does not touch the call now in its
+     * slot.
+     */
+    private fun interruptStreams(c: Correlation, wake: MutableList<Waker>) {
+        val entry = calls[callerSlot(c) ?: return] ?: return
+        for (stream in entry.streams.values) {
+            if (!stream.finished) stream.stopped = INTERRUPTED to Side.Caller
+            stream.takeClaimWaker()?.let(wake::add)
+        }
     }
 
     /**

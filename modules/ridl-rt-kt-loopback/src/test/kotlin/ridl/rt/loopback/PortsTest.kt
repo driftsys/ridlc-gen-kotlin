@@ -2,15 +2,28 @@ package ridl.rt.loopback
 
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.fail
 import ridl.rt.contract.CatalogHash
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.StreamNo
+import ridl.rt.error.CallError
 import ridl.rt.error.Contract
+import ridl.rt.error.Transport
+import ridl.rt.port.Caller
+import ridl.rt.port.ClaimId
+import ridl.rt.port.Handler
+import ridl.rt.port.Interest
+import ridl.rt.port.Pull
+import ridl.rt.port.PushError
+import ridl.rt.port.REPLY_STREAM
 import ridl.rt.port.RaiseError
 import ridl.rt.port.ReadError
 import ridl.rt.port.SendError
@@ -20,7 +33,12 @@ import ridl.rt.sample.Duration
 import ridl.rt.sample.Freshness
 import ridl.rt.sample.Provenance
 import ridl.rt.sample.Timestamp
+import ridl.rt.task.Waker
 import java.nio.ByteBuffer
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 
 /**
  * The tests of what only this runtime can express:
@@ -42,7 +60,8 @@ import java.nio.ByteBuffer
  * - a limit other than the default ceiling is told through `Loopback.setLimit`,
  *   this runtime's own API;
  * - which error the injected fault reports is left to a runtime;
- * - the threading model is ADR-0021 decision 12's, which the suite leaves out.
+ * - the threading model is ADR-0021 decision 12's, which the suite leaves out;
+ * - the stream tests stay for the reasons their section's heading names.
  *
  * The last section is Kotlin's own: what the JVM changes.
  */
@@ -510,6 +529,769 @@ class PortsTest {
         }
         threads.forEach { it.join() }
         for (result in results) assertArrayEquals(array(3), result)
+    }
+
+    // ---------------------------------------------------------------------
+    // Streams. The tests of what the suite leaves out: the close of a handle,
+    // when a forgotten call's slot comes back, a registration whose key already
+    // holds, and this runtime's own numbers and choices. Where a Rust test
+    // drops a handle, these close it.
+    // ---------------------------------------------------------------------
+
+    /** A waker that counts its wakes. */
+    private class Count : Waker {
+        private val count = AtomicInteger()
+
+        val wakes: Int get() = count.get()
+
+        override fun wake() {
+            count.incrementAndGet()
+        }
+    }
+
+    /** A waker that holds [handle], as a task does. Waking reaches the handle and leaves it open. */
+    private fun owning(handle: AutoCloseable): Waker =
+        Waker { assertNotNull(handle, "the handle is owned until the waker is dropped") }
+
+    /**
+     * Closes [handle] on another thread and fails, rather than hangs, when the
+     * close does not finish. The thread is not joined, on purpose: a deadlocked
+     * close never finishes, and a join would wait for it forever.
+     */
+    private fun assertCloseFinishes(handle: AutoCloseable, what: String) {
+        val finished = CountDownLatch(1)
+        thread(isDaemon = true) {
+            handle.close()
+            finished.countDown()
+        }
+        assertTrue(
+            finished.await(5, TimeUnit.SECONDS),
+            "$what: the drop finished, so no waker was dropped under the store's lock",
+        )
+    }
+
+    @Test
+    fun `a dropped handler interrupts a taken call whose streams moved`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val first = rt.handler()
+        val second = rt.handler()
+        val c = caller.query(iface, ord, bytes(1), null)
+        val claim = first.nextClaim(out(8))!!.id
+        val param = StreamNo(1u)
+        assertEquals(1, caller.push(c, param, bytes(1)))
+        assertEquals(1, caller.push(c, param, bytes(2)))
+        assertEquals(Pull.Chunk(1), first.pullClaim(claim, param, out(8)))
+        val outcome = Count()
+        val reply = Count()
+        caller.wakeOn(Interest.Outcome(c), outcome)
+        caller.wakeOn(Interest.Stream(c, REPLY_STREAM), reply)
+        first.close()
+
+        assertNull(second.nextClaim(out(8)), "a call whose streams moved is not presented to another handler")
+        val interrupted = Transport.Interrupted
+        assertEquals(1, outcome.wakes, "the settlement wakes the outcome waiter")
+        assertEquals(1, reply.wakes, "the settlement wakes the stream waiter")
+        assertEquals(Result.failure<Int>(interrupted), caller.reply(c, out(8)))
+        assertEquals(
+            PushError.Failed(interrupted),
+            assertThrows<PushError> { caller.push(c, param, bytes(3)) },
+            "the parameter stream stopped with the handler",
+        )
+        assertEquals(Pull.Failed(interrupted), caller.pull(c, REPLY_STREAM, out(8)))
+    }
+
+    @Test
+    fun `a claim stream registration refreshes the same task and displaces another`() {
+        val rt = runtime()
+        rt.query(iface, ord, bytes(1), null)
+        val claim = rt.nextClaim(out(8))!!.id
+        val key = Interest.ClaimStream(claim, StreamNo(1u))
+        val first = Count()
+        rt.wakeOn(key, first)
+        rt.wakeOn(key, first)
+        assertEquals(0, first.wakes, "a registration of the same task is a refresh")
+        val second = Count()
+        rt.wakeOn(key, second)
+        assertEquals(1, first.wakes, "another task's waker displaces the stored one")
+        assertEquals(0, second.wakes, "the new waker is stored, not woken")
+    }
+
+    @Test
+    fun `a parameter stream the provider refused does not hold the slot after the forget`() {
+        val rt = runtime()
+        val param = StreamNo(1u)
+        val refusal = Contract.PreconditionFailed
+        for (round in 0 until Loopback.SLOTS * 2) {
+            val c = try {
+                rt.command(iface, ord, bytes(1), null)
+            } catch (e: SendError) {
+                fail("round $round: the send answered $e")
+            }
+            val claim = rt.nextClaim(out(8))!!.id
+            rt.settle(claim, ok())
+            assertEquals(1, rt.push(c, param, bytes(1)))
+            assertEquals(Pull.Chunk(1), rt.pullClaim(claim, param, out(8)))
+            rt.abortClaim(claim, param, refusal)
+            assertEquals(PushError.Failed(refusal), assertThrows<PushError> { rt.push(c, param, bytes(2)) })
+            rt.forget(c)
+        }
+    }
+
+    @Test
+    fun `a query settled with an unread parameter stream frees its slot at the forget`() {
+        val rt = runtime()
+        val param = StreamNo(1u)
+        val old = rt.query(iface, ord, bytes(1), null)
+        val claim = rt.nextClaim(out(8))!!.id
+        assertEquals(1, rt.push(old, param, bytes(1)))
+        val error = Contract.PreconditionFailed
+        rt.settle(claim, Result.failure(error))
+        assertEquals(
+            PushError.Failed(Transport.Interrupted),
+            assertThrows<PushError> { rt.push(old, param, bytes(2)) },
+            "the settlement of a query releases its parameter streams",
+        )
+        repeat(Loopback.SLOTS - 1) { rt.command(iface, ord, bytes(1), null) }
+        assertEquals(
+            SendError.Busy,
+            assertThrows<SendError> { rt.command(iface, ord, bytes(1), null) },
+            "every other slot is taken",
+        )
+        rt.forget(old)
+        val new = rt.query(iface, ord, bytes(2), null)
+        assertNotEquals(old, new)
+    }
+
+    @Test
+    fun `end claim after the callers refusal settles the claim with the refusal`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = rt.nextClaim(out(8))!!.id
+        val refusal = Contract.PreconditionFailed
+        rt.abort(c, REPLY_STREAM, refusal)
+        assertEquals(PushError.Failed(refusal), assertThrows<PushError> { rt.endClaim(claim, REPLY_STREAM) })
+        assertEquals(
+            Result.failure<Int>(refusal),
+            rt.reply(c, out(8)),
+            "the claim is settled with the refusal, not Ok",
+        )
+        assertEquals(SettleError.UnknownClaim, assertThrows<SettleError> { rt.settle(claim, ok()) })
+    }
+
+    @Test
+    fun `a dropped handler stops the parameter streams of a command it acknowledged`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val handler = rt.handler()
+        val param = StreamNo(1u)
+        val c = caller.command(iface, ord, bytes(1), null)
+        val claim = handler.nextClaim(out(8))!!.id
+        handler.settle(claim, ok())
+        assertEquals(1, caller.push(c, param, bytes(1)))
+        val waiter = Count()
+        caller.wakeOn(Interest.Stream(c, param), waiter)
+        handler.close()
+        assertEquals(1, waiter.wakes, "the drop wakes the producer's waiter")
+        assertEquals(
+            PushError.Failed(Transport.Interrupted),
+            assertThrows<PushError> { caller.push(c, param, bytes(2)) },
+        )
+        assertEquals(Result.success(Unit), caller.ack(c), "the acknowledgment stands")
+    }
+
+    @Test
+    fun `a stream registration on a forgotten call is woken at once`() {
+        val rt = runtime()
+        val param = StreamNo(1u)
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = rt.nextClaim(out(8))!!.id
+        rt.settle(claim, ok())
+        assertEquals(1, rt.push(c, param, bytes(1)))
+        rt.forget(c)
+        val waiter = Count()
+        rt.wakeOn(Interest.Stream(c, param), waiter)
+        assertEquals(1, waiter.wakes, "no stream of a forgotten call changes")
+    }
+
+    @Test
+    fun `a querys settlement wakes the providers waiter on a parameter stream`() {
+        val rt = runtime()
+        val param = StreamNo(1u)
+        rt.query(iface, ord, bytes(1), null)
+        val claim = rt.nextClaim(out(8))!!.id
+        val waiter = Count()
+        rt.wakeOn(Interest.ClaimStream(claim, param), waiter)
+        assertEquals(Pull.Pending, rt.pullClaim(claim, param, out(8)))
+        assertEquals(0, waiter.wakes, "nothing changed since the registration")
+        rt.settle(claim, Result.failure(Contract.PreconditionFailed))
+        assertEquals(1, waiter.wakes, "the settlement releases the stream")
+        assertEquals(Pull.Failed(Transport.Interrupted), rt.pullClaim(claim, param, out(8)))
+    }
+
+    @Test
+    fun `a claim stream registration on a finished stream is woken at once`() {
+        val rt = runtime()
+        val param = StreamNo(1u)
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = rt.nextClaim(out(8))!!.id
+        rt.end(c, param)
+        val waiter = Count()
+        rt.wakeOn(Interest.ClaimStream(claim, param), waiter)
+        assertEquals(1, waiter.wakes, "an ended stream does not change again")
+    }
+
+    /**
+     * The JVM has no destructor, so no waker is dropped by the close: what this
+     * keeps of the Rust test is that a close with such a waker stored finishes.
+     */
+    @Test
+    fun `a stream waker whose task holds a handle drops without deadlock`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val c = caller.query(iface, ord, bytes(1), null)
+        caller.wakeOn(Interest.Stream(c, REPLY_STREAM), owning(rt.caller()))
+        // The close forgets the call, which takes the stream waker, the last
+        // reference to the handle it owns.
+        assertCloseFinishes(caller, "a caller with a stream waker")
+    }
+
+    /** The next claim [handler] presents, with its arguments read. */
+    private fun takeClaim(handler: Handler): ClaimId = handler.nextClaim(out(8))!!.id
+
+    /**
+     * Sends `Loopback.SLOTS` commands through [caller] and checks that each one
+     * takes a slot: every slot of the table is free.
+     */
+    private fun assertEverySlotIsFree(caller: Caller, what: String) {
+        for (round in 0 until Loopback.SLOTS) {
+            try {
+                caller.command(iface, ord, bytes(1), null)
+            } catch (e: SendError) {
+                fail("$what: send $round answered $e")
+            }
+        }
+    }
+
+    @Test
+    fun `a stream parameter first named after a querys settlement starts released`() {
+        val rt = runtime()
+        val interrupted = Transport.Interrupted
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        val param = StreamNo(1u)
+        assertEquals(
+            PushError.Failed(interrupted),
+            assertThrows<PushError> { rt.push(c, param, bytes(2)) },
+            "the settlement released the stream before anything named it",
+        )
+        assertEquals(PushError.Failed(interrupted), assertThrows<PushError> { rt.end(c, param) })
+        rt.forget(c)
+        assertEverySlotIsFree(rt, "after the forget")
+    }
+
+    @Test
+    fun `a dropped handler completes a forget deferred on an acknowledged command`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val handler = rt.handler()
+        val c = caller.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(handler)
+        handler.settle(claim, ok())
+        assertEquals(1, caller.push(c, StreamNo(1u), bytes(1)))
+        caller.forget(c)
+        handler.close()
+        rt.handler()
+        assertEverySlotIsFree(caller, "after the handler's drop")
+    }
+
+    @Test
+    fun `a commands refusal releases its parameter streams and the forget frees its slot`() {
+        val interrupted = Transport.Interrupted
+        val param = StreamNo(1u)
+        // A claim taken and settled with an error, and a claim offered through
+        // `ShortClaim` and settled by its id with an error, as the generated
+        // dispatch does when the arguments do not fit.
+        for (offered in listOf(false, true)) {
+            val rt = runtime()
+            val c = rt.command(iface, ord, bytes(1, 2, 3), null)
+            assertEquals(1, rt.push(c, param, bytes(1)))
+            val claim = if (offered) {
+                assertThrows<ReadError.ShortClaim>("an offer") { rt.nextClaim(out(1)) }.claim
+            } else {
+                takeClaim(rt)
+            }
+            val error: CallError = if (offered) Transport.Corrupt else Contract.UnknownInteraction
+            rt.settle(claim, Result.failure(error))
+            assertEquals(Result.failure<Unit>(error), rt.ack(c))
+            assertEquals(
+                PushError.Failed(interrupted),
+                assertThrows<PushError> { rt.push(c, param, bytes(2)) },
+                "offered $offered: the refusal released the stream",
+            )
+            rt.forget(c)
+            assertEverySlotIsFree(rt, "after the forget of a refused command")
+        }
+    }
+
+    @Test
+    fun `a forget before the claim withdraws the call with its ended stream`() {
+        val rt = runtime()
+        rt.serve(iface, listOf(ord))
+        val c = rt.command(iface, ord, bytes(1), null)
+        val param = StreamNo(1u)
+        assertEquals(1, rt.push(c, param, bytes(9)))
+        rt.end(c, param)
+        rt.forget(c)
+        assertNull(rt.nextClaim(out(8)), "no provider is presented a call withdrawn before its claim")
+        assertEverySlotIsFree(rt, "after the withdrawal")
+    }
+
+    @Test
+    fun `a claim only offered has no streams and another handler reads them whole`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val first = rt.handler()
+        val second = rt.handler()
+        val param = StreamNo(1u)
+        val c = caller.query(iface, ord, bytes(1, 2, 3), null)
+        assertEquals(1, caller.push(c, param, bytes(1)))
+        val claim = assertThrows<ReadError.ShortClaim>("an offer") { first.nextClaim(out(1)) }.claim
+        val unknown = Contract.UnknownInteraction
+        assertEquals(
+            ReadError.Contract(unknown),
+            assertThrows<ReadError> { first.pullClaim(claim, param, out(8)) },
+            "an offered claim is taken before its streams are read",
+        )
+        assertEquals(
+            PushError.Contract(unknown),
+            assertThrows<PushError> { first.pushClaim(claim, REPLY_STREAM, bytes(7)) },
+        )
+        assertEquals(PushError.Contract(unknown), assertThrows<PushError> { first.endClaim(claim, REPLY_STREAM) })
+        first.close()
+        val taken = takeClaim(second)
+        assertEquals(claim, taken, "the call is presented under the same id")
+        val buf = out(8)
+        assertEquals(
+            Pull.Chunk(1),
+            second.pullClaim(taken, param, buf),
+            "the next holder reads the stream from its first chunk",
+        )
+        assertArrayEquals(array(1), buf.written())
+    }
+
+    @Test
+    fun `a dropped handler that moved no stream returns the call`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val first = rt.handler()
+        val second = rt.handler()
+        val param = StreamNo(1u)
+        val c = caller.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(first)
+        assertEquals(Pull.Pending, first.pullClaim(claim, param, out(8)))
+        first.wakeOn(Interest.ClaimStream(claim, param), Count())
+        first.close()
+        assertEquals(
+            claim,
+            takeClaim(second),
+            "a Pending pull and a registration move nothing, so the call is presented again",
+        )
+        assertNull(caller.reply(c, out(8)), "the call is not settled")
+    }
+
+    @Test
+    fun `the window counts only the non empty chunks`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        takeClaim(rt)
+        val param = StreamNo(1u)
+        repeat(Loopback.STREAM_WINDOW) {
+            assertEquals(0, rt.push(c, param, bytes()), "an empty chunk is taken")
+        }
+        for (n in 0 until Loopback.STREAM_WINDOW) {
+            assertEquals(1, rt.push(c, param, bytes(1)), "non-empty chunk $n fits the window beside the empty chunks")
+        }
+        assertEquals(0, rt.push(c, param, bytes(1)), "the window is full")
+    }
+
+    @Test
+    fun `abort claim after the callers refusal is ended and settles with the providers error`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        val refusal = Contract.PreconditionFailed
+        val error = Transport.Corrupt
+        rt.abort(c, REPLY_STREAM, refusal)
+        assertEquals(
+            PushError.Ended,
+            assertThrows<PushError> { rt.abortClaim(claim, REPLY_STREAM, error) },
+            "the reply stream had already stopped",
+        )
+        assertEquals(Result.failure<Int>(error), rt.reply(c, out(8)), "the provider's abort is its verdict")
+    }
+
+    @Test
+    fun `a settle ok on a streamed reply ends the stream and reports the bytes`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        assertEquals(1, rt.pushClaim(claim, REPLY_STREAM, bytes(1)))
+        rt.settle(claim, ok(1, 2, 3))
+        assertEquals(Result.success(3), rt.reply(c, out(8)))
+        assertEquals(Pull.Chunk(1), rt.pull(c, REPLY_STREAM, out(8)))
+        assertEquals(Pull.End, rt.pull(c, REPLY_STREAM, out(8)))
+    }
+
+    @Test
+    fun `the providers push after its own abort of the reply stream is ended`() {
+        val rt = runtime()
+        rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.abortClaim(claim, REPLY_STREAM, Transport.Interrupted)
+        assertEquals(
+            PushError.Ended,
+            assertThrows<PushError> { rt.pushClaim(claim, REPLY_STREAM, bytes(1)) },
+            "a stream its producer stopped is Ended for that producer",
+        )
+    }
+
+    @Test
+    fun `a deferred forget answers none from ack and reply while the slot is held`() {
+        val rt = runtime()
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        assertEquals(1, rt.push(c, StreamNo(1u), bytes(1)))
+        rt.forget(c)
+        assertNull(rt.ack(c), "a forgotten correlation has no outcome")
+        assertNull(rt.reply(c, out(8)))
+        repeat(Loopback.SLOTS - 1) { rt.command(iface, ord, bytes(1), null) }
+        assertEquals(
+            SendError.Busy,
+            assertThrows<SendError> { rt.command(iface, ord, bytes(1), null) },
+            "the forgotten call still holds its slot",
+        )
+    }
+
+    @Test
+    fun `a dropped handlers interruption releases a stream parameter not yet named`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val handler = rt.handler()
+        val c = caller.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(handler)
+        assertEquals(1, caller.push(c, StreamNo(1u), bytes(1)))
+        assertEquals(Pull.Chunk(1), handler.pullClaim(claim, StreamNo(1u), out(8)))
+        val later = StreamNo(2u)
+        val waiter = Count()
+        caller.wakeOn(Interest.Stream(c, later), waiter)
+        handler.close()
+        assertEquals(1, waiter.wakes, "the interruption wakes the waiter on a stream nothing named yet")
+        val interrupted = Transport.Interrupted
+        assertEquals(
+            PushError.Failed(interrupted),
+            assertThrows<PushError> { caller.push(c, later, bytes(2)) },
+            "a stream parameter first named after the interruption starts stopped",
+        )
+        assertEquals(PushError.Failed(interrupted), assertThrows<PushError> { caller.end(c, later) })
+        assertEquals(Result.failure<Int>(interrupted), caller.reply(c, out(8)))
+    }
+
+    @Test
+    fun `a dropped handler releases a stream parameter of an acknowledged command not yet named`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val handler = rt.handler()
+        val param = StreamNo(1u)
+        val c = caller.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(handler)
+        handler.settle(claim, ok())
+        val waiter = Count()
+        caller.wakeOn(Interest.Stream(c, param), waiter)
+        handler.close()
+        assertEquals(1, waiter.wakes, "the drop wakes the waiter on a stream nothing named yet")
+        val interrupted = Transport.Interrupted
+        assertEquals(
+            PushError.Failed(interrupted),
+            assertThrows<PushError> { caller.push(c, param, bytes(1)) },
+            "no provider is left to read a stream parameter first named after the drop",
+        )
+        assertEquals(PushError.Failed(interrupted), assertThrows<PushError> { caller.end(c, param) })
+        assertEquals(Result.success(Unit), caller.ack(c), "the acknowledgment stands")
+    }
+
+    /**
+     * Each way the provider is done with a stream parameter completes a forget
+     * deferred on it, and the slot comes back: pulling `End`, pulling `Failed`,
+     * aborting the interrupted stream, aborting the ended stream, and the
+     * settlement of a query. A forget stops every stream that was not ended, so
+     * after it the provider's abort always finds a finished stream and answers
+     * `Ended`. Every other slot is taken by a call in flight, so the slot is
+     * shown held before the provider is done and free after.
+     */
+    @Test
+    fun `a deferred forget frees the slot once the provider is done with the parameter stream`() {
+        val param = StreamNo(1u)
+        val error = Contract.PreconditionFailed
+        val interrupted = Transport.Interrupted
+        for (done in 0 until 5) {
+            val rt = runtime()
+            val (c, claim) = if (done == 4) {
+                val query = rt.query(iface, ord, bytes(1), null)
+                query to takeClaim(rt)
+            } else {
+                val command = rt.command(iface, ord, bytes(1), null)
+                val taken = takeClaim(rt)
+                rt.settle(taken, ok())
+                command to taken
+            }
+            assertEquals(1, rt.push(c, param, bytes(1)))
+            if (done == 0 || done == 3) {
+                rt.end(c, param)
+            }
+            rt.forget(c)
+            repeat(Loopback.SLOTS - 1) { rt.command(iface, ord, bytes(1), null) }
+            assertEquals(
+                SendError.Busy,
+                assertThrows<SendError> { rt.command(iface, ord, bytes(1), null) },
+                "case $done: the forgotten call holds its slot while the provider has its stream to read",
+            )
+            when (done) {
+                0 -> {
+                    assertEquals(Pull.Chunk(1), rt.pullClaim(claim, param, out(8)))
+                    assertEquals(Pull.End, rt.pullClaim(claim, param, out(8)))
+                }
+                1 -> {
+                    assertEquals(Pull.Chunk(1), rt.pullClaim(claim, param, out(8)))
+                    assertEquals(Pull.Failed(interrupted), rt.pullClaim(claim, param, out(8)))
+                }
+                2 -> assertEquals(
+                    PushError.Ended,
+                    assertThrows<PushError> { rt.abortClaim(claim, param, error) },
+                    "the abort of a stream the forget interrupted",
+                )
+                3 -> assertEquals(
+                    PushError.Ended,
+                    assertThrows<PushError> { rt.abortClaim(claim, param, error) },
+                    "the abort of an ended stream",
+                )
+                else -> rt.settle(claim, ok())
+            }
+            try {
+                rt.command(iface, ord, bytes(1), null)
+            } catch (e: SendError) {
+                fail("case $done: the slot did not come back: $e")
+            }
+        }
+    }
+
+    @Test
+    fun `a producers end and abort wake the receiver and a receivers refusal wakes the producer`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        val error = Contract.PreconditionFailed
+
+        val ended = Count()
+        rt.wakeOn(Interest.ClaimStream(claim, StreamNo(1u)), ended)
+        assertEquals(0, ended.wakes, "nothing changed since the registration")
+        rt.end(c, StreamNo(1u))
+        assertEquals(1, ended.wakes, "the caller's end wakes the provider's waiter")
+
+        val aborted = Count()
+        rt.wakeOn(Interest.ClaimStream(claim, StreamNo(2u)), aborted)
+        assertEquals(0, aborted.wakes, "nothing changed since the registration")
+        rt.abort(c, StreamNo(2u), error)
+        assertEquals(1, aborted.wakes, "the caller's abort wakes the provider's waiter")
+
+        val refused = Count()
+        rt.wakeOn(Interest.Stream(c, StreamNo(3u)), refused)
+        assertEquals(0, refused.wakes, "nothing changed since the registration")
+        rt.abortClaim(claim, StreamNo(3u), error)
+        assertEquals(1, refused.wakes, "the provider's refusal wakes the caller's waiter")
+    }
+
+    /**
+     * Each operation that moves a stream marks the call, so that the handler's
+     * close interrupts it instead of presenting it again: a push, a pull that
+     * answers `End`, a pull that answers `Failed`, and an abort. The pull of a
+     * chunk is pinned by
+     * `a dropped handler interrupts a taken call whose streams moved`.
+     */
+    @Test
+    fun `a dropped handler interrupts a call on which it pushed pulled an end or aborted`() {
+        val param = StreamNo(1u)
+        val error = Contract.PreconditionFailed
+        val interrupted = Transport.Interrupted
+        for (moved in 0 until 4) {
+            val rt = runtime()
+            val caller = rt.caller()
+            val first = rt.handler()
+            val second = rt.handler()
+            val c = caller.query(iface, ord, bytes(1), null)
+            val claim = takeClaim(first)
+            when (moved) {
+                0 -> assertEquals(1, first.pushClaim(claim, REPLY_STREAM, bytes(1)))
+                1 -> {
+                    caller.end(c, param)
+                    assertEquals(Pull.End, first.pullClaim(claim, param, out(8)))
+                }
+                2 -> {
+                    caller.abort(c, param, error)
+                    assertEquals(Pull.Failed(error), first.pullClaim(claim, param, out(8)))
+                }
+                else -> first.abortClaim(claim, param, error)
+            }
+            first.close()
+            assertNull(second.nextClaim(out(8)), "case $moved: a call whose streams moved is not presented again")
+            assertEquals(
+                Result.failure<Int>(interrupted),
+                caller.reply(c, out(8)),
+                "case $moved: the call settles with the interruption",
+            )
+        }
+    }
+
+    @Test
+    fun `a forget wakes the stream waiters of a call with no stream parameter`() {
+        val rt = runtime()
+        val query = rt.query(iface, ord, bytes(1), null)
+        takeClaim(rt)
+        val reply = Count()
+        rt.wakeOn(Interest.Stream(query, REPLY_STREAM), reply)
+        assertEquals(0, reply.wakes, "nothing changed since the registration")
+        rt.forget(query)
+        assertEquals(1, reply.wakes, "the forget of a call in flight wakes its reply stream waiter")
+
+        val command = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        val param = Count()
+        rt.wakeOn(Interest.Stream(command, StreamNo(1u)), param)
+        assertEquals(0, param.wakes, "a settled command's stream parameter goes on, so the waker is stored")
+        rt.forget(command)
+        assertEquals(1, param.wakes, "the forget that reclaims the slot wakes its stream waiter")
+    }
+
+    @Test
+    fun `a forgotten unacknowledged commands ended stream is read after the acknowledgment`() {
+        val rt = runtime()
+        val param = StreamNo(1u)
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        assertEquals(1, rt.push(c, param, bytes(1)))
+        rt.end(c, param)
+        rt.forget(c)
+        rt.settle(claim, ok())
+        val buf = out(8)
+        assertEquals(
+            Pull.Chunk(1),
+            rt.pullClaim(claim, param, buf),
+            "the ended stream is kept for the provider across the acknowledgment",
+        )
+        assertArrayEquals(array(1), buf.written())
+        assertEquals(Pull.End, rt.pullClaim(claim, param, out(8)))
+        assertEverySlotIsFree(rt, "after the provider read the stream to its end")
+    }
+
+    @Test
+    fun `a second forget of a deferred call leaves its slot held`() {
+        val rt = runtime()
+        val param = StreamNo(1u)
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        assertEquals(1, rt.push(c, param, bytes(1)))
+        rt.forget(c)
+        rt.forget(c)
+        repeat(Loopback.SLOTS - 1) { rt.command(iface, ord, bytes(1), null) }
+        assertEquals(
+            SendError.Busy,
+            assertThrows<SendError> { rt.command(iface, ord, bytes(1), null) },
+            "the slot is held until the provider reads the stream, however often the call is forgotten",
+        )
+        assertEquals(Pull.Chunk(1), rt.pullClaim(claim, param, out(8)))
+        assertEquals(Pull.Failed(Transport.Interrupted), rt.pullClaim(claim, param, out(8)))
+        rt.command(iface, ord, bytes(1), null)
+    }
+
+    @Test
+    fun `a deferred forget wakes the outcome waiter and a later registration is woken at once`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        takeClaim(rt)
+        assertEquals(1, rt.push(c, StreamNo(1u), bytes(1)))
+        val outcome = Count()
+        rt.wakeOn(Interest.Outcome(c), outcome)
+        assertEquals(0, outcome.wakes, "nothing changed since the registration")
+        rt.forget(c)
+        assertEquals(1, outcome.wakes, "the deferred forget wakes the outcome waiter")
+        val late = Count()
+        rt.wakeOn(Interest.Outcome(c), late)
+        assertEquals(1, late.wakes, "no outcome will be readable for a forgotten call whose slot is still held")
+    }
+
+    @Test
+    fun `a providers push and end on the reply stream after a deferred forget are interrupted`() {
+        val rt = runtime()
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        assertEquals(1, rt.push(c, StreamNo(1u), bytes(1)))
+        rt.forget(c)
+        val interrupted = Transport.Interrupted
+        assertEquals(
+            PushError.Failed(interrupted),
+            assertThrows<PushError> { rt.pushClaim(claim, REPLY_STREAM, bytes(1)) },
+            "the forget answers before the ended reply stream does",
+        )
+        assertEquals(PushError.Failed(interrupted), assertThrows<PushError> { rt.endClaim(claim, REPLY_STREAM) })
+    }
+
+    @Test
+    fun `a settlement refused through end claim answers too large`() {
+        val rt = runtime()
+        rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.failNextSettle()
+        assertEquals(
+            PushError.TooLarge(0),
+            assertThrows<PushError> { rt.endClaim(claim, REPLY_STREAM) },
+            "the injected settlement failure is reported as the push error of its kind",
+        )
+    }
+
+    @Test
+    fun `a dropped handlers claim stream waiter is woken`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val handler = rt.handler()
+        caller.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(handler)
+        val waiter = Count()
+        handler.wakeOn(Interest.ClaimStream(claim, StreamNo(1u)), waiter)
+        assertEquals(0, waiter.wakes, "nothing changed since the registration")
+        handler.close()
+        assertEquals(1, waiter.wakes, "the dropped handler's claim stream waiter is woken: its claim is gone")
+    }
+
+    /**
+     * The JVM has no destructor, so no waker is dropped by the close: what this
+     * keeps of the Rust test is that a close with such a waker stored finishes.
+     */
+    @Test
+    fun `a handler whose stored claim stream waker owns another handle drops without deadlock`() {
+        val rt = runtime()
+        val caller = rt.caller()
+        val handler = rt.handler()
+        caller.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(handler)
+        handler.wakeOn(Interest.ClaimStream(claim, StreamNo(1u)), owning(rt.handler()))
+        // The close takes the claim's stream waker, the last reference to the
+        // handle it owns, and drops it after the lock is released.
+        assertCloseFinishes(handler, "a handler with a claim stream waker")
     }
 
     // ---------------------------------------------------------------------
