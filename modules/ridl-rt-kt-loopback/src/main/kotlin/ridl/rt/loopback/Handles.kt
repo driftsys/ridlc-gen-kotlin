@@ -41,6 +41,7 @@ package ridl.rt.loopback
 
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
+import ridl.rt.contract.Kind
 import ridl.rt.contract.Ordinal
 import ridl.rt.encoding.Encoding
 import ridl.rt.port.Attached
@@ -65,6 +66,7 @@ import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
 import ridl.rt.port.Wakeable
 import ridl.rt.port.Watermark
+import ridl.rt.port.WriteError
 import ridl.rt.sample.Timestamp
 import ridl.rt.task.Waker
 import ridl.rt.trace.TraceContext
@@ -113,6 +115,8 @@ public class ReaderHandle internal constructor(
  * The `SignalWriter` port role. The staged changes and the per channel
  * sequence counters live on the handle: staging is one provider's private
  * state until its `commit`, and a sequence number is the sender's (ridl §3.1).
+ * `set` reads the store once, for the signal's limit: a value longer than it
+ * throws `WriteError.TooLarge` and is not staged.
  */
 public class WriterHandle internal constructor(
     private val store: Store,
@@ -123,7 +127,9 @@ public class WriterHandle internal constructor(
     private val seqs = TreeMap<Key, ULong>()
 
     override fun set(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer) {
-        staged[Key(iface, ord)] = Staged.Set(bytes.remainingBytes())
+        val key = Key(iface, ord)
+        store.locked { admit(key, Kind.Signal, bytes.remaining(), WriteError::TooLarge) }
+        staged[key] = Staged.Set(bytes.remainingBytes())
     }
 
     override fun invalidate(iface: InterfaceNo, ord: Ordinal) {
@@ -203,9 +209,9 @@ public class SinkHandle internal constructor(
 
     override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?) {
         val key = Key(iface, ord)
-        val seq = (seqs[key] ?: 0u) + 1u
-        seqs[key] = seq
-        wake(store.locked { raise(key, bytes.remainingBytes(), seq, trace) })
+        val next = (seqs[key] ?: 0u) + 1u
+        wake(store.locked { raise(key, bytes.remainingBytes(), next, trace) })
+        seqs[key] = next
     }
 
     /** Wakes every key at once: no role of this handle observes one. */
@@ -216,7 +222,8 @@ public class SinkHandle internal constructor(
  * The `Caller` port role. One counter for the whole handle: on a call the
  * sequence is the caller's (ADR-0021 decision 5), which is what keeps two
  * callers on one provider from colliding. A send the full call table refuses
- * with `SendError.Busy` draws no number.
+ * with `SendError.Busy`, or whose arguments are longer than the member's limit
+ * and so refused with `SendError.TooLarge`, draws no number.
  *
  * [close] does what the Rust handle's drop does: it removes the caller's
  * `Slot` waker, then forgets every call it sent and did not forget, so their

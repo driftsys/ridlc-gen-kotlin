@@ -5,6 +5,7 @@ package ridl.rt.loopback
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.defaultCeiling
 import ridl.rt.encoding.Encoding
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
@@ -57,11 +58,15 @@ public class Handles internal constructor(
  * payload bytes are opaque to it. It holds no catalog descriptor, so it
  * never reports `NotOwner`, never a `Contract` error except from an
  * unprovisioned [readFixed], and every value's freshness is `Unbounded`.
- * Nothing detaches, so `Detached` never appears. The one bound is the call
- * table's [SLOTS]: a send with every slot taken throws `SendError.Busy`.
- * Nothing else is bounded, so `TooLarge` appears only from [failNextSettle],
- * and a `Transport.Busy` reaches a caller only when a provider settles a call
- * with it.
+ * Nothing detaches, so `Detached` never appears. Two things are bounded. The
+ * call table's [SLOTS]: a send with every slot taken throws `SendError.Busy`.
+ * And the size of a payload: a sending port refuses a payload longer than its
+ * member's limit with `TooLarge` — the limit [setLimit] gave the member, else
+ * the default ceiling of the port's kind (ADR-0030 decision 16) — and
+ * [provisionFixed] refuses a `fixed` the same way. `TooLarge` comes from that
+ * limit, and from [failNextSettle], which reports it with `cap` 0. A
+ * `Transport.Busy` reaches a caller only when a provider settles a call with
+ * it.
  *
  * The catalog is carried and never compared: checking it against an
  * interface's own is a generated face's job, made once per binding
@@ -162,11 +167,39 @@ public class Loopback private constructor(
 
     /**
      * Supplies the value of a `fixed` (ridl §8). Until one is provisioned,
-     * reading it throws `ReadError.Contract(Contract.UnknownInteraction)`.
+     * reading it throws `ReadError.Contract(Contract.UnknownInteraction)`. A
+     * `fixed` whose only provision was refused reads the same way.
+     *
+     * @throws ridl.rt.port.WriteError.TooLarge when the value is longer than
+     *   the member's limit, the one [setLimit] gave it, else the default ceiling
+     *   of a `fixed`, 65,280 bytes. Nothing is stored: a value provisioned
+     *   before stays as it was.
      */
     public fun provisionFixed(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer) {
         val copy = bytes.remainingBytes()
         store.locked { provisionFixed(Key(iface, ord), copy) }
+    }
+
+    /**
+     * Gives member [ord] of interface [iface] the limit [limit], in bytes of
+     * encoded payload, in place of the default ceiling of its kind.
+     *
+     * The loopback holds no catalog descriptor, so this is how a program tells
+     * it the limit that a `[limits]` entry of the manifest gives a member
+     * (ADR-0030 decision 12). The limit is the store's: every handle and every
+     * attached aggregate applies it, and a later call replaces it. A member
+     * with no limit given has the default ceiling of its kind, read from the
+     * port the payload is sent through ([defaultCeiling]): 3,840 bytes for a
+     * signal and an event, 16,128 for a command and a query, 65,280 for a
+     * fixed.
+     *
+     * A sending port refuses a payload longer than the member's limit with
+     * its `TooLarge`, whose `cap` is that limit, and nothing is staged, raised,
+     * sent or recorded. The receiving side of this runtime reads only what its
+     * sending side accepted, so it adds no check.
+     */
+    public fun setLimit(iface: InterfaceNo, ord: Ordinal, limit: Int) {
+        store.locked { setLimit(Key(iface, ord), limit) }
     }
 
     /**

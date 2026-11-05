@@ -12,6 +12,7 @@ import ridl.rt.port.Clock
 import ridl.rt.port.EventSink
 import ridl.rt.port.EventSource
 import ridl.rt.port.Handler
+import ridl.rt.port.RaiseError
 import ridl.rt.port.ReadError
 import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
@@ -29,6 +30,7 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`a short buffer leaves the occurrence for the next call`,
         ::`a sink sequence number counts one channel publications`,
         ::`an event raised without a context arrives without one`,
+        ::`an occurrence longer than the event limit is refused and not raised`,
     )
 
     /** A raised occurrence reaches a subscribed source, whole. */
@@ -114,5 +116,27 @@ public class EventsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
         val occurrence = checkNotNull(rt.next(out(8))) { "an occurrence is waiting" }
         assertNull(occurrence.trace)
+    }
+
+    /**
+     * An occurrence longer than the event's limit is refused with the limit,
+     * and no source receives it. The suite attaches to a catalog with no
+     * descriptor, so the limit is the default ceiling of an event, 3,840 bytes
+     * (ADR-0030 decision 16); an occurrence of exactly that length is delivered.
+     */
+    public fun `an occurrence longer than the event limit is refused and not raised`() {
+        val rt = runtime()
+        rt.subscribe(IFACE, listOf(ORD))
+        assertEquals(
+            RaiseError.TooLarge(3_840),
+            assertThrows<RaiseError> { rt.raise(IFACE, ORD, out(3_841), null) },
+            "one byte above the default ceiling of an event is refused",
+        )
+
+        assertNull(rt.next(out(4_096)), "the refused occurrence reached no source")
+
+        rt.raise(IFACE, ORD, out(3_840), null)
+        val occurrence = checkNotNull(rt.next(out(4_096))) { "the accepted occurrence is waiting" }
+        assertEquals(3_840, occurrence.len)
     }
 }
