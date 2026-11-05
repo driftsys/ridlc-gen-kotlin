@@ -529,10 +529,14 @@ class FacesEmitter internal constructor(
         private val members = iface.slotsList.filter { it.hasInteraction() }.map { slot ->
             Member(slot.ordinal, slot.interaction, ClassName(pkg, name + slot.interaction.name.camel))
         }
-        private val signals = members.filter { it.interaction.hasSignal() }
-        private val events = members.filter { it.interaction.hasEvent() }
-        private val commands = members.filter { it.interaction.hasCommand() }
-        private val queries = members.filter { it.interaction.hasQuery() }
+
+        // A member with a stream keeps its descriptor and its size rows, and has no place in the face (#105): a plain
+        // call would send it without its stream. Since ridl 0.15 such a member has a request, so `streams` alone says so.
+        private val faced = members.filter { it.interaction.streamsCount == 0 }
+        private val signals = faced.filter { it.interaction.hasSignal() }
+        private val events = faced.filter { it.interaction.hasEvent() }
+        private val commands = faced.filter { it.interaction.hasCommand() }
+        private val queries = faced.filter { it.interaction.hasQuery() }
 
         private fun named(payload: Payload?, what: String): Named {
             if (payload == null || !payload.hasType()) refuse("$what must be a single named type")
@@ -563,8 +567,9 @@ class FacesEmitter internal constructor(
         /**
          * The call's argument: the single declared named parameter, or the
          * struct the lowering induced for every other parameter list, none
-         * included (driftsys/ridl#713). Refused only for a parameter no
-         * struct field holds: one with no declared type, or a stream.
+         * included (driftsys/ridl#713), which leaves out a stream parameter.
+         * Refused only for a parameter no struct field holds: one with no
+         * declared type, or a stream in a model that induced nothing.
          */
         private fun argument(m: Member): Argument {
             val command = m.interaction.command
@@ -595,11 +600,19 @@ class FacesEmitter internal constructor(
             refuse("query `${m.declared}`'s reply is a fallible `T | E`, which the face does not carry")
         }
 
+        /** What a call's rows name: its argument, then a query's reply, which a streamed reply does not have. */
+        private fun callPayloads(m: Member): List<Named> {
+            val streamedReply = m.interaction.streamsList.any { it.no == 0 }
+            return if (m.interaction.hasCommand() || streamedReply) listOf(argument(m).payload) else listOf(argument(m).payload, reply(m))
+        }
+
         fun emit() {
             val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty()
             val of = "interface `${iface.declared.declared}`"
             add(descriptor(), "the descriptor of $of")
-            members.forEachIndexed { row, m -> add(interaction(m, row), "the descriptor of member `${m.declared}` of $of") }
+            members.forEachIndexed { row, m ->
+                if (m in faced) add(interaction(m, row), "the descriptor of member `${m.declared}` of $of")
+            }
             // An internal interface has its descriptors, `internal`, and no face (driftsys/ridl#832): the Rust
             // backend's rule, mirrored although an `internal` Kotlin face could name its `internal` types.
             if (internal) return
@@ -638,7 +651,8 @@ class FacesEmitter internal constructor(
             // The model's `Catalog.package`, the name of the unit, as the Rust backend reads it: since ridl 0.7.0 a
             // unit can hold several source packages, so `Model.name` is not the catalog's name.
             val catalogName = model.catalog.`package`
-            val callCodecs = (commands.map { argument(it).payload } + queries.flatMap { listOf(argument(it).payload, reply(it)) })
+            val calls = members.filter { it.interaction.hasCommand() } + members.filter { it.interaction.hasQuery() }
+            val callCodecs = calls.flatMap { callPayloads(it) }
                 .map { it.codec }.distinct()
             val eventCodecs = events.map { eventPayload(it).codec }.distinct()
             val rows = members.map { row(it) }.joinToCode(",\n")
@@ -807,8 +821,8 @@ class FacesEmitter internal constructor(
             val (kind, payloads) = when {
                 i.hasSignal() -> "Signal" to listOf(signalPayload(m))
                 i.hasEvent() -> "Event" to listOf(eventPayload(m))
-                i.hasCommand() -> "Command" to listOf(argument(m).payload)
-                i.hasQuery() -> "Query" to listOf(argument(m).payload, reply(m))
+                i.hasCommand() -> "Command" to callPayloads(m)
+                i.hasQuery() -> "Query" to callPayloads(m)
                 i.hasFixed() -> "Fixed" to listOf(named(i.fixed.named.takeIf { i.fixed.hasNamed() }, "fixed `${m.declared}`'s payload"))
                 else -> refuse("`${m.declared}` is not an interaction this plugin reads")
             }
@@ -823,7 +837,7 @@ class FacesEmitter internal constructor(
         /**
          * The member's row of the size table, from the `maxSize` of its
          * payloads' codecs: the request and then the reply of a query, the
-         * one payload of a signal, an event or a command, and `0` for a
+         * request alone of a streamed reply, the one payload of a signal, an event or a command, and `0` for a
          * `fixed`, which is never in flight (driftsys/ridl#904).
          */
         private fun reservationRow(m: Member): CodeBlock {
@@ -831,8 +845,7 @@ class FacesEmitter internal constructor(
             val payloads = when {
                 i.hasSignal() -> listOf(signalPayload(m))
                 i.hasEvent() -> listOf(eventPayload(m))
-                i.hasCommand() -> listOf(argument(m).payload)
-                i.hasQuery() -> listOf(argument(m).payload, reply(m))
+                i.hasCommand() || i.hasQuery() -> callPayloads(m)
                 else -> return CodeBlock.of("0uL")
             }
             return payloads.map { CodeBlock.of("%T.maxSize.toULong()", it.codec) }.joinToCode(" + ")

@@ -19,7 +19,7 @@ import kotlin.io.path.writeText
  * compiles with warnings as errors and behaves. Two generated names spelled
  * from ridl names that one Kotlin namespace cannot hold refuse the package,
  * with one message naming both sources: the cases of the design note's
- * appendix that Kotlin also derives (X-6a, X-8, X-9, X-11 to X-14), and the
+ * appendix that Kotlin also derives (X-8, X-9, X-11 to X-14), and the
  * ones only Kotlin meets.
  */
 class NamesTest {
@@ -205,16 +205,16 @@ class NamesTest {
     }
 
     @Test
-    fun `X-6a two tuple fields one property cannot hold are refused`() = refused(
-        "xsixa",
+    fun `two tuple fields one property cannot hold are refused`() = refused(
+        "tuple",
         """
         type Speed : integer [0..250]
         struct Reading {
-          bounds : (minSpeed : Speed, min_speed : Speed)
+          bounds : (XY : Speed, x_y : Speed)
         }
         """.trimIndent(),
-        "`probe.xsixa.ReadingBounds` cannot be generated: its fields `minSpeed` and `min_speed` are both the property " +
-            "`minSpeed`; rename one of them",
+        "`probe.tuple.ReadingBounds` cannot be generated: its fields `XY` and `x_y` are both the property " +
+            "`xY`; rename one of them",
     )
 
     @Test

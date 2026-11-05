@@ -175,9 +175,6 @@ class CodecEmitter(private val model: Model, private val options: Options) {
             .addFunction(
                 FunSpec.builder("verify").addModifiers(KModifier.OVERRIDE)
                     .addParameter("buf", BYTE_BUFFER).returns(TABLE_VIEW)
-                    .beginControlFlow("if (buf.remaining() > maxSize)")
-                    .addStatement("throw %T.Structure(%T.TooLarge)", VERIFY_ERROR, MALFORMED)
-                    .endControlFlow()
                     .addStatement("val reader = %T(buf)", READER)
                     .addStatement("val table = reader.root()")
                     .addStatement("%L(reader, table)", functions.verify)

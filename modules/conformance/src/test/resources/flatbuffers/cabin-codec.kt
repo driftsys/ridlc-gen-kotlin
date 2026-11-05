@@ -14,7 +14,6 @@ import ridl.rt.flatbuffers.Field
 import ridl.rt.flatbuffers.Pos
 import ridl.rt.flatbuffers.Reader
 import ridl.rt.flatbuffers.TableField
-import ridl.rt.payload.Malformed
 import ridl.rt.payload.Payload
 import ridl.rt.payload.Rule
 import ridl.rt.payload.VerifyError
@@ -48,7 +47,6 @@ private abstract class FbCodec<T> : Payload<T, FbView> {
     }
 
     override fun verify(buf: ByteBuffer): FbView {
-        if (buf.remaining() > maxSize) throw VerifyError.Structure(Malformed.TooLarge)
         val reader = Reader(buf)
         val table = reader.root()
         check(reader, table)

@@ -95,3 +95,7 @@ interface Horn {
 
 /// The cabin's one service: both interfaces, provided by one component.
 service veh.cabin.control: Cabin, Horn
+
+/// A target cabin air temperature, in degrees. It takes the half degrees
+/// that [Temperature] cannot hold.
+type Setpoint: float [10.0..30.0 step 0.5]
