@@ -38,6 +38,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
             }
             Declaration.KindCase.ENUM -> {
                 val enum = declaration.enum
+                // An open enum with no value has none either: an unknown value is never an init value (typl §8.1).
                 if (!enum.hasInitMember()) refuse("the enum `$name` has no init member")
                 CodeBlock.of("%T.%N", type, enumEntry(enum.getValues(enum.initMember).name))
             }

@@ -1,5 +1,6 @@
 package ridl.codegen.kotlin.types
 
+import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.BYTE_ARRAY
@@ -25,6 +26,7 @@ import ridl.codegen.v1.ModelOuterClass.Constant
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.Enum
 import ridl.codegen.v1.ModelOuterClass.EnumSet
+import ridl.codegen.v1.ModelOuterClass.IntWidth
 import ridl.codegen.v1.ModelOuterClass.Field
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.FloatWidth
@@ -38,6 +40,8 @@ import ridl.codegen.v1.ModelOuterClass.Union
 import ridl.codegen.v1.ModelOuterClass.Visibility
 
 private val RULE = ClassName("ridl.rt.payload", "Rule")
+private val ENCODE_ERROR = ClassName("ridl.rt.payload", "EncodeError")
+private val VIOLATION = ClassName("ridl.rt.payload", "Violation")
 private val CONSTRAINT_VIOLATION = ClassName("ridl.rt.payload", "ConstraintViolation")
 private val REGEX = ClassName("kotlin.text", "Regex")
 
@@ -369,6 +373,7 @@ class TypesEmitter internal constructor(
 
     /** An enum class over the declared discriminants; an undefined one is `null` from `fromValue` (E10.5). */
     private fun enum(declaration: Declaration, enum: Enum): TypeSpec {
+        if (enum.open) return openEnum(declaration, enum)
         val self = ClassName(pkg, declaration.name.camel)
         if (enum.valuesCount == 0) refuse("an enum with no value has no Kotlin enum class")
         val builder = TypeSpec.enumBuilder(self).header(declaration)
@@ -395,10 +400,73 @@ class TypesEmitter internal constructor(
     }
 
     /**
+     * An open enum (typl §8.1): a sealed interface with one object per
+     * declared value and a last class `Unknown`, which holds an undeclared
+     * value as the integer the wire carried. An enum class has no case that
+     * carries a value. `fromValue` is the one way to an `Unknown`, and gives
+     * the declared object for every declared value, so a value has one
+     * representation, as the Rust backend's `From<i64>` does. The checker
+     * refuses a value spelled `Unknown` (RIDL-149).
+     */
+    private fun openEnum(declaration: Declaration, enum: Enum): TypeSpec {
+        val self = ClassName(pkg, declaration.name.camel)
+        val unknown = self.nestedClass("Unknown")
+        val value = PropertySpec.builder("value", LONG)
+        val builder = TypeSpec.interfaceBuilder(self).addModifiers(KModifier.SEALED)
+            .header(declaration, "A value outside the declared ones is valid and is read as [Unknown], which holds the integer.")
+            .addProperty(value.addKdoc("The integer of this value.").build())
+        val entries = enum.valuesList.map { enumEntry(it.name) }
+        for ((entry, member) in entries.zip(enum.valuesList)) {
+            val constant = TypeSpec.objectBuilder(entry).addModifiers(KModifier.DATA).addSuperinterface(self)
+                .addProperty(
+                    PropertySpec.builder("value", LONG, KModifier.OVERRIDE)
+                        .initializer("%L", Literals.long(member.value.toString())).build(),
+                )
+            constant.doc(links.kdoc(DocParts.of(member)))
+            builder.addType(constant.build())
+        }
+        builder.addType(
+            TypeSpec.classBuilder(unknown).addSuperinterface(self)
+                .addKdoc("An undeclared value of `%L`: only [fromValue] builds one, and for no declared value.", declaration.name.declared)
+                .primaryConstructor(FunSpec.constructorBuilder().addModifiers(KModifier.INTERNAL).addParameter("value", LONG).build())
+                .addProperty(PropertySpec.builder("value", LONG, KModifier.OVERRIDE).initializer("value").build())
+                .addFunction(
+                    FunSpec.builder("equals").addModifiers(KModifier.OVERRIDE)
+                        .addParameter("other", ANY.copy(nullable = true)).returns(BOOLEAN)
+                        .addStatement("return other is %T && other.value == value", unknown).build(),
+                )
+                .addFunction(FunSpec.builder("hashCode").addModifiers(KModifier.OVERRIDE).returns(INT).addStatement("return value.hashCode()").build())
+                .addFunction(FunSpec.builder("toString").addModifiers(KModifier.OVERRIDE).returns(STRING).addStatement("return %P", "Unknown(\$value)").build())
+                .build(),
+        )
+        val fromValue = FunSpec.builder("fromValue")
+            .addKdoc("The member whose discriminant is [value], or [Unknown] for one no member declares.")
+            .addParameter("value", LONG).returns(self)
+            .beginControlFlow("return when (value)")
+        for ((entry, member) in entries.zip(enum.valuesList)) {
+            fromValue.addStatement("%L -> %N", Literals.long(member.value.toString()), entry)
+        }
+        fromValue.addStatement("else -> %T(value)", unknown).endControlFlow()
+        builder.addType(
+            TypeSpec.companionObjectBuilder()
+                .addProperty(
+                    PropertySpec.builder("entries", LIST.parameterizedBy(self))
+                        .addKdoc("The declared members, in declaration order.")
+                        .initializer(if (entries.isEmpty()) CodeBlock.of("emptyList()") else CodeBlock.of("listOf(%L)", entries.joinToString(", ") { "`$it`" }))
+                        .build(),
+                )
+                .addFunction(fromValue.build())
+                .build(),
+        )
+        return builder.build()
+    }
+
+    /**
      * An enum set: an inline value class over the members' bits, one
      * constant per member, and `contains`, `plus` and `minus`. A bit no
      * member declares is refused by `of` with the rule `Variant`, as the
-     * Rust backend's `TryFrom` refuses it.
+     * Rust backend's `TryFrom` refuses it. An open one (typl §9) keeps every
+     * bit: `of` refuses none, and `unknownBits` reads the undeclared ones.
      */
     private fun enumSet(declaration: Declaration, set: EnumSet): TypeSpec {
         val self = ClassName(pkg, declaration.name.camel)
@@ -415,7 +483,13 @@ class TypesEmitter internal constructor(
             property.doc(links.kdoc(DocParts.of(bit)))
             companion.addProperty(property.build())
         }
-        companion
+        if (set.open) {
+            companion.addFunction(
+                FunSpec.builder("of").addKdoc("The set whose bits are [bits], every one kept.")
+                    .addParameter("bits", LONG).returns(self)
+                    .addStatement("return %T(bits)", self).build(),
+            )
+        } else companion
             .addFunction(
                 FunSpec.builder("of")
                     .addKdoc("The set whose bits are [bits].\n\n@throws %T when a bit is one no member declares.", CONSTRAINT_VIOLATION)
@@ -435,11 +509,13 @@ class TypesEmitter internal constructor(
                     .addParameter("bits", LONG).returns(self)
                     .addStatement("return %T(bits)", self).build(),
             )
-        return TypeSpec.classBuilder(self).header(declaration)
+        val sentence = if (set.open) "A bit outside the declared ones is valid and is kept; [unknownBits] reads those bits." else null
+        return TypeSpec.classBuilder(self).header(declaration, sentence)
             .addModifiers(KModifier.VALUE)
             .addAnnotation(JvmInline::class)
             .primaryConstructor(FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).addParameter("bits", LONG).build())
             .addProperty(PropertySpec.builder("bits", LONG).initializer("bits").build())
+            .apply { if (set.open) openSetMembers(declaration, set) }
             .addFunction(
                 FunSpec.builder("contains").addModifiers(KModifier.OPERATOR)
                     .addKdoc("Whether every member of [other] is in this set.")
@@ -458,6 +534,36 @@ class TypesEmitter internal constructor(
             )
             .addType(companion.build())
             .build()
+    }
+
+    /**
+     * `unknownBits`, and for a field narrower than 64 bits `wireBits`: the
+     * bits a codec writes, refusing what the field cannot hold rather than
+     * dropping it, as the Rust backend's `encode_check` does.
+     */
+    private fun TypeSpec.Builder.openSetMembers(declaration: Declaration, set: EnumSet) {
+        addProperty(
+            PropertySpec.builder("unknownBits", LONG)
+                .addKdoc("The bits of this value no declared bit names: 0 when every set bit is declared.")
+                .getter(FunSpec.getterBuilder().addStatement("return bits and DECLARED_MASK.inv()").build()).build(),
+        )
+        val range = when (set.width) {
+            IntWidth.INT_WIDTH_U8 -> 0L to 0xFFL
+            IntWidth.INT_WIDTH_I8 -> Byte.MIN_VALUE.toLong() to Byte.MAX_VALUE.toLong()
+            IntWidth.INT_WIDTH_U16 -> 0L to 0xFFFFL
+            IntWidth.INT_WIDTH_I16 -> Short.MIN_VALUE.toLong() to Short.MAX_VALUE.toLong()
+            IntWidth.INT_WIDTH_U32 -> 0L to 0xFFFF_FFFFL
+            IntWidth.INT_WIDTH_I32 -> Int.MIN_VALUE.toLong() to Int.MAX_VALUE.toLong()
+            else -> return
+        }
+        addFunction(
+            FunSpec.builder("wireBits").addModifiers(KModifier.INTERNAL).returns(LONG)
+                .addKdoc("[bits], which the field holds.\n\n@throws %T when it does not.", ENCODE_ERROR)
+                .beginControlFlow("if (bits !in %LL..%LL)", range.first, range.second)
+                .addStatement("throw %T.Contract(%T(%S, %T.Range))", ENCODE_ERROR, VIOLATION, declaration.name.declared, RULE)
+                .endControlFlow()
+                .addStatement("return bits").build(),
+        )
     }
 
     // -- unions ------------------------------------------------------------

@@ -187,10 +187,15 @@ object Probe {
         for (value in values) {
             out.line("expect(\"$type.fromValue(${value.value}) is ${value.name.declared}\", $type.fromValue(${value.value}L) == $type.${value.name.declared})")
         }
-        val undeclared = values.maxOf { it.value } + 1
-        out.line("expect(\"$type.fromValue($undeclared) is null\", $type.fromValue(${undeclared}L) == null)")
-        for (retired in declaration.enum.retiredList.filter { it.hasValue() }) {
-            out.line("expect(\"$type.fromValue(${retired.value}), retired, is null\", $type.fromValue(${retired.value}L) == null)")
+        val undeclared = (values.maxOfOrNull { it.value } ?: 0) + 1
+        val retired = declaration.enum.retiredList.filter { it.hasValue() }.map { it.value }
+        for (value in retired + undeclared) {
+            if (declaration.enum.open) {
+                out.line("expect(\"$type.fromValue($value) is Unknown\", $type.fromValue(${value}L) is $type.Unknown)")
+                out.line("expect(\"$type.fromValue($value) keeps its integer\", $type.fromValue(${value}L).value == ${value}L)")
+            } else {
+                out.line("expect(\"$type.fromValue($value) is null\", $type.fromValue(${value}L) == null)")
+            }
         }
     }
 
@@ -203,7 +208,9 @@ object Probe {
             out.line("expect(\"$type.${bit.name.declared} leaves by minus\", $type.${bit.name.declared} !in $type.of($type.DECLARED_MASK) - $type.${bit.name.declared})")
         }
         val undeclared = (0..63).firstOrNull { set.declaredMask and (1L shl it) == 0L }
-        if (undeclared != null) {
+        if (undeclared != null && set.open) {
+            out.line("expect(\"$type.of(bit $undeclared) keeps it\", $type.of(1L shl $undeclared).unknownBits == 1L shl $undeclared)")
+        } else if (undeclared != null) {
             out.line("breaks(\"$type.of(bit $undeclared)\", \"$name\", Rule.Variant) { $type.of(1L shl $undeclared) }")
         }
     }
