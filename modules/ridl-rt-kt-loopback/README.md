@@ -22,7 +22,7 @@ other factories add; `attach()` adds a second aggregate on the same store.
 
 Stage K1c. The port contract tests any runtime can run are the suite of
 [`ridl-rt-kt-conformance`](../ridl-rt-kt-conformance/README.md), which
-`ConformanceTest` runs over this runtime, all 79 (driftsys/ridlc-gen-kotlin#8).
+`ConformanceTest` runs over this runtime, all 83 (driftsys/ridlc-gen-kotlin#8).
 `PortsTest` is what stays in `crates/ridl-loopback/tests/ports.rs` on ridl
 `main`, the tests only this runtime can express, each for the reason that file
 gives, plus the JVM-specific tests below.

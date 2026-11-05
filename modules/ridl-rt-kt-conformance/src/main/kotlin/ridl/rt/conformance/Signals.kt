@@ -5,8 +5,11 @@ package ridl.rt.conformance
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.assertThrows
+import ridl.rt.payload.Rule
+import ridl.rt.payload.Violation
 import ridl.rt.port.Attached
 import ridl.rt.port.Caller
+import ridl.rt.port.Check
 import ridl.rt.port.Clock
 import ridl.rt.port.EventSink
 import ridl.rt.port.EventSource
@@ -16,6 +19,7 @@ import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
 import ridl.rt.port.WriteError
 import ridl.rt.sample.Cause
+import ridl.rt.sample.Detection
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Envelope
 import ridl.rt.sample.Provenance
@@ -39,6 +43,10 @@ public class SignalsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`touch on a channel with no publication publishes nothing`,
         ::`a short buffer reports what the read needs and consumes nothing`,
         ::`a value longer than the signal limit is refused and not staged`,
+        ::`a payload that fails its check keeps the last good value`,
+        ::`a payload that fails its check before any good value copies nothing`,
+        ::`a check registered over a held value checks it`,
+        ::`a touch after a failed check keeps the detection`,
     )
 
     /** A committed value reads back, live. */
@@ -239,5 +247,73 @@ public class SignalsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         assertEquals(Provenance.Init, rt.read(IFACE, ORD, out(8)).provenance, "the refused value was not staged")
 
         rt.set(IFACE, ORD, out(3_840))
+    }
+
+    private val rejected = Detection.InvalidValue(Violation("Conformance", Rule.Range))
+
+    private val rejectFf = Check { bytes ->
+        if (bytes.hasRemaining() && bytes.get(bytes.position()) == 0xFF.toByte()) throw rejected
+    }
+
+    /** A rejected publication keeps the good bytes and takes the rejected envelope; a later good publication clears the detection. */
+    public fun `a payload that fails its check keeps the last good value`() {
+        val rt = runtime()
+        rt.checkWith(IFACE, ORD, rejectFf)
+        rt.set(IFACE, ORD, bytes(7))
+        rt.commit()
+        rt.set(IFACE, ORD, bytes(0xFF))
+        rt.commit()
+        val buf = out(8)
+        val raw = rt.read(IFACE, ORD, buf)
+        assertEquals(Provenance.Invalid(Cause.Detected(rejected)), raw.provenance)
+        assertArrayEquals(array(7), buf.written())
+        assertEquals(2uL, raw.envelope.seq)
+
+        rt.set(IFACE, ORD, bytes(8))
+        rt.commit()
+        val good = out(8)
+        assertEquals(Provenance.Live, rt.read(IFACE, ORD, good).provenance)
+        assertArrayEquals(array(8), good.written())
+    }
+
+    /** A rejected first publication has no value to copy. */
+    public fun `a payload that fails its check before any good value copies nothing`() {
+        val rt = runtime()
+        rt.checkWith(IFACE, ORD, rejectFf)
+        rt.set(IFACE, ORD, bytes(0xFF))
+        rt.commit()
+        val raw = rt.read(IFACE, ORD, out(8))
+        assertEquals(Provenance.Invalid(Cause.Detected(rejected)), raw.provenance)
+        assertEquals(0, raw.len)
+        assertEquals(1uL, raw.envelope.seq)
+    }
+
+    /** Registering checks a held `Live` value without publishing a new envelope. */
+    public fun `a check registered over a held value checks it`() {
+        val rt = runtime()
+        rt.set(IFACE, ORD, bytes(0xFF))
+        rt.commit()
+        rt.checkWith(IFACE, ORD, rejectFf)
+        val raw = rt.read(IFACE, ORD, out(8))
+        assertEquals(Provenance.Invalid(Cause.Detected(rejected)), raw.provenance)
+        assertEquals(0, raw.len)
+        assertEquals(1uL, raw.envelope.seq)
+    }
+
+    /** A touch keeps both the last good bytes and the detection. */
+    public fun `a touch after a failed check keeps the detection`() {
+        val rt = runtime()
+        rt.checkWith(IFACE, ORD, rejectFf)
+        rt.set(IFACE, ORD, bytes(7))
+        rt.commit()
+        rt.set(IFACE, ORD, bytes(0xFF))
+        rt.commit()
+        rt.touch(IFACE, ORD)
+        rt.commit()
+        val buf = out(8)
+        val raw = rt.read(IFACE, ORD, buf)
+        assertEquals(Provenance.Invalid(Cause.Detected(rejected)), raw.provenance)
+        assertArrayEquals(array(7), buf.written())
+        assertEquals(3uL, raw.envelope.seq)
     }
 }

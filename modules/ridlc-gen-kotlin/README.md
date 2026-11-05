@@ -245,6 +245,13 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   package with a signal therefore depends on `kotlinx-coroutines-core`, as one
   with an event or a call already did. `serve(timeout)` takes no claim past its
   timeout, and the async client's `nextEvent` takes occurrences one at a time.
+- **Each client registers its signals' checks** (driftsys/ridl#1237): the
+  descriptor's `bindChecks` calls `SignalReader.checkWith` once per signal, with
+  `ridl.rt.payload.check` over the signal's codec, as the Rust `Client::new`
+  does. The poll client, the plain client and the async client call it beside
+  `checkCatalog`; the blocking client reaches it through its poll client. A
+  payload that fails keeps the last good value under `Provenance.Invalid`, and a
+  channel with no bytes under any `Invalid` reads as its init value.
 - **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
   ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
   `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking

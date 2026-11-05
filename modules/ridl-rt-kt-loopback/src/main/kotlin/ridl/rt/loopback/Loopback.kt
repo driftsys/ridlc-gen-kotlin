@@ -9,6 +9,7 @@ import ridl.rt.contract.defaultCeiling
 import ridl.rt.encoding.Encoding
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
+import ridl.rt.port.Check
 import ridl.rt.port.Claim
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
@@ -54,10 +55,13 @@ public class Handles internal constructor(
  * interfaces by delegating to the six role handles it holds. It is what a
  * generated `Client`, `Publisher` or `dispatch` is built over in a test.
  *
- * It is not a transport — nothing leaves the process — and not a checker:
- * payload bytes are opaque to it. It holds no catalog descriptor, so it
- * never reports `NotOwner`, never a `Contract` error except from an
- * unprovisioned [readFixed], and every value's freshness is `Unbounded`.
+ * It is not a transport — nothing leaves the process — and not a payload type
+ * owner: it names no payload type and never verifies a payload on its own. It
+ * calls the check a generated binding registers for a signal
+ * (`SignalReader.checkWith`) on each payload it commits for that signal. It
+ * holds no catalog descriptor, so it never reports `NotOwner`, never a
+ * `Contract` error except from an unprovisioned [readFixed], and every value's
+ * freshness is `Unbounded`.
  * Nothing detaches, so `Detached` never appears. Two things are bounded. The
  * call table's [SLOTS]: a send with every slot taken throws `SendError.Busy`.
  * And the size of a payload: a sending port refuses a payload longer than its
@@ -221,6 +225,8 @@ public class Loopback private constructor(
     }
 
     override fun now(): Timestamp = handles.reader.now()
+
+    override fun checkWith(iface: InterfaceNo, ord: Ordinal, check: Check): Unit = handles.reader.checkWith(iface, ord, check)
 
     override fun read(iface: InterfaceNo, ord: Ordinal, out: ByteBuffer): RawSample =
         handles.reader.read(iface, ord, out)
