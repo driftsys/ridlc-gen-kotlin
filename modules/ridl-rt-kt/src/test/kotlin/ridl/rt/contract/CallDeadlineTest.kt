@@ -11,7 +11,7 @@ import ridl.rt.sample.Duration
  * of ridl `main` (story E11.19), case for case.
  */
 class CallDeadlineTest {
-    private fun member(kind: Kind, timing: Timing?) = Member(Ordinal(1u), kind, "lock", timing, emptyList())
+    private fun member(kind: Kind, timing: Timing?) = Member(Ordinal(1u), kind, "lock", timing, emptyList(), emptyList())
 
     private fun command(timing: Timing?) = member(Kind.Command, timing)
 
@@ -56,5 +56,23 @@ class CallDeadlineTest {
     @Test
     fun `a member with no timing has no deadline`() {
         assertNull(command(null).callDeadline())
+    }
+
+    /** ridl §9: the rate floor is `min` and the staleness bound `max`, on the timing and through the member. */
+    @Test
+    fun `the timing accessors read min and max`() {
+        val timing = Timing(TimingMode.Range, Duration(5_000), Duration(10_000))
+        assertEquals(Duration(5_000), timing.rateFloor())
+        assertEquals(Duration(10_000), timing.stalenessBound())
+        val signal = member(Kind.Signal, timing)
+        assertEquals(Duration(5_000), signal.rateFloor())
+        assertEquals(Duration(10_000), signal.stalenessBound())
+    }
+
+    /** A member with no timing has neither bound. */
+    @Test
+    fun `a member with no timing has no rate floor and no staleness bound`() {
+        assertNull(member(Kind.Fixed, null).rateFloor())
+        assertNull(member(Kind.Fixed, null).stalenessBound())
     }
 }

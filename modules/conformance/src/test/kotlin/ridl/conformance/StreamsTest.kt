@@ -88,11 +88,29 @@ class StreamsTest {
         )
         assertTrue("fun ping(" in text, text)
         assertFalse("fun history(" in text, text)
-        assertTrue(Regex("""Kind\.Query, "history", .*, listOf\(PayloadInfo\("Level"\)\)\)""").containsMatchIn(text), text)
+        assertTrue(Regex("""Kind\.Query, "history", .*, listOf\(PayloadInfo\("Level"\)\), """).containsMatchIn(text), text)
         assertTrue(
             Regex("""listOf\(LevelCodec\.maxSize\.toULong\(\), LevelCodec\.maxSize\.toULong\(\)\),""").containsMatchIn(text),
             text,
         )
+    }
+
+    @Test
+    fun `a member's row names its streams, and a plain member's row has none`() {
+        val text = faces(
+            "infos",
+            """
+              command ping(level: Level) @[..50ms]
+              command putBlob(level: Level, data: <bytes>) @[..50ms]
+              query history(level: Level): <Sample> @[..50ms]
+              query logs(level: Level): <string> @[..50ms]
+            """.trimIndent(),
+        )
+        fun row(member: String) = text.lines().first { "\"$member\"" in it && "Member(" in it }
+        assertTrue(row("ping").endsWith(", emptyList()),"), row("ping"))
+        assertTrue("""listOf(StreamInfo(StreamNo(1u), StreamForm.Bytes, ""))""" in row("putBlob"), row("putBlob"))
+        assertTrue("""listOf(StreamInfo(StreamNo(0u), StreamForm.Elements, "probe.infos.Sample"))""" in row("history"), row("history"))
+        assertTrue("""listOf(StreamInfo(StreamNo(0u), StreamForm.Text, ""))""" in row("logs"), row("logs"))
     }
 
     @Test

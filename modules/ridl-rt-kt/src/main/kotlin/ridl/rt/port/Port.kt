@@ -19,6 +19,7 @@ import ridl.rt.RidlError
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.StreamNo
 import ridl.rt.encoding.Encoding
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Envelope
@@ -56,6 +57,9 @@ public interface Clock {
     /** The current time in the platform time base. */
     public fun now(): Timestamp
 }
+
+/** The number of a call's reply stream (ridl §12). A stream parameter is numbered from 1. `ridl_rt::port::REPLY_STREAM`. */
+public val REPLY_STREAM: StreamNo = StreamNo(0u)
 
 /**
  * A payload check registered by a generated binding. `ridl_rt::port::Check`.
@@ -397,6 +401,22 @@ public sealed interface Interest {
 
     /** A claim on one of the interface's members is waiting. */
     public data class Claim(public val iface: InterfaceNo) : Interest
+
+    /**
+     * Stream [no] of one call changed: a chunk or its end arrived, its window
+     * freed, the provider stopped it with an abort, the call was settled or
+     * forgotten, or the provider's handler was dropped. The waker is stored
+     * with the call, as an [Outcome] waker is, one for each stream of the call.
+     */
+    public data class Stream(public val correlation: Correlation, public val no: StreamNo) : Interest
+
+    /**
+     * Stream [no] of one claim changed, on the provider's side: a chunk or its
+     * end arrived, its window freed, the caller stopped it with an abort, the
+     * caller forgot the call, or a settlement released it. The waker is stored
+     * with the claim, one for each stream of the claim.
+     */
+    public data class ClaimStream(public val claim: ClaimId, public val no: StreamNo) : Interest
 }
 
 /** A read that failed. `ridl_rt::port::ReadError`. */

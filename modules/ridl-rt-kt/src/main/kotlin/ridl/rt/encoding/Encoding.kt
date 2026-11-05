@@ -4,7 +4,7 @@ package ridl.rt.encoding
 
 /**
  * A payload encoding. `ridl_rt::encoding::Encoding` and its three marker
- * types, `FlatBuffers`, `Proto3` and `ReprC`.
+ * types, `FlatBuffers`, `Proto3` and `Podbuf`.
  *
  * The set is closed, as the Rust trait is sealed: a new encoding is a decision
  * recorded in an ADR, not a class in another module. [tag] is the frame's
@@ -18,8 +18,8 @@ public enum class Encoding(public val tag: Int, public val encodingName: String)
     /** proto3. */
     Proto3(2, "proto3"),
 
-    /** `repr(C)`, the fixed-layout encoding of ADR-0020 decision 1. */
-    ReprC(3, "repr-c"),
+    /** podbuf, the in-place encoding of ADR-0031. */
+    Podbuf(3, "podbuf"),
     ;
 
     public companion object {

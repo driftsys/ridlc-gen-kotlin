@@ -62,6 +62,16 @@ code can hold a buffer without allocating; a Kotlin caller allocates a
 that array's length. Nor has `impl Encoded for &P`, a borrow Kotlin does not
 spell.
 
+ridl 0.15 renames `Encoding.ReprC` to `Encoding.Podbuf` (driftsys/ridl#1097),
+and adds `Rule.Utf8`, `Transport.Interrupted`, `EncodeError.Contract`,
+`Unaligned` and `Layout`, the proto3 and podbuf `Malformed` variants,
+`StreamNo`, `StreamForm`, `StreamInfo`, `Member.streams`, `REPLY_STREAM`, the
+`Stream` and `ClaimStream` interests, and the `rateFloor` and `stalenessBound`
+accessors. The variants of an encoding Kotlin has no codec for are mirrored all
+the same, so a `when` over them stays the Rust one. `TranscodeError`,
+`ridl_rt::podbuf` and `ridl_rt::proto3` have no Kotlin item: nothing here
+transcodes or reads either encoding.
+
 ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
 below.

@@ -75,7 +75,7 @@ class SignalStateTest {
     }
 
     private class Level(timing: Timing?, override val iface: Interface = Gauge) : Signal<Int> {
-        override val member = Member(Ordinal(1u), Kind.Signal, "level", timing, emptyList())
+        override val member = Member(Ordinal(1u), Kind.Signal, "level", timing, emptyList(), emptyList())
         override val row = 0
 
         override fun init() = 0
