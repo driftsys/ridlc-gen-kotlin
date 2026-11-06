@@ -21,6 +21,7 @@ import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
 import ridl.rt.contract.StreamNo
 import ridl.rt.encoding.Encoding
+import ridl.rt.error.CallError
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Envelope
 import ridl.rt.sample.Freshness
@@ -283,6 +284,212 @@ public data class Claim(
 /** Identifies one claim to its provider. `ridl_rt::port::ClaimId`. */
 @JvmInline
 public value class ClaimId(public val value: Long)
+
+/**
+ * Extension: the streams of a call, consumer side (ridl §12).
+ * `ridl_rt::port::StreamCaller`.
+ *
+ * A runtime that carries streams implements it beside [Caller]; a runtime
+ * without streams is still a complete runtime, so no other port names it as a
+ * bound. A stream is keyed by its call's [Correlation] and a [StreamNo]:
+ * [REPLY_STREAM] is the reply stream, and `StreamNo(k)` from 1 is the `k`-th
+ * stream parameter. The caller sends the call with [Caller.command] or
+ * [Caller.query], then pushes and ends each parameter stream and pulls the
+ * reply stream until [Pull.End] or [Pull.Failed], then calls [Caller.forget].
+ * A task that waits registers [Interest.Stream] with [Wakeable] before it pulls
+ * or pushes. A push to a parameter stream may come before the provider takes
+ * the call's claim: the runtime holds the pushed chunks, up to its window.
+ *
+ * The rules every method follows:
+ *
+ * - **The unit is the chunk.** A port never splits or merges a chunk: a pull
+ *   copies exactly one chunk, and a push offers exactly one.
+ * - **A push takes the whole chunk or nothing.** [push] returns the chunk's
+ *   length when it was taken, and 0 when the stream's window is full and a
+ *   non-empty chunk was not taken. That 0 is the backpressure: the producer
+ *   waits on [Interest.Stream] and pushes the same chunk again. An empty chunk
+ *   is always taken, whatever the window: its push returns 0 and the receiver
+ *   pulls `Pull.Chunk(0)`.
+ * - **A reply stream ends with its call's settlement.** The provider ends it
+ *   with [StreamHandler.endClaim] on [REPLY_STREAM], which settles the call
+ *   with no reply bytes. A settlement with an error ends the reply stream with
+ *   that error, after the chunks already pushed.
+ * - **A stop on purpose is an abort.** A producer interrupts its stream with
+ *   [abort] and `Transport.Interrupted`; a receiver refuses what it received
+ *   with [abort] and the refusal's outcome. A [Caller.forget] stops every
+ *   stream of the call that was not ended with `Transport.Interrupted`, and
+ *   keeps every stream its producer ended.
+ *
+ * Each method has two layers of error, as [Caller.reply] has. The port call
+ * itself throws [ReadError] for a pull, and the `Contract` and `Detached` cases
+ * of [PushError] for the others. The inner outcome, [Pull.Failed] or
+ * [PushError.Failed], is the other side's verdict on the stream.
+ */
+public interface StreamCaller : Caller {
+    /**
+     * Copies the next chunk of stream [s] of call [c] into [out] from its
+     * position, and returns [Pull.Chunk] with its length, [Pull.Pending] when
+     * no chunk is waiting, [Pull.End] once the producer ended the stream and
+     * every chunk before the end was pulled, or [Pull.Failed] when the stream
+     * stopped without its end.
+     *
+     * A runtime that holds no member table accepts [REPLY_STREAM] on a query,
+     * and `StreamNo(1)` and `StreamNo(2)` on any call.
+     *
+     * @throws ReadError.Short when the chunk does not fit [out], which does not
+     *   consume it.
+     * @throws ReadError.Contract with `UnknownInteraction` when the call or the
+     *   stream number is unknown, and for a pull by the stream's producer.
+     * @throws ReadError.Detached when the runtime behind the port is gone.
+     */
+    public fun pull(c: Correlation, s: StreamNo, out: ByteBuffer): Pull
+
+    /**
+     * Offers one chunk to stream [s] of call [c]: the length of [chunk] when it
+     * was taken, and 0 when the window is full and a non-empty chunk was not.
+     * An empty chunk is always taken and returns 0.
+     *
+     * @throws PushError
+     */
+    public fun push(c: Correlation, s: StreamNo, chunk: ByteBuffer): Int
+
+    /**
+     * Ends stream [s] of call [c]: the receiver pulls the chunks before the
+     * end, then [Pull.End].
+     *
+     * @throws PushError.Ended on a second end.
+     */
+    public fun end(c: Correlation, s: StreamNo)
+
+    /**
+     * Stops stream [s] of call [c] with outcome [e], from either side of the
+     * stream. When the producer aborts, the receiver pulls the chunks pushed
+     * before the abort, then `Pull.Failed(e)`. When the receiver refuses, the
+     * producer's next push or end throws `PushError.Failed(e)`, and the
+     * receiver reads none of what it refused. After its own abort, a producer's
+     * push and end throw [PushError.Ended].
+     *
+     * After the other side stopped the stream, [abort] throws
+     * [PushError.Ended], while [push] and [end] throw [PushError.Failed]. An
+     * abort of a stream that already ended or stopped throws [PushError.Ended]
+     * and changes nothing for the producer; by the receiver, it still drops the
+     * receiver's unread chunks.
+     */
+    public fun abort(c: Correlation, s: StreamNo, e: CallError)
+}
+
+/**
+ * Extension: the streams of a call, provider side (ridl §12).
+ * `ridl_rt::port::StreamHandler`.
+ *
+ * The counterpart of [StreamCaller], keyed by the [ClaimId] [Handler.nextClaim]
+ * presented and a [StreamNo], under the same rules. The provider takes the
+ * claim, then pulls each parameter stream until [Pull.End] and pushes the reply
+ * stream until it calls [endClaim] on [REPLY_STREAM]. A task that waits
+ * registers [Interest.ClaimStream] with [Wakeable].
+ *
+ * [Handler.settle] with an error on a claim whose reply is a stream has the
+ * effect of [abortClaim] on [REPLY_STREAM] with that error, and a settlement
+ * with no bytes ends it as [endClaim] does, except after the caller refused the
+ * reply stream: [endClaim] throws `PushError.Failed` and settles with the
+ * refusal, while `settle` records success and leaves the refusal on the stream.
+ * A command's claim is settled at its acknowledgment, before any chunk of a
+ * parameter stream is read; a refusal after that travels on the stream through
+ * [abortClaim], and the acknowledgment is not changed.
+ *
+ * A claim offered through [ReadError.ShortClaim] and not yet taken has no
+ * streams: a stream operation on it is `UnknownInteraction`, and a [Wakeable]
+ * registration on it is woken at once.
+ *
+ * A handler closed while it holds a claim on which it already moved a stream
+ * does not return the call to the waiting calls, because another handler would
+ * read partial streams: every stream that has not ended stops with
+ * `Transport.Interrupted`, and the call settles with that error. A pull that
+ * returns [Pull.Pending] and a registration move nothing.
+ *
+ * After a caller's [Caller.forget] of a claimed call, a stream its producer
+ * ended is kept and the provider still pulls it to [Pull.End]; every other
+ * stream stops with `Transport.Interrupted`, after the chunks pushed before the
+ * forget. [pushClaim] and [endClaim] on the reply stream throw
+ * `PushError.Failed(Transport.Interrupted)`, and an [endClaim] of a claim still
+ * held settles it all the same. The runtime keeps the call and its slot until
+ * the provider is done with every stream parameter, or its handler is gone: it
+ * is done once it pulled [Pull.End] or [Pull.Failed] from it or aborted it. The
+ * settlement of a query releases every stream parameter, and so does a command's
+ * settlement with an error: their unread chunks are dropped, and the caller's
+ * next push or end throws `PushError.Failed(Transport.Interrupted)`. A command's
+ * acknowledgment does not release them. A forgotten call whose claim was settled
+ * and whose parameters are released is no longer known.
+ */
+public interface StreamHandler : Handler {
+    /** Copies the next chunk of stream [s] of [claim] into [out], with the answers and errors of [StreamCaller.pull]. */
+    public fun pullClaim(claim: ClaimId, s: StreamNo, out: ByteBuffer): Pull
+
+    /** Offers one chunk to stream [s] of [claim], as [StreamCaller.push] does. */
+    public fun pushClaim(claim: ClaimId, s: StreamNo, chunk: ByteBuffer): Int
+
+    /**
+     * Ends stream [s] of [claim]. For [REPLY_STREAM] this is the claim's
+     * settlement: it settles the claim with no reply bytes, and no
+     * [Handler.settle] follows. After the caller refused the reply stream with
+     * outcome `e`, it throws `PushError.Failed(e)` and settles the claim with
+     * `e`, so the claim does not stay unsettled.
+     */
+    public fun endClaim(claim: ClaimId, s: StreamNo)
+
+    /** Stops stream [s] of [claim] with outcome [e], from either side of the stream, as [StreamCaller.abort] does. */
+    public fun abortClaim(claim: ClaimId, s: StreamNo, e: CallError)
+}
+
+/** The outcome of one [StreamCaller.pull] or [StreamHandler.pullClaim]. `ridl_rt::port::Pull`. */
+public sealed interface Pull {
+    /** One chunk was copied into the buffer; its length. */
+    public data class Chunk(public val len: Int) : Pull
+
+    /** The producer ended the stream. Pulling again answers `End` again while the call, or the claim, is still known. */
+    public data object End : Pull
+
+    /** No chunk is waiting yet. */
+    public data object Pending : Pull
+
+    /** The stream stopped without its end, or was refused: the outcome from the other side or the transport. */
+    public data class Failed(public val error: CallError) : Pull
+}
+
+/**
+ * A push, an end or an abort of a stream that failed.
+ * `ridl_rt::port::PushError`.
+ *
+ * Two layers, as for a pull: [Contract] and [Detached] are the port call, and
+ * [TooLarge] and [Ended] are refused on this side before anything is sent.
+ * [Failed] is the other side's verdict on the stream.
+ */
+public sealed class PushError(message: String) : RidlError(message) {
+    /**
+     * The chunk is longer than the member's limit: the limit a `[limits]` entry
+     * gives it, else the default ceiling of its kind
+     * ([ridl.rt.contract.defaultCeiling]). Nothing is pushed. [cap] is the
+     * limit in bytes.
+     */
+    public data class TooLarge(public val cap: Int) : PushError("the chunk is larger than $cap bytes")
+
+    /** The stream already ended or was aborted: a push, an end or an abort after its end. */
+    public data object Ended : PushError("the stream already ended")
+
+    /**
+     * The other side stopped the stream: a `Contract` error when the receiver
+     * refused a chunk at its boundary, `Transport.Corrupt` when it could not
+     * decode one, and `Transport.Interrupted` when it cancelled the stream or
+     * the call was forgotten.
+     */
+    public data class Failed(public val error: CallError) : PushError("the stream failed: ${error.message}")
+
+    /** A contract error of the port call, such as `UnknownInteraction` for an unknown call or stream number. */
+    public data class Contract(public val contract: ridl.rt.error.Contract) : PushError(contract.message!!)
+
+    /** The runtime behind the port is gone. */
+    public data object Detached : PushError("the runtime behind the port is gone")
+}
 
 /** `fixed`, consumer side (ridl §8). `ridl_rt::port::FixedReader`. */
 public interface FixedReader : Attached {

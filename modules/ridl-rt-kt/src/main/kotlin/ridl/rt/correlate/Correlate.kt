@@ -11,11 +11,21 @@
 // waker instead, so the runtime wakes it after releasing that lock.
 package ridl.rt.correlate
 
+import ridl.rt.contract.StreamNo
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
 import ridl.rt.task.Waker
 
 /** The bits of a correlation that hold the slot index. */
+/**
+ * The `Interest.Stream` wakers one slot of a [Table] holds: one for each of up
+ * to four streams of the call, whatever their numbers. A registration on a
+ * fifth stream is handed back to be woken at once, so its task reads its stream
+ * again and registers again, a busy loop rather than a lost wake.
+ * `ridl_rt::correlate::STREAM_WAKERS`.
+ */
+public const val STREAM_WAKERS: Int = 4
+
 private const val SLOT_BITS = 16
 private const val SLOT_MASK = (1L shl SLOT_BITS) - 1
 
@@ -114,6 +124,9 @@ public class Table(public val capacity: Int, budget: ULong?) {
 
         /** The call's one `Interest.Outcome` waker. */
         var waker: Waker? = null
+
+        /** The call's `Interest.Stream` wakers, at most [STREAM_WAKERS], one for each stream number. */
+        val streams = LinkedHashMap<StreamNo, Waker>()
     }
 
     private val slots = Array(capacity) { Entry() }
@@ -138,6 +151,9 @@ public class Table(public val capacity: Int, budget: ULong?) {
         val entry = slots[index]
         entry.state = State.InFlight(forgotten = false)
         entry.reservation = reservation
+        // A runtime that did not take the stream wakers of the slot's previous
+        // call leaves them here; the new call does not inherit them.
+        entry.streams.clear()
         return Correlation((entry.generation shl SLOT_BITS) or index.toLong())
     }
 
@@ -208,6 +224,46 @@ public class Table(public val capacity: Int, budget: ULong?) {
         return store(entry.waker, waker).also { entry.waker = waker }
     }
 
+    /**
+     * Stores [waker] as the `Interest.Stream(c, s)` waker of the call under
+     * [c], one for each stream number, and returns the waker to wake: the
+     * displaced waker of another task; nothing when the same waker is stored,
+     * which is a refresh; or [waker] itself, not stored, when the call was
+     * forgotten or the table holds no call under [c], since no stream of [c]
+     * will change again, and when the slot already holds [STREAM_WAKERS] wakers
+     * of other streams.
+     *
+     * A settled call still stores the waker: a command is settled at its
+     * acknowledgment, and its parameter streams go on after it.
+     */
+    public fun wakeOnStream(c: Correlation, s: StreamNo, waker: Waker): Waker? {
+        val index = held(c) ?: return waker
+        val entry = slots[index]
+        val state = entry.state
+        if (state is State.InFlight && state.forgotten) return waker
+        if (s !in entry.streams && entry.streams.size == STREAM_WAKERS) return waker
+        return store(entry.streams[s], waker).also { entry.streams[s] = waker }
+    }
+
+    /**
+     * Takes the `Interest.Stream(c, s)` waker of the call under [c], which a
+     * runtime wakes when a chunk or the end arrives on stream [s] or its window
+     * frees. `null` when none is stored or the table holds no call under [c].
+     */
+    public fun takeStream(c: Correlation, s: StreamNo): Waker? = slots[held(c) ?: return null].streams.remove(s)
+
+    /**
+     * Takes every stream waker [slot] holds, whatever stream it was registered
+     * on. A runtime calls it after every [settle] and [forget] that did not
+     * answer `Unknown`, with [Table.slot] of the correlation it passed: it
+     * works after a reclaim too, when that correlation already answers as
+     * unknown. A slot index the table does not have yields nothing.
+     */
+    public fun takeStreams(slot: Int): List<Waker> {
+        val entry = slots.getOrNull(slot) ?: return emptyList()
+        return entry.streams.values.toList().also { entry.streams.clear() }
+    }
+
     /** The slot of [c] when that slot holds a call under [c]'s generation. */
     private fun held(c: Correlation): Int? {
         val index = slot(c)
@@ -216,7 +272,11 @@ public class Table(public val capacity: Int, budget: ULong?) {
         return index.takeIf { entry.generation == generation && entry.state != State.Free }
     }
 
-    /** Frees a slot: credits its reservation, drops its waker, and advances its generation. */
+    /**
+     * Frees a slot: credits its reservation, drops its outcome waker, and
+     * advances its generation. The stream wakers stay for [takeStreams] to hand
+     * back; the slot's next [insert] drops any left.
+     */
     private fun reclaim(index: Int) {
         val entry = slots[index]
         budget?.let { free -> budget = if (ULong.MAX_VALUE - free < entry.reservation) ULong.MAX_VALUE else free + entry.reservation }

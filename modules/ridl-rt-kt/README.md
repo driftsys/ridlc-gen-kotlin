@@ -72,6 +72,11 @@ the same, so a `when` over them stays the Rust one. `TranscodeError`,
 `ridl_rt::podbuf` and `ridl_rt::proto3` have no Kotlin item: nothing here
 transcodes or reads either encoding.
 
+ridl 0.15 adds the stream ports (driftsys/ridl#1154), `StreamCaller` and
+`StreamHandler` with `Pull` and `PushError`, and `Table`'s stream wakers,
+`wakeOnStream`, `takeStream` and `takeStreams`. `CorrelateTest` carries their
+cases.
+
 ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
 below.

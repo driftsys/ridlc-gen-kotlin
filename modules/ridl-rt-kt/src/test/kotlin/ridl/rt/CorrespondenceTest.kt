@@ -49,6 +49,8 @@ import ridl.rt.port.EventSource
 import ridl.rt.port.FixedReader
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
+import ridl.rt.port.Pull
+import ridl.rt.port.PushError
 import ridl.rt.port.RaiseError
 import ridl.rt.port.RawOccurrence
 import ridl.rt.port.RawSample
@@ -59,6 +61,8 @@ import ridl.rt.port.ServeError
 import ridl.rt.port.SettleError
 import ridl.rt.port.SignalReader
 import ridl.rt.port.SignalWriter
+import ridl.rt.port.StreamCaller
+import ridl.rt.port.StreamHandler
 import ridl.rt.port.SubscribeError
 import ridl.rt.port.Wakeable
 import ridl.rt.port.Watermark
@@ -223,6 +227,13 @@ class CorrespondenceTest {
         Row("ridl_rt::port::Encoded", Encoded::class, members = listOf("encoding")),
         Row("ridl_rt::port::Clock", Clock::class, members = listOf("now")),
         Row("ridl_rt::port::Check", Check::class),
+        Row("ridl_rt::port::StreamCaller", StreamCaller::class, members = listOf("pull", "push", "end", "abort"), extends = listOf(Caller::class)),
+        Row(
+            "ridl_rt::port::StreamHandler", StreamHandler::class,
+            members = listOf("pull_claim", "push_claim", "end_claim", "abort_claim"), extends = listOf(Handler::class),
+        ),
+        Row("ridl_rt::port::Pull", Pull::class, variants = listOf("Chunk", "End", "Pending", "Failed")),
+        Row("ridl_rt::port::PushError", PushError::class, variants = listOf("TooLarge", "Ended", "Failed", "Contract", "Detached")),
         Row("ridl_rt::port::SignalReader", SignalReader::class, members = listOf("check_with", "read"), extends = listOf(Attached::class)),
         Row(
             "ridl_rt::port::RawSample", RawSample::class,

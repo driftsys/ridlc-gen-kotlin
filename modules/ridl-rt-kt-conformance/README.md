@@ -23,6 +23,7 @@ a `@TestFactory`:
 @TestFactory fun scannable() = scannableSuite(MyFactory)
 @TestFactory fun coherent() = coherentSuite(MyFactory)
 @TestFactory fun trace() = traceSuite(MyFactory)
+@TestFactory fun streams() = streamsSuite(MyFactory)
 ```
 
 A runtime in another repository takes the suite from Maven Central, which the
@@ -121,14 +122,24 @@ over a held value checks it` and
 `a touch after a failed check keeps the
 detection`: 50 base cases and 83 in all.
 
+ridl 0.15 (ADR-0032, ridl §12): the streams of a call. `StreamsContract`, run by
+`streamsSuite`, holds the 33 cases of the `streams` arm, for a runtime that
+implements `StreamCaller`, `StreamHandler` and `Wakeable`: 33 streams cases and
+116 in all. The suite attaches to a catalog with no descriptor, so a runtime
+under test accepts `REPLY_STREAM` on a query and `StreamNo(1)` and `StreamNo(2)`
+on any call; a test that needs a full window pushes until a push answers 0, at
+most 1,024 times, and a runtime whose window does not fill skips that part.
+
 The case of a forget before any claim accepts either a call still presented and
 settled or a withdrawn one, and checks that the runtime then accepts exactly
 `slots` further sends, so the forgotten call gave its slot back.
 
 What the suite leaves out is the Rust crate's list, unchanged: what the port
 contract leaves to a runtime, a handler that has served nothing, two sinks on
-one event channel, `FixedReader`, anything reported from a catalog descriptor,
-the threading model, a runtime's own API beyond the factory, a wake the contract
+one event channel, `FixedReader`, a member's limit other than the default
+ceiling of its kind, a stream number beyond the first two stream parameters and
+the size of a stream's window, anything reported from a catalog descriptor, the
+threading model, a runtime's own API beyond the factory, a wake the contract
 allows but does not require, which serving handlers a call wakes, what a forget
 does to a call no handler has claimed beyond giving its slot back, and the close
 of a handle.
