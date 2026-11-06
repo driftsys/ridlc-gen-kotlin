@@ -73,7 +73,7 @@ internal sealed interface Staged {
     data object Touch : Staged
 }
 
-/** The outcome a forget records on every stream of the call. */
+/** The outcome a forget records on every unfinished stream of the call. */
 private val INTERRUPTED: CallError = Transport.Interrupted
 
 /** One side of a call's streams: the caller, which holds the correlation, or the provider, which holds the claim. */
@@ -219,9 +219,11 @@ internal class Store {
      * `Interest.Outcome` waker are the table's.
      *
      * A forgotten call that a handler holds keeps its entry until its
-     * settlement reclaims the slot, because a claim already presented is the
-     * provider's and is still settled. A forgotten call that no handler holds
-     * is withdrawn: its entry goes with its slot, at the `forget` for a
+     * settlement and until the provider is done with every stream parameter,
+     * or its handler is closed. A command's acknowledgment can leave unread
+     * parameters, so the entry and slot can remain after settlement. A
+     * forgotten call that no handler holds is withdrawn: its entry goes with
+     * its slot, at the `forget` for a
      * waiting call and at the handler's close for a claimed one.
      */
     private class CallEntry(
@@ -314,8 +316,8 @@ internal class Store {
         /**
          * Stream [s] of the call, made empty when nothing has named it yet. A
          * stream first named after the caller forgot the call starts stopped
-         * with `Transport.Interrupted`, as the forget stopped every stream the
-         * call had.
+         * with `Transport.Interrupted`, as the forget stopped every unfinished
+         * stream the call had.
          */
         fun stream(s: StreamNo): StreamState = streams.getOrPut(s) {
             StreamState().also {
@@ -660,7 +662,9 @@ internal class Store {
      *   stream parameter or its handler is closed.
      * - **Claimed by a handler and not settled**: it is marked forgotten and
      *   keeps its slot. The provider still settles it, and the slot is
-     *   reclaimed when that settlement lands. If the handler is closed first,
+     *   reclaimed once it is settled and the provider is done with every
+     *   stream parameter. [deferForget] keeps it through an acknowledgment
+     *   with unread parameters. If the handler is closed first,
      *   [closeHandler] withdraws the call instead of returning it.
      * - **Waiting, claimed by no handler**: it is withdrawn. It leaves the
      *   waiting calls, so no handler is ever presented it, and its slot is
@@ -964,8 +968,11 @@ internal class Store {
      * failure is consumed, and an injected failure leaves the claim
      * settleable. A recorded outcome wakes the call's `Outcome` waker, ends the
      * reply stream, or stops it with the error, after the chunks already pushed,
-     * and wakes every `Stream` waker of the call. The settlement of a call the
-     * caller forgot records nothing and reclaims its slot.
+     * and wakes every `Stream` waker of the call. If the caller's forget was
+     * deferred, the outcome is recorded and the slot stays held until the
+     * provider is done with every stream parameter or its handler is closed.
+     * Otherwise, settlement of a forgotten call records nothing and reclaims
+     * its slot.
      */
     fun settle(handler: Int, claim: ClaimId, outcome: Result<ByteArray>, wake: MutableList<Waker>) {
         val owner = claims[claim.value]
@@ -1058,7 +1065,7 @@ internal class Store {
     /**
      * Copies the next chunk of stream [s] of the call in [slot] into [out], for
      * [side], which must be the stream's receiver. A chunk taken wakes the
-     * producer, whose window it frees.
+     * producer; only a non-empty chunk frees room in the window.
      */
     fun pull(slot: Int, side: Side, s: StreamNo, out: ByteBuffer, wake: MutableList<Waker>): Pull {
         if (Side.producer(s) == side) throw ReadError.Contract(Contract.UnknownInteraction)

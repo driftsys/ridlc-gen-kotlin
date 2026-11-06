@@ -598,9 +598,10 @@ Each decision names the alternative it rejected.
   gives it a newtype, is decided with K2b's first bounded collection in the
   corpus.
 - **O-K5. Streams.** ridl 0.15 gives `ridl-rt` a stream port
-  (driftsys/ridl#1154), and `ridl-rt-kt` has none yet, so the Kotlin face covers
-  the four kinds with a payload and `fixed`, and leaves out a member with a
-  stream (#105). How the port maps to `Flow` or `Channel` is still to decide.
+  (driftsys/ridl#1154). `ridl-rt-kt` now has `StreamCaller` and `StreamHandler`,
+  and the loopback implements both. The Kotlin face still covers the four kinds
+  with a payload and `fixed`, and leaves out a member with a stream (#105). How
+  the port maps to `Flow` or `Channel` is still to decide.
 
 ## Trace
 

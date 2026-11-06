@@ -60,8 +60,8 @@ public sealed class Transport(message: String) : CallError(message) {
     /**
      * A stream stopped without its end, on purpose or because the call was
      * forgotten. A producer stops its stream with this outcome through
-     * `abort` or `abortClaim`, and a caller's `forget` stops every stream of
-     * the call that was not ended with it. It is also the outcome of a call
+     * `abort` or `abortClaim`, and a caller's `forget` stops every unfinished
+     * stream of the call with this outcome. It is also the outcome of a call
      * whose handler was dropped after it moved one of the call's streams.
      */
     public data object Interrupted : Transport("the stream stopped without its end")

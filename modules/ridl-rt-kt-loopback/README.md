@@ -30,11 +30,16 @@ gives, plus the JVM-specific tests below.
 driftsys/ridlc-gen-kotlin#5 adds the `Wakeable` of ridl `main` (story E11.16, as
 c2543c2 left it). Every handle is `Wakeable`, and stores one waker per kind of
 key it observes: `SourceHandle` one `Event` waker, `HandlerHandle` one `Claim`
-waker, `CallerHandle` an `Outcome` waker with each call and one `Slot` waker;
-any other kind is woken at once. The aggregate routes each key to the handle
+waker, `CallerHandle` an `Outcome` waker with each call and one `Slot` waker. It
+also stores one `Stream` waker per stream of a call on `CallerHandle`, and one
+`ClaimStream` waker per stream of a claim on `HandlerHandle`. A kind the handle
+does not observe is woken at once. The aggregate routes each key to the handle
 that observes it, and `CallerHandle` also carries `Clock`. Closing a handler
 returns the claims it held and had not settled to the waiting calls, in send
-order, and wakes the handlers that serve them (ADR-0021 decision 5).
+order, and wakes the handlers that serve them (ADR-0021 decision 5), unless it
+already moved one of the call's streams: that call is interrupted and settled
+with `Transport.Interrupted` instead. A forgotten call is withdrawn instead of
+returned.
 
 `attach()`, of ridl 0.5.0 (driftsys/ridl#488), makes a second aggregate on the
 same store: six new role handles, opened as `reader()` to `handler()` open one
@@ -74,13 +79,16 @@ wakes every caller's `Slot` waker; a `Slot` registration while a slot is free is
 woken at once. A forgotten call that no handler has claimed is withdrawn at once
 (ridl `main` at 5ac7082): it is never presented, and its slot comes back, so
 calls to a member no handler serves do not fill the table for good. A claimed
-one keeps its slot until its settlement, and a handler closed while it holds a
-forgotten call withdraws that call rather than returning it. The withdrawal is
-this runtime's behaviour, not a port contract. A returned claim goes back in
-send order, which a reused slot's correlation does not give. `WakeableTest` is
-the "Waking" and "The bounded call table" tests of `ports.rs` at 44e59fa, the
-ones only this runtime can express, under the same names and in the same order;
-the 15 that story E11.20 moved into the suite run from `ConformanceTest`.
+one keeps its slot until its settlement and until the provider is done with
+every stream parameter, or its handler is closed. A command's acknowledgment can
+leave parameters unread, so its slot can stay occupied after settlement. A
+handler closed while it holds a forgotten call withdraws that call rather than
+returning it. The withdrawal is this runtime's behaviour, not a port contract. A
+returned claim goes back in send order, which a reused slot's correlation does
+not give. `WakeableTest` is the "Waking" and "The bounded call table" tests of
+`ports.rs` at 44e59fa, the ones only this runtime can express, under the same
+names and in the same order; the 15 that story E11.20 moved into the suite run
+from `ConformanceTest`.
 
 ## Where the code departs from the Rust loopback
 

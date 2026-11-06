@@ -1026,7 +1026,7 @@ class PortsTest {
      * Each way the provider is done with a stream parameter completes a forget
      * deferred on it, and the slot comes back: pulling `End`, pulling `Failed`,
      * aborting the interrupted stream, aborting the ended stream, and the
-     * settlement of a query. A forget stops every stream that was not ended, so
+     * settlement of a query. A forget stops every unfinished stream, so
      * after it the provider's abort always finds a finished stream and answers
      * `Ended`. Every other slot is taken by a call in flight, so the slot is
      * shown held before the provider is done and free after.

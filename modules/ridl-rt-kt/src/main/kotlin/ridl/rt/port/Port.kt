@@ -317,8 +317,8 @@ public value class ClaimId(public val value: Long)
  * - **A stop on purpose is an abort.** A producer interrupts its stream with
  *   [abort] and `Transport.Interrupted`; a receiver refuses what it received
  *   with [abort] and the refusal's outcome. A [Caller.forget] stops every
- *   stream of the call that was not ended with `Transport.Interrupted`, and
- *   keeps every stream its producer ended.
+ *   unfinished stream of the call with `Transport.Interrupted`, and preserves
+ *   any earlier end or abort outcome.
  *
  * Each method has two layers of error, as [Caller.reply] has. The port call
  * itself throws [ReadError] for a pull, and the `Contract` and `Detached` cases
@@ -403,23 +403,26 @@ public interface StreamCaller : Caller {
  *
  * A handler closed while it holds a claim on which it already moved a stream
  * does not return the call to the waiting calls, because another handler would
- * read partial streams: every stream that has not ended stops with
+ * read partial streams: every unfinished stream stops with
  * `Transport.Interrupted`, and the call settles with that error. A pull that
  * returns [Pull.Pending] and a registration move nothing.
  *
  * After a caller's [Caller.forget] of a claimed call, a stream its producer
- * ended is kept and the provider still pulls it to [Pull.End]; every other
- * stream stops with `Transport.Interrupted`, after the chunks pushed before the
- * forget. [pushClaim] and [endClaim] on the reply stream throw
+ * ended is kept and the provider still pulls it to [Pull.End]; a stream already
+ * stopped keeps its abort outcome. Every unfinished stream stops with
+ * `Transport.Interrupted`, after the chunks pushed before the forget.
+ * [pushClaim] and [endClaim] on the reply stream throw
  * `PushError.Failed(Transport.Interrupted)`, and an [endClaim] of a claim still
  * held settles it all the same. The runtime keeps the call and its slot until
  * the provider is done with every stream parameter, or its handler is gone: it
  * is done once it pulled [Pull.End] or [Pull.Failed] from it or aborted it. The
  * settlement of a query releases every stream parameter, and so does a command's
- * settlement with an error: their unread chunks are dropped, and the caller's
- * next push or end throws `PushError.Failed(Transport.Interrupted)`. A command's
- * acknowledgment does not release them. A forgotten call whose claim was settled
- * and whose parameters are released is no longer known.
+ * settlement with an error: their unread chunks are dropped. An unfinished
+ * parameter stops with `Transport.Interrupted`, so the caller's next push or
+ * end throws `PushError.Failed(Transport.Interrupted)`. An earlier end or abort
+ * outcome is preserved. A command's acknowledgment does not release them.
+ * A forgotten call whose claim was settled and whose parameters are released
+ * is no longer known.
  */
 public interface StreamHandler : Handler {
     /** Copies the next chunk of stream [s] of [claim] into [out], with the answers and errors of [StreamCaller.pull]. */

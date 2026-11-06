@@ -64,9 +64,10 @@ public class Handles internal constructor(
  * owner: it names no payload type and never verifies a payload on its own. It
  * calls the check a generated binding registers for a signal
  * (`SignalReader.checkWith`) on each payload it commits for that signal. It
- * holds no catalog descriptor, so it never reports `NotOwner`, never a
- * `Contract` error except from an unprovisioned [readFixed], and every value's
- * freshness is `Unbounded`.
+ * holds no catalog descriptor, so it never reports `NotOwner`, and every
+ * value's freshness is `Unbounded`. An unprovisioned [readFixed] reports a
+ * `Contract` error, as do stream operations on an unknown call or claim, or
+ * from the wrong side of a stream.
  * Nothing detaches, so `Detached` never appears. Three things are bounded. A
  * stream's [STREAM_WINDOW]: a push into a full one returns 0. The
  * call table's [SLOTS]: a send with every slot taken throws `SendError.Busy`.
@@ -332,10 +333,10 @@ public class Loopback private constructor(
         /**
          * The number of non-empty chunks one stream of a call holds, pushed
          * and not yet pulled. A push of a non-empty chunk into a stream that
-         * holds this many returns 0 and takes nothing, and the receiver's next
-         * pull frees room for one. An empty chunk is always taken, whatever the
-         * window holds. Four is small, so that a test reaches the bound in a
-         * few pushes, as with [SLOTS].
+         * holds this many returns 0 and takes nothing. Pulling a non-empty
+         * chunk frees room for one; pulling an empty chunk does not. An empty
+         * chunk is always taken, whatever the window holds. Four is small, so
+         * that a test reaches the bound in a few pushes, as with [SLOTS].
          */
         public const val STREAM_WINDOW: Int = 4
     }
