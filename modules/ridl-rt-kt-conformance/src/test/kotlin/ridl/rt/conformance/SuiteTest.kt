@@ -61,12 +61,12 @@ class SuiteTest {
     }
 
     @Test
-    fun `the five suites hold the 79 tests of the Rust suite`() {
-        assertEquals(46, suite(Unused).size, "the base arm")
+    fun `the five suites hold the 83 tests of the Rust suite`() {
+        assertEquals(50, suite(Unused).size, "the base arm")
         assertEquals(5, scannableSuite(Unused).size, "the scannable arm")
         assertEquals(2, coherentSuite(Unused).size, "the coherent arm")
         assertEquals(8, wakeableSuite(Unused).size, "the wakeable arm")
         assertEquals(18, traceSuite(Unused).size, "the trace arm")
-        assertTrue(contracts.sumOf { it.tests.size } == 79)
+        assertTrue(contracts.sumOf { it.tests.size } == 83)
     }
 }

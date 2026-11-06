@@ -29,6 +29,7 @@ import ridl.rt.contract.Sizes
 import ridl.rt.contract.Timing
 import ridl.rt.contract.TimingMode
 import ridl.rt.encoding.Encoding
+import ridl.rt.port.Check
 import ridl.rt.port.RawSample
 import ridl.rt.port.ReadError
 import ridl.rt.port.SignalReader
@@ -62,6 +63,8 @@ class SignalStateTest {
             this.value = value
             seq++
         }
+
+        override fun checkWith(iface: InterfaceNo, ord: Ordinal, check: Check): Unit = Unit
 
         override fun read(iface: InterfaceNo, ord: Ordinal, out: ByteBuffer): RawSample {
             reads += now()

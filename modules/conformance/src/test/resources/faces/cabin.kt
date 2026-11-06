@@ -33,6 +33,7 @@ import veh.cabin.HornPublisher
 import veh.cabin.Level
 import veh.cabin.LevelCodec
 import veh.cabin.Temperature
+import veh.cabin.TemperatureCodec
 import veh.cabin.Warning
 import veh.cabin.WarningCodec
 import veh.cabin.Window
@@ -105,12 +106,45 @@ fun probe(): List<String> {
     rt.set(Cabin.number, Ordinal(1u), corrupt)
     rt.commit()
     client.temperature().let {
-        expectEqual("corrupt signal bytes read as the init value", Temperature.of(0), it.value)
+        expectEqual("corrupt signal bytes keep the last good value", Temperature.of(21), it.value)
         expectEqual("corrupt signal bytes are detected", Provenance.Invalid(Cause.Detected(Detection.Corrupt)), it.provenance)
     }
-    // No bytes stand for the init value under Init or Invalid(Declared) alone
-    // (frame §5.1); under any other provenance they are checked like any
-    // bytes, as the Rust face does since driftsys/ridl#517.
+    // The client's binding registers the check (driftsys/ridl#1237): with no
+    // good value to keep the channel holds no bytes, which read as the init
+    // value under the detection, whether the bytes came after the binding or
+    // were held before it.
+    Loopback(Cabin.catalog).let { fresh ->
+        val bound = CabinPollClient(fresh)
+        fresh.set(Cabin.number, Ordinal(1u), corrupt)
+        fresh.commit()
+        bound.temperature().let {
+            expectEqual("a corrupt first publication reads as the init value", Temperature.of(0), it.value)
+            expectEqual("a corrupt first publication is detected", Provenance.Invalid(Cause.Detected(Detection.Corrupt)), it.provenance)
+        }
+    }
+    // The runtime's detection is the one the sample reports, not a second one
+    // made of the no bytes it holds.
+    Loopback(Cabin.catalog).let { fresh ->
+        val bound = CabinPollClient(fresh)
+        fresh.set(Cabin.number, Ordinal(1u), patched(bytes(TemperatureCodec, Temperature.of(85)), 85, 86))
+        fresh.commit()
+        bound.temperature().let {
+            expectEqual("an out-of-range first publication reads as the init value", Temperature.of(0), it.value)
+            val cause = (it.provenance as? Provenance.Invalid)?.cause as? Cause.Detected
+            expect("an out-of-range first publication keeps its detection, not Corrupt: ${it.provenance}", cause?.detection is Detection.InvalidValue)
+        }
+    }
+    Loopback(Cabin.catalog).let { fresh ->
+        fresh.set(Cabin.number, Ordinal(1u), corrupt)
+        fresh.commit()
+        CabinPollClient(fresh).temperature().let {
+            expectEqual("corrupt bytes held before the binding read as the init value", Temperature.of(0), it.value)
+            expectEqual("corrupt bytes held before the binding are detected", Provenance.Invalid(Cause.Detected(Detection.Corrupt)), it.provenance)
+        }
+    }
+    // No bytes stand for the init value under Init or Invalid (frame §5.1);
+    // under Live they are checked like any bytes, as the Rust face does since
+    // driftsys/ridl#517.
     Loopback(Cabin.catalog).let { fresh ->
         CabinPublisher(fresh).run {
             invalidateTemperature()

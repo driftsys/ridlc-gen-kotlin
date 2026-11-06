@@ -4,7 +4,23 @@ package ridl.rt.payload
 
 import ridl.rt.RidlError
 import ridl.rt.encoding.Encoding
+import ridl.rt.sample.Detection
 import java.nio.ByteBuffer
+
+/**
+ * Checks received [bytes] for a payload type, keeping a contract violation and
+ * reporting every other verification error as corruption.
+ * `ridl_rt::payload::check`.
+ *
+ * @throws Detection when [bytes] do not verify.
+ */
+public fun <T, V> check(codec: Payload<T, V>, bytes: ByteBuffer) {
+    try {
+        codec.verify(bytes)
+    } catch (e: VerifyError) {
+        throw if (e is VerifyError.Contract) Detection.InvalidValue(e.violation) else Detection.Corrupt
+    }
+}
 
 /**
  * The codec of one payload type [T] in one [encoding].

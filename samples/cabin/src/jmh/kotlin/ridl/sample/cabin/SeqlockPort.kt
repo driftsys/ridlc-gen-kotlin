@@ -10,6 +10,7 @@ import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
 import ridl.rt.loopback.Loopback
 import ridl.rt.port.Caller
+import ridl.rt.port.Check
 import ridl.rt.port.Clock
 import ridl.rt.port.Encoded
 import ridl.rt.port.EventSource
@@ -59,6 +60,9 @@ class SeqlockPort(private val loopback: Loopback) :
         stamp = nowMicros()
         seq.setRelease(s + 2)
     }
+
+    /** The bench publishes only what its codec encoded, so it holds no check. */
+    override fun checkWith(iface: InterfaceNo, ord: Ordinal, check: Check): Unit = Unit
 
     override fun read(iface: InterfaceNo, ord: Ordinal, out: ByteBuffer): RawSample {
         while (true) {

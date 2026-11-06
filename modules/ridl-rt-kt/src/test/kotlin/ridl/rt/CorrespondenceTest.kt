@@ -34,6 +34,7 @@ import ridl.rt.payload.Violation
 import ridl.rt.port.Attached
 import ridl.rt.port.Caller
 import ridl.rt.port.Changed
+import ridl.rt.port.Check
 import ridl.rt.port.Claim
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
@@ -214,7 +215,8 @@ class CorrespondenceTest {
         Row("ridl_rt::port::Attached", Attached::class, members = listOf("catalog")),
         Row("ridl_rt::port::Encoded", Encoded::class, members = listOf("encoding")),
         Row("ridl_rt::port::Clock", Clock::class, members = listOf("now")),
-        Row("ridl_rt::port::SignalReader", SignalReader::class, members = listOf("read"), extends = listOf(Attached::class)),
+        Row("ridl_rt::port::Check", Check::class),
+        Row("ridl_rt::port::SignalReader", SignalReader::class, members = listOf("check_with", "read"), extends = listOf(Attached::class)),
         Row(
             "ridl_rt::port::RawSample", RawSample::class,
             members = listOf("provenance", "freshness", "envelope", "len"),

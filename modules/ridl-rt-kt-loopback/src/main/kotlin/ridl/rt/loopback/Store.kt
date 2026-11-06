@@ -27,6 +27,7 @@ import ridl.rt.error.CallError
 import ridl.rt.error.Contract
 import ridl.rt.error.Transport
 import ridl.rt.port.Changed
+import ridl.rt.port.Check
 import ridl.rt.port.Claim
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
@@ -40,6 +41,7 @@ import ridl.rt.port.SettleError
 import ridl.rt.port.WriteError
 import ridl.rt.port.Watermark
 import ridl.rt.sample.Cause
+import ridl.rt.sample.Detection
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Envelope
 import ridl.rt.sample.Freshness
@@ -84,8 +86,8 @@ internal class Store {
     private class SignalEntry(
         val bytes: ByteArray,
         val envelope: Envelope,
-        /** `true` after `invalidate`, cleared by the next `set`. */
-        val invalid: Boolean,
+        /** The provenance of the last publication, including a rejected `set`. */
+        val provenance: Provenance,
         /** The interface generation this entry last changed at, which [scan] selects on. */
         val changedAt: ULong,
     )
@@ -223,6 +225,9 @@ internal class Store {
      */
     private val limits = TreeMap<Key, Int>()
 
+    /** The check of each signal a binding registered one for. */
+    private val checks = TreeMap<Key, Check>()
+
     /** Runs [block] under the store's monitor. */
     inline fun <T> locked(block: Store.() -> T): T = synchronized(this) { block() }
 
@@ -263,6 +268,22 @@ internal class Store {
 
     // -- signals ------------------------------------------------------------
 
+    fun checkWith(key: Key, check: Check) {
+        checks[key] = check
+        val entry = signals[key] ?: return
+        if (entry.provenance != Provenance.Live) return
+        val detection = detected(key, entry.bytes) ?: return
+        signals[key] = SignalEntry(ByteArray(0), entry.envelope, Provenance.Invalid(Cause.Detected(detection)), entry.changedAt)
+    }
+
+    /** What the check of [key] detected in [bytes], or `null` when they pass or it has none. */
+    private fun detected(key: Key, bytes: ByteArray): Detection? = try {
+        checks[key]?.check(ByteBuffer.wrap(bytes).asReadOnlyBuffer())
+        null
+    } catch (detection: Detection) {
+        detection
+    }
+
     fun read(key: Key, out: ByteBuffer): RawSample {
         val entry = signals[key] ?: return UNPUBLISHED
         copyInto(entry.bytes, out)
@@ -287,12 +308,15 @@ internal class Store {
             val seq = (seqs[key] ?: 0u) + 1u
             seqs[key] = seq
             val previous = signals[key]
-            val (bytes, invalid) = when (op) {
-                is Staged.Set -> op.bytes to false
-                Staged.Invalidate -> (previous?.bytes ?: ByteArray(0)) to true
-                Staged.Touch -> previous!!.bytes to previous.invalid
+            val kept = previous?.bytes ?: ByteArray(0)
+            val (bytes, provenance) = when (op) {
+                is Staged.Set -> detected(key, op.bytes)
+                    ?.let { kept to Provenance.Invalid(Cause.Detected(it)) }
+                    ?: (op.bytes to Provenance.Live)
+                Staged.Invalidate -> kept to Provenance.Invalid(Cause.Declared)
+                Staged.Touch -> previous!!.bytes to previous.provenance
             }
-            signals[key] = SignalEntry(bytes, Envelope(stamp, seq), invalid, generations.getValue(key.iface))
+            signals[key] = SignalEntry(bytes, Envelope(stamp, seq), provenance, generations.getValue(key.iface))
         }
         staged.clear()
     }
@@ -740,7 +764,7 @@ internal class Store {
         // Every value is `Unbounded`: freshness is measured against a
         // staleness bound, and the loopback has no member table to read one from.
         fun sampleOf(entry: SignalEntry) = RawSample(
-            provenance = if (entry.invalid) Provenance.Invalid(Cause.Declared) else Provenance.Live,
+            provenance = entry.provenance,
             freshness = Freshness.Unbounded,
             envelope = entry.envelope,
             len = entry.bytes.size,
