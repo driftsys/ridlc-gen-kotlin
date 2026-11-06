@@ -71,8 +71,9 @@ internal sealed interface Domain {
     data class Named(val type: ClassName, val declared: String, val scalar: Scalar) : Domain
 
     /**
-     * An enum: `.value` out, `fromValue` in, the first member as the fallback.
-     * [zero] is the member numbered 0, which an absent field reads as.
+     * An enum: `.value` out and `fromValue` in. A strict enum falls back to
+     * its first member after verification. An absent field reads as [zero],
+     * the member numbered 0, or `Unknown(0)` for an open enum with no zero member.
      */
     data class EnumOf(
         val type: ClassName,
@@ -84,7 +85,10 @@ internal sealed interface Domain {
         val open: Boolean,
     ) : Domain
 
-    /** An enum set: `.bits` out, `ofOrNull` in, `EMPTY` as the fallback. */
+    /**
+     * An enum set: `.bits` out; `of` in for an open set, or `ofOrNull`
+     * with `EMPTY` as the fallback for a strict set.
+     */
     data class SetOf(
         val type: ClassName,
         val declared: String,

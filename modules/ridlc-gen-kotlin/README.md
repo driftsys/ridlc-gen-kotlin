@@ -23,9 +23,10 @@ and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
 in the one response: a stream (O-K5), a reference that resolves to nothing, two
-tuples spelling one name, an enum with no value, a union with no arm, and every
-position the Rust codec emitter refuses — a type with no finite FlatBuffers
-bound, a bare `string` or `bytes`, an optional array element or map part.
+tuples spelling one name, a strict enum with no value, a union with no arm, and
+every position the Rust codec emitter refuses — a type with no finite
+FlatBuffers bound, a bare `string` or `bytes`, an optional array element or map
+part.
 
 Every file starts with the request's generated-file marker and the project's
 header (driftsys/ridl#746, ridl 0.6.0): the marker, then each line of the
@@ -116,8 +117,9 @@ why, and how the rule was last checked; CI does not check it.
   backing is `i64` or `f64`; the declared widths are the codec's.
 - **An enum's discriminant is a `Long`**, not the `Int` of §4, because the
   model's is an `int64`.
-- **An enum set has a private constructor** and `of`, which refuses a bit no
-  member declares with the rule `Variant`, as the Rust `TryFrom` does.
+- **An enum set has a private constructor** and `of`. For a strict set, `of`
+  refuses a bit no member declares with the rule `Variant`, as the Rust
+  `TryFrom` does. For an open set, `of` keeps every bit.
 - **A bytes scalar is a final class**, not a value class: a value class cannot
   compare a `ByteArray` by content. It holds a private copy.
 - **O-K4 is decided as §4 has it**: an array's and a map's bounds are checked
@@ -158,14 +160,16 @@ to that over 15,780 buffers (`CodecTest`).
   else.
 - **An absent non-optional scalar or enum field reads as 0**, the FlatBuffers
   default, as the Rust codec reads it since ridl 0.5.0 (driftsys/ridl#472): 0
-  itself, the enum's zero member, or the empty enum set, in a struct's, a
-  tuple's or a map entry's table, a union arm's box and a box root. When 0 is
-  not a legal value of the field's type it is still `MissingRequired`. Legality
-  is decided at generation time by the Rust rule (`Zero.kt`, after
-  `ridl_ir::zero::range_holds_zero`): an enum needs a zero member, and a numeric
-  range must hold 0, on the grid of its `step` when it has one, read from the
-  model's exact decimal text. A step with no minimum counts from 0 since ridl
-  0.5.1 (driftsys/ridl#654). The bytes the codec writes do not change.
+  itself, the enum's zero member (or `Unknown(0)` for an open enum with no zero
+  member), or the empty enum set, in a struct's, a tuple's or a map entry's
+  table, a union arm's box and a box root. When 0 is not a legal value of the
+  field's type it is still `MissingRequired`. Legality is decided at generation
+  time by the Rust rule (`Zero.kt`, after `ridl_ir::zero::range_holds_zero`): a
+  strict enum needs a zero member, an open enum always admits zero, and a
+  numeric range must hold 0, on the grid of its `step` when it has one, read
+  from the model's exact decimal text. A step with no minimum counts from 0
+  since ridl 0.5.1 (driftsys/ridl#654). The bytes the codec writes do not
+  change.
 - **A map decodes to a `Map`**, where the Rust codec keeps a `Vec` of pairs.
   `verify` refuses two entries with one key with the rule `Unique`, as the Rust
   verifier does since ridl 0.5.1 (driftsys/ridl#654), comparing the keys as
@@ -254,14 +258,15 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   channel with no bytes under any `Invalid` reads as its init value.
 - **An open enum is a sealed interface** (typl §8.1, driftsys/ridl#1174): one
   `data object` per declared value and a class `Unknown`, because an enum class
-  has no case that carries a value. `fromValue` is not nullable and is the one
-  way to an `Unknown`, and gives the declared object for a declared value, so a
-  value has one representation, as Rust's `From<i64>`. `entries` and `value`
-  keep their strict spelling; a `when` over one needs its `Unknown` arm. An open
-  enum set keeps every bit: `of` refuses none, `ofOrNull` is gone, `unknownBits`
-  reads the undeclared bits, and `encode` refuses a value its field is too
-  narrow for with `EncodeError.Contract` and the rule `Range`, as Rust's
-  `encode_check`. An open enum with no value generates, and has no init value.
+  has no case that carries a value. `fromValue` is not nullable and gives the
+  declared object for a declared value. The `internal` constructor of `Unknown`
+  refuses declared values with `IllegalArgumentException`, so a value has one
+  representation, as Rust's `From<i64>`. `entries` and `value` keep their strict
+  spelling; a `when` over one needs its `Unknown` arm. An open enum set keeps
+  every bit: `of` refuses none, `ofOrNull` is gone, `unknownBits` reads the
+  undeclared bits, and `encode` refuses a value its field is too narrow for with
+  `EncodeError.Contract` and the rule `Range`, as Rust's `encode_check`. An open
+  enum with no value generates, and has no init value.
 - **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
   ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
   `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking

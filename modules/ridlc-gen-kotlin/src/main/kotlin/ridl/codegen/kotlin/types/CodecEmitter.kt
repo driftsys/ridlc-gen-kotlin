@@ -617,7 +617,8 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     /**
      * The value of a non-optional field whose position [field] finds. An
      * absent scalar or enum reads as the FlatBuffers default — 0, or the
-     * enum's zero member — which `verify` accepted (driftsys/ridl#472);
+     * enum's zero member (or `Unknown(0)` for an open enum with no zero
+     * member) — which `verify` accepted (driftsys/ridl#472);
      * anything else `verify` refused when absent.
      */
     private fun decodeRequired(wire: Wire, field: CodeBlock): CodeBlock {
@@ -629,7 +630,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         }
     }
 
-    /** What an absent [wire] reads as: 0 in its domain, the first member for an enum `verify` refused it of. */
+    /** 0 in [wire]'s domain; only a strict enum without a zero member falls back to its first member. */
     private fun defaultOf(wire: Wire.ScalarWire): CodeBlock = when (val domain = wire.domain) {
         is Domain.EnumOf -> if (domain.open) {
             CodeBlock.of("%T.fromValue(0L)", domain.type)

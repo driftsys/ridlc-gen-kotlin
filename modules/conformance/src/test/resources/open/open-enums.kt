@@ -61,6 +61,15 @@ fun probe(): List<String> {
     expectEqual("a declared value is its member", DtcStatus.ACTIVE, DtcStatus.fromValue(1))
     expectEqual("0 is its member", DtcStatus.INACTIVE, DtcStatus.fromValue(0))
     expectEqual("a member keeps its integer", 1L, DtcStatus.ACTIVE.value)
+    for (member in DtcStatus.entries) {
+        val duplicate = runCatching { DtcStatus.Unknown(member.value) }.exceptionOrNull()
+        expect("Unknown refuses the declared value ${member.value}: $duplicate", duplicate is IllegalArgumentException)
+    }
+    val constructed = OpenMsg(DtcStatus.Unknown(7L), Flags.EMPTY)
+    expectEqual(
+        "a directly constructed unknown value round-trips",
+        constructed, decoded(OpenMsgCodec, bytes(OpenMsgCodec, constructed)),
+    )
 
     // An open enum set keeps every bit, and says which are undeclared.
     expectEqual("every bit is kept", 0b1000_0001L, read.flags.bits)

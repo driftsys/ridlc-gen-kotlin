@@ -371,7 +371,7 @@ class TypesEmitter internal constructor(
 
     // -- enums and enum sets -----------------------------------------------
 
-    /** An enum class over the declared discriminants; an undefined one is `null` from `fromValue` (E10.5). */
+    /** A strict enum class (E10.5), or an open sealed interface whose `fromValue` keeps undeclared integers. */
     private fun enum(declaration: Declaration, enum: Enum): TypeSpec {
         if (enum.open) return openEnum(declaration, enum)
         val self = ClassName(pkg, declaration.name.camel)
@@ -403,10 +403,10 @@ class TypesEmitter internal constructor(
      * An open enum (typl §8.1): a sealed interface with one object per
      * declared value and a last class `Unknown`, which holds an undeclared
      * value as the integer the wire carried. An enum class has no case that
-     * carries a value. `fromValue` is the one way to an `Unknown`, and gives
-     * the declared object for every declared value, so a value has one
-     * representation, as the Rust backend's `From<i64>` does. The checker
-     * refuses a value spelled `Unknown` (RIDL-149).
+     * carries a value. `fromValue` gives the declared object for every
+     * declared value, and the `Unknown` constructor refuses those values,
+     * so a value has one representation, as the Rust backend's `From<i64>`
+     * does. The checker refuses a value spelled `Unknown` (RIDL-149).
      */
     private fun openEnum(declaration: Declaration, enum: Enum): TypeSpec {
         val self = ClassName(pkg, declaration.name.camel)
@@ -427,9 +427,21 @@ class TypesEmitter internal constructor(
         }
         builder.addType(
             TypeSpec.classBuilder(unknown).addSuperinterface(self)
-                .addKdoc("An undeclared value of `%L`: only [fromValue] builds one, and for no declared value.", declaration.name.declared)
+                .addKdoc(
+                    "An undeclared value of `%L`. The constructor refuses declared values; " +
+                        "[fromValue] returns their members.",
+                    declaration.name.declared,
+                )
                 .primaryConstructor(FunSpec.constructorBuilder().addModifiers(KModifier.INTERNAL).addParameter("value", LONG).build())
                 .addProperty(PropertySpec.builder("value", LONG, KModifier.OVERRIDE).initializer("value").build())
+                .addInitializerBlock(
+                    CodeBlock.builder()
+                        .addStatement(
+                            "require(%T.entries.none { it.value == value }) { %S }",
+                            self, "a declared value must use its enum member",
+                        )
+                        .build(),
+                )
                 .addFunction(
                     FunSpec.builder("equals").addModifiers(KModifier.OVERRIDE)
                         .addParameter("other", ANY.copy(nullable = true)).returns(BOOLEAN)
@@ -463,10 +475,11 @@ class TypesEmitter internal constructor(
 
     /**
      * An enum set: an inline value class over the members' bits, one
-     * constant per member, and `contains`, `plus` and `minus`. A bit no
-     * member declares is refused by `of` with the rule `Variant`, as the
-     * Rust backend's `TryFrom` refuses it. An open one (typl §9) keeps every
-     * bit: `of` refuses none, and `unknownBits` reads the undeclared ones.
+     * constant per member, and `contains`, `plus` and `minus`. For a strict
+     * set, a bit no member declares is refused by `of` with the rule
+     * `Variant`, as the Rust backend's `TryFrom` refuses it. An open one
+     * (typl §9) keeps every bit: `of` refuses none, and `unknownBits` reads
+     * the undeclared ones.
      */
     private fun enumSet(declaration: Declaration, set: EnumSet): TypeSpec {
         val self = ClassName(pkg, declaration.name.camel)
