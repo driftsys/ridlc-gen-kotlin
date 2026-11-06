@@ -544,9 +544,6 @@ class FacesEmitter internal constructor(
      */
     private class Argument(val name: String, val param: Param?, val payload: Named)
 
-    /** How the face carries a member's streams: a reply stream, a stream parameter, or both. */
-    private enum class StreamShapeKind { Reply, Upload, Duplex }
-
     private inner class Face(
         private val iface: Interface,
         private val types: MutableList<TypeSpec>,
@@ -604,8 +601,9 @@ class FacesEmitter internal constructor(
         /**
          * The call's argument: the single declared named parameter, or the
          * struct the lowering induced for every other parameter list, none
-         * included (driftsys/ridl#713), which leaves out a stream parameter.
-         * Refused only for a parameter no struct field holds: one with no
+         * included (driftsys/ridl#713), which leaves out a stream parameter. A
+         * stream parameter sits beside the argument, so the struct's name gives
+         * way to one named `args`. Refused only for a parameter no struct field holds: one with no
          * declared type, or a stream in a model that induced nothing.
          */
         private fun argument(m: Member): Argument {
@@ -615,10 +613,12 @@ class FacesEmitter internal constructor(
             val params = if (isCommand) command.paramsList else query.paramsList
             if (if (isCommand) command.hasRequest() else query.hasRequest()) {
                 val request = if (isCommand) command.request else query.request
-                return Argument(params[0].name.property, params[0], named(request, "interaction `${m.declared}`'s parameter"))
+                val param = params.first { !it.type.hasStream() }
+                return Argument(param.name.property, param, named(request, "interaction `${m.declared}`'s parameter"))
             }
             if (if (isCommand) command.hasRequestTuple() else query.hasRequestTuple()) {
-                return Argument("args", null, induced(if (isCommand) command.requestTuple.index else query.requestTuple.index))
+                val name = if (params.any { it.type.hasStream() && it.name.property == "args" }) "request" else "args"
+                return Argument(name, null, induced(if (isCommand) command.requestTuple.index else query.requestTuple.index))
             }
             if (params.any { !it.hasType() }) refuse("interaction `${m.declared}` declares a parameter with no type")
             refuse("interaction `${m.declared}` declares a stream parameter, which has no payload type")
@@ -638,28 +638,7 @@ class FacesEmitter internal constructor(
         }
 
         /** How the face carries [m]'s streams, or `null` when it has none or a form the face does not carry. */
-        private fun streamShape(m: Member): StreamShapeKind? {
-            val i = m.interaction
-            val streams = i.streamsList
-            if (streams.isEmpty() || !streams.all(::carried)) return null
-            val reply = streams.firstOrNull { it.no == 0 }
-            val parameters = streams.filter { it.no != 0 }
-            return when {
-                i.hasQuery() && reply != null && parameters.isEmpty() -> StreamShapeKind.Reply
-                parameters.size != 1 || parameters[0].no != 1 -> null
-                i.hasCommand() -> StreamShapeKind.Upload
-                !i.hasQuery() -> null
-                reply == null -> StreamShapeKind.Upload
-                reply.form == StreamForm.STREAM_FORM_ELEMENTS -> StreamShapeKind.Duplex
-                else -> null
-            }
-        }
-
-        private fun carried(stream: StreamShape): Boolean = when (stream.form) {
-            StreamForm.STREAM_FORM_ELEMENTS -> stream.hasElement()
-            StreamForm.STREAM_FORM_BYTES, StreamForm.STREAM_FORM_TEXT -> true
-            else -> false
-        }
+        private fun streamShape(m: Member): StreamShapeKind? = streamShape(m.interaction)
 
         private fun replyStream(m: Member): StreamShape = m.interaction.streamsList.first { it.no == 0 }
 
@@ -1664,8 +1643,8 @@ class FacesEmitter internal constructor(
                         f.returns(reply.type)
                             .doc(memberDoc(m, "Calls query `${m.declared}`, uploads [$data], and suspends until its reply. A failed call throws `ClientError`.", argument))
                             .addStatement(
-                                "return %L.uploadQuery(%L, %N, %T.maxSize) { %T.decode(%T.verify(it)) }",
-                                call, chunks(m, parameterStream(m)), data, reply.codec, reply.codec, reply.codec,
+                                "return %L.uploadQuery(%L, %N, %T.maxSize) { callOutcome(%T, it).getOrThrow() }",
+                                call, chunks(m, parameterStream(m)), data, reply.codec, reply.codec,
                             )
                     } else {
                         f.doc(memberDoc(m, "Calls command `${m.declared}`, uploads [$data], and suspends until its acknowledgment. A failed call throws `ClientError`.", argument))
