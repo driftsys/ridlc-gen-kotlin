@@ -403,10 +403,13 @@ class TypesEmitter internal constructor(
      * An open enum (typl §8.1): a sealed interface with one object per
      * declared value and a last class `Unknown`, which holds an undeclared
      * value as the integer the wire carried. An enum class has no case that
-     * carries a value. `fromValue` is the one way to an `Unknown`, and gives
-     * the declared object for every declared value, so a value has one
-     * representation, as the Rust backend's `From<i64>` does. The checker
-     * refuses a value spelled `Unknown` (RIDL-149).
+     * carries a value. `Unknown`'s constructor is private, and `Unknown.of` is
+     * the one way past it: it gives the declared object for every declared
+     * value, so a value has one representation, as the Rust backend's
+     * `From<i64>` does. `internal` alone would not hold this, because generated
+     * sources usually compile in the application's own module. `fromValue` is
+     * the public name of `of`, which sits in `Unknown` to reach the constructor.
+     * The checker refuses a value spelled `Unknown` (RIDL-149).
      */
     private fun openEnum(declaration: Declaration, enum: Enum): TypeSpec {
         val self = ClassName(pkg, declaration.name.camel)
@@ -425,10 +428,18 @@ class TypesEmitter internal constructor(
             constant.doc(links.kdoc(DocParts.of(member)))
             builder.addType(constant.build())
         }
+        val of = FunSpec.builder("of").addModifiers(KModifier.INTERNAL)
+            .addKdoc("The one representation of [value]: its member, or an [Unknown] when no member declares it.")
+            .addParameter("value", LONG).returns(self)
+            .beginControlFlow("return when (value)")
+        for ((entry, member) in entries.zip(enum.valuesList)) {
+            of.addStatement("%L -> %T.%N", Literals.long(member.value.toString()), self, entry)
+        }
+        of.addStatement("else -> %T(value)", unknown).endControlFlow()
         builder.addType(
             TypeSpec.classBuilder(unknown).addSuperinterface(self)
                 .addKdoc("An undeclared value of `%L`: only [fromValue] builds one, and for no declared value.", declaration.name.declared)
-                .primaryConstructor(FunSpec.constructorBuilder().addModifiers(KModifier.INTERNAL).addParameter("value", LONG).build())
+                .primaryConstructor(FunSpec.constructorBuilder().addModifiers(KModifier.PRIVATE).addParameter("value", LONG).build())
                 .addProperty(PropertySpec.builder("value", LONG, KModifier.OVERRIDE).initializer("value").build())
                 .addFunction(
                     FunSpec.builder("equals").addModifiers(KModifier.OVERRIDE)
@@ -437,16 +448,13 @@ class TypesEmitter internal constructor(
                 )
                 .addFunction(FunSpec.builder("hashCode").addModifiers(KModifier.OVERRIDE).returns(INT).addStatement("return value.hashCode()").build())
                 .addFunction(FunSpec.builder("toString").addModifiers(KModifier.OVERRIDE).returns(STRING).addStatement("return %P", "Unknown(\$value)").build())
+                .addType(TypeSpec.companionObjectBuilder().addFunction(of.build()).build())
                 .build(),
         )
         val fromValue = FunSpec.builder("fromValue")
             .addKdoc("The member whose discriminant is [value], or [Unknown] for one no member declares.")
             .addParameter("value", LONG).returns(self)
-            .beginControlFlow("return when (value)")
-        for ((entry, member) in entries.zip(enum.valuesList)) {
-            fromValue.addStatement("%L -> %N", Literals.long(member.value.toString()), entry)
-        }
-        fromValue.addStatement("else -> %T(value)", unknown).endControlFlow()
+            .addStatement("return %T.of(value)", unknown)
         builder.addType(
             TypeSpec.companionObjectBuilder()
                 .addProperty(
