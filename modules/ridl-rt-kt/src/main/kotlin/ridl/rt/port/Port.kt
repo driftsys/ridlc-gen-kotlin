@@ -425,6 +425,15 @@ public interface StreamHandler : Handler {
     /** Copies the next chunk of stream [s] of [claim] into [out], with the answers and errors of [StreamCaller.pull]. */
     public fun pullClaim(claim: ClaimId, s: StreamNo, out: ByteBuffer): Pull
 
+    /**
+     * Checks whether the reply stream still accepts chunks, without moving data.
+     * Register [Interest.ClaimStream] for [REPLY_STREAM] before checking, so a
+     * suspended source can be cancelled when the caller refuses or forgets it.
+     *
+     * @throws PushError with the same stream-state errors as [pushClaim].
+     */
+    public fun checkReply(claim: ClaimId)
+
     /** Offers one chunk to stream [s] of [claim], as [StreamCaller.push] does. */
     public fun pushClaim(claim: ClaimId, s: StreamNo, chunk: ByteBuffer): Int
 

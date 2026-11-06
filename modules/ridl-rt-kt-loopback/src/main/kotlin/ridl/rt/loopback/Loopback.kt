@@ -288,6 +288,8 @@ public class Loopback private constructor(
 
     override fun pullClaim(claim: ClaimId, s: StreamNo, out: ByteBuffer): Pull = handles.handler.pullClaim(claim, s, out)
 
+    override fun checkReply(claim: ClaimId): Unit = handles.handler.checkReply(claim)
+
     override fun pushClaim(claim: ClaimId, s: StreamNo, chunk: ByteBuffer): Int = handles.handler.pushClaim(claim, s, chunk)
 
     override fun endClaim(claim: ClaimId, s: StreamNo): Unit = handles.handler.endClaim(claim, s)

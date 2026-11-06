@@ -77,6 +77,13 @@ ridl 0.15 adds the stream ports (driftsys/ridl#1154), `StreamCaller` and
 `wakeOnStream`, `takeStream` and `takeStreams`. `CorrelateTest` carries their
 cases.
 
+Kotlin also requires `StreamHandler.checkReply(claim)`, a read-only check that
+throws the reply stream's `PushError` when it no longer accepts chunks. Unlike
+Rust's polled sources, a Kotlin `Flow` can suspend between emissions.
+Registering `Interest.ClaimStream` before this check lets the coroutine adapter
+cancel that source when the caller refuses or forgets it, without pushing an
+empty chunk.
+
 ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
 below.

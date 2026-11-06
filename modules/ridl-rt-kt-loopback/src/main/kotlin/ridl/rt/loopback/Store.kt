@@ -1086,6 +1086,13 @@ internal class Store {
         return Pull.Chunk(front.size)
     }
 
+    /** Checks a provider's reply stream without offering a chunk or changing its window. */
+    fun checkReply(slot: Int) {
+        val entry = calls.getValue(slot)
+        if (entry.forgotten) throw PushError.Failed(INTERRUPTED)
+        entry.stream(REPLY_STREAM).closed(Side.Provider)?.let { throw it }
+    }
+
     /**
      * Offers one chunk to stream [s] of the call in [slot], for [side], which
      * must be the stream's producer. A chunk taken wakes the receiver.

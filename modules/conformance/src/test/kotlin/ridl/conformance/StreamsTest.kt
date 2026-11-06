@@ -46,6 +46,19 @@ class StreamsTest {
     }
 
     @Test
+    fun `a stream before a named parameter and a stream named args compile`() {
+        faces(
+            "names",
+            """
+              command put(data: <Sample>, level: Level) @[..50ms]
+              command send(args: <Sample>) @[..50ms]
+              query lookup(data: <Sample>, level: Level): Sample @[..50ms]
+              query pipe(args: <Sample>): <Sample> @[..50ms]
+            """.trimIndent(),
+        )
+    }
+
+    @Test
     fun `a call with one stream parameter is on the async client alone, beside its plain call`() {
         val text = faces(
             "parameter",

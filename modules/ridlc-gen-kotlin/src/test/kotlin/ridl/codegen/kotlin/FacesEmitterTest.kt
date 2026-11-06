@@ -102,7 +102,7 @@ class FacesEmitterTest {
     }
 
     @Test
-    fun `a call with any other parameter list sends the struct the lowering induced for it`() {
+    fun `a call with two named non-stream parameters sends its induced struct`() {
         val text = checkNotNull(FacesEmitter(induced(bounded = true), options).emit().text)
         assertTrue("public fun go(args: DriveGoParams) {" in text, text)
         assertTrue("PayloadInfo(\"DriveGoParams\")" in text, "the member row names the induced struct\n$text")

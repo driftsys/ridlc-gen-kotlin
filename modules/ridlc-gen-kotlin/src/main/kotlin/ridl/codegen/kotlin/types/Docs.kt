@@ -191,7 +191,7 @@ internal class Links(private val model: Model, private val pkg: String, private 
      * output is a code span after `@see`.
      *
      * [fields] are the parameters a call sends as the struct the lowering
-     * induced for them (driftsys/ridl#713): one `@param args` lists each
+     * induced for them (driftsys/ridl#713): one `@param` for [fieldParameter] lists each
      * by name, with its doc and its rules, as the Rust backend's
      * `# Parameters` section lists them.
      */
@@ -200,6 +200,7 @@ internal class Links(private val model: Model, private val pkg: String, private 
         sentence: String? = null,
         params: List<Pair<String, DocParts>> = emptyList(),
         fields: List<Pair<String, DocParts>> = emptyList(),
+        fieldParameter: String = "args",
     ): String {
         val paragraphs = mutableListOf<String>()
         if (parts.doc.isNotEmpty()) paragraphs += linked(parts.doc, parts.links)
@@ -212,7 +213,7 @@ internal class Links(private val model: Model, private val pkg: String, private 
                 param.rules.map { "- ${it.text}" }
         }
         if (fields.isNotEmpty()) {
-            tags += listOf("@param args The arguments, one property per parameter:") + fields.flatMap { (name, field) ->
+            tags += listOf("@param $fieldParameter The arguments, one property per parameter:") + fields.flatMap { (name, field) ->
                 val text = linked(field.doc, field.links)
                 listOf(if (text.isEmpty()) "- `$name`" else "- `$name`: $text") + field.rules.map { "  - ${it.text}" }
             }

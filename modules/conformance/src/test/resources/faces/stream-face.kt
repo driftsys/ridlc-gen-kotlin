@@ -11,6 +11,7 @@ import face.stream.DocsProvider
 import face.stream.Id
 import face.stream.Info
 import face.stream.Level
+import face.stream.LevelCodec
 import face.stream.Log
 import face.stream.LogAsyncClient
 import face.stream.LogProvider
@@ -37,6 +38,7 @@ import ridl.rt.contract.Ordinal
 import ridl.rt.error.ClientError
 import ridl.rt.error.Contract
 import ridl.rt.error.Transport
+import ridl.rt.flatbuffers.Reader
 import ridl.rt.loopback.Loopback
 import ridl.rt.payload.Rule
 import ridl.rt.port.REPLY_STREAM
@@ -168,7 +170,7 @@ fun probe(): List<String> = runBlocking(Dispatchers.Default) {
         expectEqual("an early stop", reading(1), client.history(Level.of(20)).first())
         repeat(Loopback.SLOTS * 2) { client.history(Level.of(2)).first() }
 
-        // A source that fails stops the stream with Interrupted, after what it sent.
+        // An IllegalStateException in the source interrupts the stream after what it sent.
         logs.failAfter = 3
         val received = mutableListOf<Reading>()
         val interrupted = outcome { client.history(Level.of(5)).collect { received += it } }
@@ -204,6 +206,42 @@ fun probe(): List<String> = runBlocking(Dispatchers.Default) {
             ClientError.Call(Contract.ContractBroken),
             outcome { client2.checked(face.stream.LogCheckedParams(), flowOf(reading(60))) },
         )
+
+        // Raw successful settlements still pass the generated reply decoder's checks.
+        suspend fun rawReply(bytes: ByteBuffer): Throwable? {
+            val rawRuntime = Loopback(Log.catalog)
+            val rawHandler = rawRuntime.handler().also { it.serve(Log.number, emptyList()) }
+            val replying = serving {
+                while (true) {
+                    val claim = rawHandler.nextClaim(ByteBuffer.allocate(64))
+                    if (claim != null) {
+                        rawHandler.settle(claim.id, Result.success(bytes))
+                        break
+                    }
+                    kotlinx.coroutines.yield()
+                }
+            }
+            val error = try {
+                LogAsyncClient(rawRuntime.caller()).checked(face.stream.LogCheckedParams(), flowOf(reading(1)))
+                null
+            } catch (e: Throwable) {
+                e
+            }
+            replying.join()
+            return error
+        }
+        expectEqual(
+            "a truncated upload reply is corrupt",
+            ClientError.Call(Transport.Corrupt),
+            rawReply(ByteBuffer.wrap(byteArrayOf(1))),
+        )
+        val invalidLevel = ByteBuffer.allocate(LevelCodec.maxSize)
+        LevelCodec.encode(Level.of(1), invalidLevel)
+        invalidLevel.flip()
+        val reader = Reader(invalidLevel)
+        invalidLevel.put(checkNotNull(reader.field(reader.root(), 0, 1)), 101.toByte())
+        val invalidReply = rawReply(invalidLevel) as? ClientError.Call
+        expect("an upload reply constraint becomes InvalidValue", invalidReply?.error is Contract.InvalidValue)
 
         // Both streams at once.
         val piped = client2.pipe(face.stream.LogPipeParams(), flowOf(reading(1), reading(2), reading(3))).toList()

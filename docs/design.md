@@ -315,7 +315,8 @@ tool produces (D-K5).
   verify failure settles `Transport.Corrupt`; a constraint failure
   `Contract.InvalidValue`; a failed `require` `PreconditionFailed`; a failed
   `ensure` `ContractBroken`. A command settles before the provider method runs;
-  a query after. The return is the number of claims `settle` accepted.
+  a query after. The return counts accepted settlements and streamed queries
+  launched for later settlement; a launched query counts before it settles.
 
 **An `internal` interface has its descriptors and no face** (driftsys/ridl#832):
 the descriptor object and its interaction objects, `internal`, and no client,
@@ -341,12 +342,13 @@ own: it reads the port's. With FlatBuffers the one codec the plugin emits, a
 face built over a port of another encoding is refused.
 
 **A call sends one named type** (driftsys/ridl#713, ADR-0023 decisions 2 and 6
-as amended 2026-10-13). A command or query with exactly one parameter of a named
-type sends that type, and its method takes the parameter by its own name. Every
-other parameter list, none included, sends the struct the lowering induced for
-it, `<Iface><Call>Params`, and its methods take that struct as `args`; a tuple
-reply, and a query that declares no return type, reply with
-`<Iface><Call>Reply`. The lowering names both (ADR-0016, amendment of
+as amended 2026-10-13). After excluding stream parameters, a command or query
+with exactly one parameter of a named type sends that type, and its method takes
+the parameter by its own name. Every other non-stream parameter list, none
+included, sends the struct the lowering induced for it, `<Iface><Call>Params`,
+and its methods take that struct as `args` (or `args_` when a stream parameter
+is named `args`); a tuple reply, and a query that declares no return type, reply
+with `<Iface><Call>Reply`. The lowering names both (ADR-0016, amendment of
 2026-10-13), and the plugin reads the name and never builds one. Each induced
 struct a call sends is a FlatBuffers root of its own, so `Codec.kt` gives it a
 `<Name>Codec` as it gives a declaration root one, and the size table reserves
@@ -599,14 +601,17 @@ Each decision names the alternative it rejected.
   gives it a newtype, is decided with K2b's first bounded collection in the
   corpus.
 - **O-K5. Streams, settled.** ridl 0.15 gives `ridl-rt` a stream port
-  (driftsys/ridl#1154). `ridl-rt-kt` mirrors it one to one, and the face maps it
-  to `Flow`, not `Channel`: a `Flow` starts when it is collected, a suspended
-  collector is the backpressure, and cancelling it maps to a forget or an abort,
-  where a `Channel` is hot and adds a second buffer on top of the runtime's
-  window. Only the async client and `serveAsync` carry a stream, as the Rust
-  blocking face carries none. The forms are the Rust face's: a reply stream, one
-  stream parameter, or both. A member with several stream parameters stays out
-  (driftsys/ridl#1224).
+  (driftsys/ridl#1154). `ridl-rt-kt` mirrors it and adds the read-only
+  `StreamHandler.checkReply(claim)` check. Registered under `ClaimStream`, it
+  detects a caller's refusal or forget even while the provider's source is
+  suspended between emissions, so the adapter cancels that source and settles
+  its claim. The face maps a stream to `Flow`: a `Flow` starts when it is
+  collected, a suspended collector is the backpressure, and cancelling it maps
+  to a forget or an abort, where a `Channel` is hot and adds a second buffer on
+  top of the runtime's window. Only the async client and `serveAsync` carry a
+  stream, as the Rust blocking face carries none. The forms are the Rust face's:
+  a reply stream, one stream parameter, or both. A member with several stream
+  parameters stays out (driftsys/ridl#1224).
 
 ## Trace
 

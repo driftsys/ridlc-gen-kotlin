@@ -377,6 +377,10 @@ public class HandlerHandle internal constructor(
         pull(claimSlot(id, claim) ?: throw ReadError.Contract(Contract.UnknownInteraction), Side.Provider, s, out, it)
     }
 
+    override fun checkReply(claim: ClaimId): Unit = store.locked {
+        checkReply(claimSlot(id, claim) ?: throw UNKNOWN)
+    }
+
     override fun pushClaim(claim: ClaimId, s: StreamNo, chunk: ByteBuffer): Int {
         val bytes = chunk.remainingBytes()
         return store.waking { push(claimSlot(id, claim) ?: throw UNKNOWN, Side.Provider, s, bytes, it) }

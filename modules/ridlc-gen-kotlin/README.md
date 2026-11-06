@@ -212,12 +212,13 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
 
 - **The clients replace the public poll face.** docs/design.md §5 describes the
   poll face as public, with an `averageAwait` extension per call. The face now
-  generates, per interface that waits, the blocking
-  `<Iface>Client<P>(port,
-  timeout)`, the suspending `<Iface>AsyncClient<P>`,
-  and `serve` and `serveAsync` on the descriptor, all over one internal
-  `<Iface><Member>Call` per command and query, whose `InteractionCall_` base
-  carries every call rule. The poll face, `<Iface>PollClient`, its correlations,
+  generates the suspending `<Iface>AsyncClient<P>` for interfaces that wait, and
+  the blocking `<Iface>Client<P>(port, timeout)` when they have members without
+  streams. Interfaces with commands or queries have `serveAsync` on the
+  descriptor, and `serve` when none of their members has a stream. Each command
+  or query without a stream has one internal `<Iface><Member>Call`, whose
+  `InteractionCall_` base carries its call rules; streamed calls use
+  `StreamCall` instead. The poll face, `<Iface>PollClient`, its correlations,
   its `…Ack` and `…Reply` methods and `dispatch` are internal. A call returns
   its reply and throws `ClientError` for anything else; `serve` throws
   `ProviderError`. A signal-only interface has one plain `<Iface>Client` beside
@@ -296,25 +297,27 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   with the error §5 names: a clause outside the narrow translator's one form, a
   parameter with no type, a fallible `T | E` reply, a call struct the lowering
   induced with no finite FlatBuffers bound. Since ridl 0.10 (driftsys/ridl#713)
-  a call of any other parameter list sends its induced `<Iface><Call>Params`,
-  and a tuple reply its `<Iface><Call>Reply`; a call method's KDoc lists the
-  parameters under `@param args`, as the Rust face's `# Parameters` section
-  does. The rest of the package is generated, as the Rust pipeline skips such an
-  interface with a `__RIDL_NO_FACE_*` note (E11.14 decision 2).
+  a call with anything other than one named non-stream parameter sends its
+  induced `<Iface><Call>Params`, and a tuple reply its `<Iface><Call>Reply`; a
+  call method's KDoc lists the non-stream parameters under `@param args` (or
+  `@param args_` when the stream parameter is named `args`), as the Rust face's
+  `# Parameters` section does. The rest of the package is generated, as the Rust
+  pipeline skips such an interface with a `__RIDL_NO_FACE_*` note (E11.14
+  decision 2).
 - **A stream is a `Flow`, on the async client and the provider alone** (O-K5). A
   reply stream makes the method return `Flow<T>`, sent when it is collected; a
-  stream parameter makes it take one, after the call's `args`. `T` is the
-  element, `ByteArray` for `<bytes>` and `String` for `<string>`. The provider's
-  method mirrors it, and `serveAsync` drives each stream as a child coroutine,
-  so an interface with a stream has no blocking `serve`, and its blocking client
-  carries no streamed member, as in the Rust face. The logic is in
-  `ridl-rt-kt-coroutines`' `Streams.kt`; the emitted code names the call and its
-  `StreamChunks`. Two departures from Rust: a value longer than a chunk is split
-  by the runtime, where a Rust `ByteSource` chooses, and an `ensure` clause is
-  not read on a streamed reply, as there. A provider's flow that fails stops its
-  stream with `Transport.Interrupted`, and does not end `serveAsync`, unlike a
-  plain provider method's exception: a `Flow` that fails is how Kotlin stops
-  one.
+  stream parameter makes it take one after the call's non-stream argument. `T`
+  is the element, `ByteArray` for `<bytes>` and `String` for `<string>`. The
+  provider's method mirrors it, and `serveAsync` drives each stream as a child
+  coroutine, so an interface with a stream has no blocking `serve`, and its
+  blocking client carries no streamed member, as in the Rust face. The logic is
+  in `ridl-rt-kt-coroutines`' `Streams.kt`; the emitted code names the call and
+  its `StreamChunks`. Two departures from Rust: a value longer than a chunk is
+  split by the runtime, where a Rust `ByteSource` chooses, and an `ensure`
+  clause is not read on a streamed reply, as there. A provider's flow that
+  throws a `CallError` stops its stream with that error, including a refused
+  upload propagated by a duplex flow. Other failures stop it with
+  `Transport.Interrupted`. These failures do not end `serveAsync`.
 - **A member with several stream parameters is left out of the face without a
   warning**, as the Rust backend leaves it out (driftsys/ridl#1224): no method,
   no call, no typed descriptor, and `serve` registers it nowhere. Its row of

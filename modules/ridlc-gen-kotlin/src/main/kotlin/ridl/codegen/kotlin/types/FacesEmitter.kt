@@ -593,7 +593,11 @@ class FacesEmitter internal constructor(
         private fun memberDoc(m: Member, sentence: String, argument: Argument): String {
             if (argument.param != null) return memberDoc(m, sentence, argument.param)
             val params = if (m.interaction.hasCommand()) m.interaction.command.paramsList else m.interaction.query.paramsList
-            return links.kdoc(DocParts.of(m.interaction), sentence, fields = params.map { it.name.property to DocParts.of(it) })
+            return links.kdoc(
+                DocParts.of(m.interaction), sentence,
+                fields = params.filterNot { it.type.hasStream() }.map { it.name.property to DocParts.of(it) },
+                fieldParameter = argument.name,
+            )
         }
 
         private fun kind(m: Member): String = if (m.interaction.hasQuery()) "query" else "command"
@@ -602,9 +606,9 @@ class FacesEmitter internal constructor(
         private fun eventPayload(m: Member) = named(m.interaction.event.payload, "event `${m.declared}`'s payload")
 
         /**
-         * The call's argument: the single declared named parameter, or the
-         * struct the lowering induced for every other parameter list, none
-         * included (driftsys/ridl#713), which leaves out a stream parameter.
+         * The call's argument, excluding stream parameters: the single declared
+         * named parameter, or the struct the lowering induced for every other
+         * non-stream parameter list, none included (driftsys/ridl#713).
          * Refused only for a parameter no struct field holds: one with no
          * declared type, or a stream in a model that induced nothing.
          */
@@ -615,10 +619,12 @@ class FacesEmitter internal constructor(
             val params = if (isCommand) command.paramsList else query.paramsList
             if (if (isCommand) command.hasRequest() else query.hasRequest()) {
                 val request = if (isCommand) command.request else query.request
-                return Argument(params[0].name.property, params[0], named(request, "interaction `${m.declared}`'s parameter"))
+                val param = params.first { !it.type.hasStream() }
+                return Argument(param.name.property, param, named(request, "interaction `${m.declared}`'s parameter"))
             }
             if (if (isCommand) command.hasRequestTuple() else query.hasRequestTuple()) {
-                return Argument("args", null, induced(if (isCommand) command.requestTuple.index else query.requestTuple.index))
+                val name = if (params.any { it.type.hasStream() && it.name.property == "args" }) "args_" else "args"
+                return Argument(name, null, induced(if (isCommand) command.requestTuple.index else query.requestTuple.index))
             }
             if (params.any { !it.hasType() }) refuse("interaction `${m.declared}` declares a parameter with no type")
             refuse("interaction `${m.declared}` declares a stream parameter, which has no payload type")
@@ -1664,8 +1670,8 @@ class FacesEmitter internal constructor(
                         f.returns(reply.type)
                             .doc(memberDoc(m, "Calls query `${m.declared}`, uploads [$data], and suspends until its reply. A failed call throws `ClientError`.", argument))
                             .addStatement(
-                                "return %L.uploadQuery(%L, %N, %T.maxSize) { %T.decode(%T.verify(it)) }",
-                                call, chunks(m, parameterStream(m)), data, reply.codec, reply.codec, reply.codec,
+                                "return %L.uploadQuery(%L, %N, %T.maxSize) { callOutcome(%T, it).getOrThrow() }",
+                                call, chunks(m, parameterStream(m)), data, reply.codec, reply.codec,
                             )
                     } else {
                         f.doc(memberDoc(m, "Calls command `${m.declared}`, uploads [$data], and suspends until its acknowledgment. A failed call throws `ClientError`.", argument))
@@ -1967,9 +1973,10 @@ class FacesEmitter internal constructor(
                 .endControlFlow()
             return FunSpec.builder("dispatch")
                 .addKdoc(
-                    "Settles every claim of interface `%L` that is waiting, and returns how many the handler accepted. It " +
+                    "Handles waiting claims of interface `%L`, counting accepted settlements and streamed queries launched " +
+                        "for later settlement. A launched query counts before it settles. It " +
                         "does not wait. [buffer] holds the arguments and then the reply, so it is at least the " +
-                        "`maxBufferSize` of the size table in [handler]'s encoding; a shorter one returns 0 and consumes nothing.\n\nEvery claim taken is settled: an unknown " +
+                        "`maxBufferSize` of the size table in [handler]'s encoding; a shorter one returns 0 and consumes nothing.\n\nEvery claim taken is settled, asynchronously for a streamed query: an unknown " +
                         "interface or ordinal `UnknownInteraction`, bytes that fail their structure `Transport.Corrupt`, a " +
                         "constraint `InvalidValue`, a failed `require` `PreconditionFailed`, a failed `ensure` " +
                         "`ContractBroken`. A command is settled before its provider method runs, because its " +
