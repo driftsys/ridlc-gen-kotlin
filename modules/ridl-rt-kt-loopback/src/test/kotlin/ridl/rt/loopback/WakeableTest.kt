@@ -135,6 +135,24 @@ class WakeableTest {
     }
 
     @Test
+    fun `a synchronous event wake can raise again without duplicating sequence numbers`() {
+        val h = runtime().split()
+        h.source.subscribe(iface, listOf(ord))
+        h.source.wakeOn(Interest.Event(iface), object : Waker {
+            override fun wake() {
+                h.sink.raise(iface, ord, bytes(2), null)
+            }
+        })
+
+        h.sink.raise(iface, ord, bytes(1), null)
+        h.sink.raise(iface, ord, bytes(3), null)
+
+        val sequences = List(3) { h.source.next(out())!!.envelope.seq }
+        assertEquals(listOf(1uL, 2uL, 3uL), sequences)
+        assertNull(h.source.next(out()))
+    }
+
+    @Test
     fun `a waiting occurrence of another interface wakes an event registration at once`() {
         val rt = runtime()
         val source = rt.source()

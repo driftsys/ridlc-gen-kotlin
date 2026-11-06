@@ -98,7 +98,9 @@ public enum class Kind(public val value: Int) {
  *
  * The three ceilings are values of the catalog rule, exported so that a
  * transport resolves the limit of a member whose descriptor row carries none;
- * a member's limit is the one a `[limits.interaction]` entry gives it, else
+ * a member's limit comes from its `[limits.interaction]` entry, else its
+ * kind's `[limits.kind]` entry, else the manifest's `[limits] default` clamped
+ * to the default ceiling of its kind. When no entry applies, the member has
  * the default ceiling of its kind. They are not a guard of a codec: no
  * `encode` or `verify` compares a length with them.
  */
@@ -120,8 +122,8 @@ public const val FIXED_CEILING: Int = 65_280
 
 /**
  * The default ceiling of an interaction of [kind], in bytes of encoded
- * payload (ADR-0030 decision 16): the limit of a member that no
- * `[limits.interaction]` entry gives one.
+ * payload (ADR-0030 decision 16): the fallback when no catalog limit applies
+ * to the member. See [SIGNAL_EVENT_CEILING] for the catalog fallbacks.
  * `ridl_rt::contract::default_ceiling`.
  */
 public fun defaultCeiling(kind: Kind): Int = when (kind) {

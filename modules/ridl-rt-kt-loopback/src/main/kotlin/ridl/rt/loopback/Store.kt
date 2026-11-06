@@ -434,7 +434,8 @@ internal class Store {
      *
      * @throws SendError.TooLarge when the arguments are longer than the call's
      *   limit, before a slot is taken, so nothing is sent and nothing is woken.
-     * @throws SendError.Busy when every slot is taken.
+     * @throws SendError.Busy when the arguments fit the call's limit and every
+     *   slot is taken.
      */
     fun send(caller: Int, kind: CallKind, key: Key, args: ByteArray, seq: ULong, trace: TraceContext?): Pair<Correlation, List<Waker>> {
         admit(key, kind.kind, args.size, SendError::TooLarge)

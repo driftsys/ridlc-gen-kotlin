@@ -210,8 +210,9 @@ public class SinkHandle internal constructor(
     override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?) {
         val key = Key(iface, ord)
         val next = (seqs[key] ?: 0u) + 1u
-        wake(store.locked { raise(key, bytes.remainingBytes(), next, trace) })
+        val wakers = store.locked { raise(key, bytes.remainingBytes(), next, trace) }
         seqs[key] = next
+        wake(wakers)
     }
 
     /** Wakes every key at once: no role of this handle observes one. */
@@ -223,7 +224,8 @@ public class SinkHandle internal constructor(
  * sequence is the caller's (ADR-0021 decision 5), which is what keeps two
  * callers on one provider from colliding. A send the full call table refuses
  * with `SendError.Busy`, or whose arguments are longer than the member's limit
- * and so refused with `SendError.TooLarge`, draws no number.
+ * and so refused with `SendError.TooLarge`, draws no number. Size is checked
+ * before slot availability.
  *
  * [close] does what the Rust handle's drop does: it removes the caller's
  * `Slot` waker, then forgets every call it sent and did not forget, so their

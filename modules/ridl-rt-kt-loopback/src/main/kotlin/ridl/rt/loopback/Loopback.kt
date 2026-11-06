@@ -59,7 +59,8 @@ public class Handles internal constructor(
  * never reports `NotOwner`, never a `Contract` error except from an
  * unprovisioned [readFixed], and every value's freshness is `Unbounded`.
  * Nothing detaches, so `Detached` never appears. Two things are bounded. The
- * call table's [SLOTS]: a send with every slot taken throws `SendError.Busy`.
+ * call table's [SLOTS]: a send within the member's size limit with every slot
+ * taken throws `SendError.Busy`. Size is checked before slot availability.
  * And the size of a payload: a sending port refuses a payload longer than its
  * member's limit with `TooLarge` — the limit [setLimit] gave the member, else
  * the default ceiling of the port's kind (ADR-0030 decision 16) — and
@@ -280,12 +281,14 @@ public class Loopback private constructor(
          * released by `Caller.forget` or by the close of the caller handle
          * that sent them. A settled call keeps its slot until it is released.
          * With every slot taken, `command` and `query` throw `SendError.Busy`
-         * on every caller handle, because the table is the runtime's.
+         * on every caller handle when the arguments fit the member's limit,
+         * because the table is the runtime's. Larger arguments are refused
+         * with `SendError.TooLarge` before slot availability is checked.
          *
          * Sixteen is small on purpose, so a test reaches it in a few sends and
-         * a program that never forgets a call finds out at once. The loopback
-         * has no catalog descriptor to size a byte budget from, so the slot
-         * count is its only bound (note F-9 of the async face design).
+         * a program that never forgets a call finds out at once. The call
+         * table has no aggregate byte budget. Each call's arguments and reply
+         * are bounded separately by the member's payload limit.
          *
          * A forgotten call that no handler has claimed is withdrawn at once
          * and gives its slot back, so calls to a member no handler serves do
@@ -296,8 +299,8 @@ public class Loopback private constructor(
          * driftsys/ridlc-gen-kotlin#7, which forget each call once they have
          * its outcome, a caller using the poll face forgets a correlation once
          * it has read the outcome — `port.forget(c.correlation)` — or it gets
-         * `SendError.Busy` from its seventeenth call on. Closing the caller
-         * handle forgets its calls too.
+         * `SendError.Busy` from its seventeenth call on when its arguments fit
+         * the member's limit. Closing the caller handle forgets its calls too.
          */
         public const val SLOTS: Int = 16
     }

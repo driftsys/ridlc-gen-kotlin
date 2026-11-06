@@ -50,7 +50,7 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
         ::`the calls behind an oversized claim are presented once it is settled`,
         ::`forget releases a settled correlation`,
         ::`forget before the claim is presented withdraws or leaves the call`,
-        ::`a send with every slot taken is busy for every caller`,
+        ::`a send within the call limit with every slot taken is busy for every caller`,
         ::`a reclaimed slots old correlation answers none`,
         ::`forget between the claim and the settlement leaves the settlement valid`,
         ::`forget between the offer and the settlement leaves the settlement valid`,
@@ -330,12 +330,13 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
     /**
      * The call table is the runtime's, shared by every caller on it: with
-     * [Factory.slots] calls held, whichever callers sent them, a send by any
-     * caller is refused with `SendError.Busy`. Reading an outcome does not
+     * [Factory.slots] calls held, whichever callers sent them, a send within
+     * the call's size limit by any caller is refused with `SendError.Busy`.
+     * Reading an outcome does not
      * free a slot; forgetting a settled call does, and whichever caller sends
      * next takes it (ADR-0021 decision 15).
      */
-    public fun `a send with every slot taken is busy for every caller`() {
+    public fun `a send within the call limit with every slot taken is busy for every caller`() {
         assertTrue(factory.slots > 0, "a runtime holds at least one call")
         val rt = runtime()
         val second = factory.caller(rt)

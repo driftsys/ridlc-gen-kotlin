@@ -399,10 +399,11 @@ public sealed class ReadError(message: String) : RidlError(message) {
 /** A [SignalWriter] stage call that failed. `ridl_rt::port::WriteError`. */
 public sealed class WriteError(message: String) : RidlError(message) {
     /**
-     * The value is longer than the signal's limit: the limit a `[limits]`
-     * entry gives it, else the default ceiling of a signal
-     * ([ridl.rt.contract.defaultCeiling]). This is the one refusal of a
-     * value's size on send, and nothing is staged. [cap] is the limit in bytes.
+     * The value is longer than the signal's limit: the resolved catalog limit,
+     * or the default ceiling of a signal when no catalog limit applies
+     * (see [ridl.rt.contract.SIGNAL_EVENT_CEILING] for the catalog fallbacks).
+     * This is the one refusal of a value's size on send, and nothing is
+     * staged. [cap] is the limit in bytes.
      */
     public data class TooLarge(public val cap: Int) : WriteError("the value is larger than $cap bytes")
 
@@ -422,11 +423,11 @@ public sealed class RaiseError(message: String) : RidlError(message) {
     public data object Busy : RaiseError("the runtime cannot accept an occurrence now")
 
     /**
-     * The occurrence is longer than the event's limit: the limit a `[limits]`
-     * entry gives it, else the default ceiling of an event
-     * ([ridl.rt.contract.defaultCeiling]). This is the one refusal of an
-     * occurrence's size on send, and nothing is raised. [cap] is the limit in
-     * bytes.
+     * The occurrence is longer than the event's limit: the resolved catalog limit,
+     * or the default ceiling of an event when no catalog limit applies
+     * (see [ridl.rt.contract.SIGNAL_EVENT_CEILING] for the catalog fallbacks).
+     * This is the one refusal of an occurrence's size on send, and nothing is
+     * raised. [cap] is the limit in bytes.
      */
     public data class TooLarge(public val cap: Int) : RaiseError("the occurrence is larger than $cap bytes")
 
@@ -446,11 +447,11 @@ public sealed class SendError(message: String) : RidlError(message) {
     public data object Busy : SendError("the runtime cannot accept a call now")
 
     /**
-     * The arguments are longer than the call's limit: the limit a `[limits]`
-     * entry gives it, else the default ceiling of a command or a query
-     * ([ridl.rt.contract.defaultCeiling]). This is the one refusal of the
-     * arguments' size on send, and nothing is sent. [cap] is the limit in
-     * bytes.
+     * The arguments are longer than the call's limit: the resolved catalog limit,
+     * or the default ceiling of a command or a query when no catalog limit
+     * applies (see [ridl.rt.contract.SIGNAL_EVENT_CEILING] for the catalog fallbacks).
+     * This is the one refusal of the arguments' size on send, and nothing is
+     * sent. [cap] is the limit in bytes.
      */
     public data class TooLarge(public val cap: Int) : SendError("the arguments are larger than $cap bytes")
 
@@ -488,11 +489,11 @@ public sealed class SettleError(message: String) : RidlError(message) {
     public data object UnknownClaim : SettleError("the claim was already settled, or was never issued")
 
     /**
-     * The reply is longer than the call's limit: the limit a `[limits]` entry
-     * gives it, else the default ceiling of a command or a query
-     * ([ridl.rt.contract.defaultCeiling]). This is the one refusal of a
-     * reply's size on send: no outcome is recorded, and the claim stays
-     * settleable. [cap] is the limit in bytes.
+     * The reply is longer than the call's limit: the resolved catalog limit,
+     * or the default ceiling of a command or a query when no catalog limit
+     * applies (see [ridl.rt.contract.SIGNAL_EVENT_CEILING] for the catalog fallbacks).
+     * This is the one refusal of a reply's size on send: no outcome is
+     * recorded, and the claim stays settleable. [cap] is the limit in bytes.
      */
     public data class TooLarge(public val cap: Int) : SettleError("the reply is larger than $cap bytes")
 
