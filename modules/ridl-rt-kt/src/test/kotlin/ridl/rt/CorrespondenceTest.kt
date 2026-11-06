@@ -19,6 +19,9 @@ import ridl.rt.contract.PayloadInfo
 import ridl.rt.contract.Sizes
 import ridl.rt.contract.Query
 import ridl.rt.contract.Signal
+import ridl.rt.contract.StreamForm
+import ridl.rt.contract.StreamInfo
+import ridl.rt.contract.StreamNo
 import ridl.rt.contract.Timing
 import ridl.rt.contract.TimingMode
 import ridl.rt.encoding.Encoding
@@ -82,7 +85,7 @@ import kotlin.reflect.full.isSubclassOf
  * variants, fields and methods under their Kotlin spellings.
  *
  * The rows are transcribed from `crates/ridl-rt/src` of the pinned release,
- * ridl 0.10.0. Two Rust items have no row: `payload::Ref` and
+ * ridl 0.16.0. Two Rust items have no row: `payload::Ref` and
  * `payload::Encoded`, the borrow-checked proof that a value is decoded only
  * from checked bytes, whose guarantee [Payload] gives by taking the view
  * `verify` returned. Nor have the fixed-size buffer types, `Payload::Buffer`
@@ -133,15 +136,18 @@ class CorrespondenceTest {
         ),
         Row(
             "ridl_rt::contract::Member", Member::class,
-            members = listOf("ordinal", "kind", "name", "timing", "payloads", "call_deadline"),
+            members = listOf("ordinal", "kind", "name", "timing", "payloads", "streams", "call_deadline", "rate_floor", "staleness_bound"),
         ),
         Row("ridl_rt::contract::TimingMode", TimingMode::class, variants = listOf("StrictPeriodic", "Range")),
-        Row("ridl_rt::contract::Timing", Timing::class, members = listOf("mode", "min", "max")),
+        Row("ridl_rt::contract::Timing", Timing::class, members = listOf("mode", "min", "max", "rate_floor", "staleness_bound")),
+        Row("ridl_rt::contract::StreamNo", StreamNo::class),
+        Row("ridl_rt::contract::StreamForm", StreamForm::class, variants = listOf("Elements", "Bytes", "Text")),
+        Row("ridl_rt::contract::StreamInfo", StreamInfo::class, members = listOf("no", "form", "element")),
         Row("ridl_rt::contract::PayloadInfo", PayloadInfo::class, members = listOf("type_name")),
         // encoding: the trait and its three marker types are one closed enum.
         Row(
             "ridl_rt::encoding::Encoding", Encoding::class,
-            variants = listOf("FlatBuffers", "Proto3", "ReprC"),
+            variants = listOf("FlatBuffers", "Proto3", "Podbuf"),
         ),
         // error
         Row(
@@ -151,7 +157,7 @@ class CorrespondenceTest {
         ),
         Row(
             "ridl_rt::error::Transport", Transport::class,
-            variants = listOf("Timeout", "Undelivered", "Down", "Corrupt", "Busy"),
+            variants = listOf("Timeout", "Undelivered", "Down", "Corrupt", "Busy", "Interrupted"),
             extends = listOf(CallError::class),
         ),
         Row("ridl_rt::error::CallError", CallError::class, variants = listOf("Contract", "Transport")),
@@ -183,17 +189,18 @@ class CorrespondenceTest {
         Row("ridl_rt::sample::EventSeqTracker", ridl.rt.sample.EventSeqTracker::class, members = listOf("observe", "forget")),
         // payload
         Row("ridl_rt::payload::Payload", Payload::class, members = listOf("max_size", "encode", "verify", "decode")),
-        Row("ridl_rt::payload::EncodeError", EncodeError::class, variants = listOf("Capacity")),
+        Row("ridl_rt::payload::EncodeError", EncodeError::class, variants = listOf("Capacity", "Contract", "Unaligned", "Layout")),
         Row("ridl_rt::payload::VerifyError", VerifyError::class, variants = listOf("Structure", "Contract")),
         Row(
             "ridl_rt::payload::Malformed", Malformed::class,
             variants = listOf(
                 "OutOfBounds", "Unaligned", "MissingRequired", "Utf8",
                 "Union", "TooDeep", "TooManyTables", "TooLarge",
+                "Varint", "WireType", "Duplicate", "Preamble", "Stride", "Terminator", "KeyOrder",
             ),
         ),
         Row("ridl_rt::payload::Violation", Violation::class, members = listOf("type_name", "rule")),
-        Row("ridl_rt::payload::Rule", Rule::class, variants = listOf("Range", "Step", "Length", "Pattern", "Variant", "Unique")),
+        Row("ridl_rt::payload::Rule", Rule::class, variants = listOf("Range", "Step", "Length", "Pattern", "Variant", "Unique", "Utf8")),
         // flatbuffers: the free reading functions are `Reader`'s methods, Kotlin's own.
         Row(
             "ridl_rt::flatbuffers::Builder", ridl.rt.flatbuffers.Builder::class,
@@ -257,7 +264,7 @@ class CorrespondenceTest {
             members = listOf("read_coherent"), extends = listOf(SignalReader::class),
         ),
         Row("ridl_rt::port::Wakeable", Wakeable::class, members = listOf("wake_on")),
-        Row("ridl_rt::port::Interest", Interest::class, variants = listOf("Outcome", "Slot", "Event", "Claim")),
+        Row("ridl_rt::port::Interest", Interest::class, variants = listOf("Outcome", "Slot", "Event", "Claim", "Stream", "ClaimStream")),
         Row("ridl_rt::port::ReadError", ReadError::class, variants = listOf("Short", "ShortClaim", "TooFewSamples", "Contract", "Detached")),
         Row("ridl_rt::port::WriteError", WriteError::class, variants = listOf("TooLarge", "NotOwner", "Contract", "Detached")),
         Row(

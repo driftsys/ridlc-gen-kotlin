@@ -282,7 +282,7 @@ public class CallerHandle internal constructor(
         when (what) {
             is Interest.Outcome -> wake(store.wakeList { waitOutcome(what.correlation, waker, it) })
             Interest.Slot -> wake(store.wakeList { waitSlot(id, waker, it) })
-            is Interest.Event, is Interest.Claim -> waker.wake()
+            is Interest.Event, is Interest.Claim, is Interest.Stream, is Interest.ClaimStream -> waker.wake()
         }
     }
 }

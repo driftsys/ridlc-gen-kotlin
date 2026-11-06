@@ -16,7 +16,7 @@ class SizesTest {
     private val cabinRef = CatalogRef("cabin", CatalogHash(ByteArray(32) { 3 }))
 
     private fun member(ordinal: UInt, kind: Kind, name: String, vararg payloads: String) =
-        Member(Ordinal(ordinal), kind, name, null, payloads.map(::PayloadInfo))
+        Member(Ordinal(ordinal), kind, name, null, payloads.map(::PayloadInfo), emptyList())
 
     private val warning = member(1u, Kind.Event, "warning", "Warning")
     private val average = member(2u, Kind.Query, "average", "Window", "Warning")
@@ -122,6 +122,6 @@ class SizesTest {
     @Test
     fun `an encoding with no codec has no table`() {
         assertThrows<IllegalArgumentException> { tableBudget(cabin, Encoding.Proto3) }
-        assertThrows<IllegalArgumentException> { reservation(cabinAverage, Encoding.ReprC) }
+        assertThrows<IllegalArgumentException> { reservation(cabinAverage, Encoding.Podbuf) }
     }
 }

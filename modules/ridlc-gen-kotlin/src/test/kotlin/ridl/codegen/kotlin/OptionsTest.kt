@@ -56,7 +56,7 @@ class OptionsTest {
 
     @Test
     fun `an encoding with no Kotlin codec is refused by name`() {
-        for (name in listOf("proto3", "repr-c")) {
+        for (name in listOf("proto3", "podbuf")) {
             assertTrue("no `$name` codec" in refused(Options.parse(request("encodings" to name)))[0])
         }
         assertTrue("no `proto3` codec" in refused(Options.parse(request("encodings" to "flatbuffers,proto3")))[0])

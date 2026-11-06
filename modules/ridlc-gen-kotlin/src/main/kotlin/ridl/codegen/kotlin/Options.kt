@@ -36,7 +36,7 @@ data class Options(
         private val IDENTIFIER = Regex("[\\p{L}_][\\p{L}\\p{Nd}_]*")
 
         /** The encoding names the family knows (ADR-0020), whether or not this plugin has a codec for one. */
-        private const val ENCODING_NAMES: String = "`flatbuffers`, `proto3` and `repr-c`"
+        private const val ENCODING_NAMES: String = "`flatbuffers`, `proto3` and `podbuf`"
 
         fun parse(request: CodegenRequest): Parsed {
             val messages = mutableListOf<String>()
@@ -76,7 +76,7 @@ data class Options(
                     encoding in encodings -> messages +=
                         "$PLUGIN: `$ENCODINGS` names `$name` twice; each encoding is named once"
                     encoding != null -> encodings += encoding
-                    name == "proto3" || name == "repr-c" -> messages += "$PLUGIN: the Kotlin plugin has no `$name` codec"
+                    name == "proto3" || name == "podbuf" -> messages += "$PLUGIN: the Kotlin plugin has no `$name` codec"
                     else -> messages +=
                         "$PLUGIN: `$ENCODINGS` names `$name`, which is not an encoding; the names are $ENCODING_NAMES"
                 }

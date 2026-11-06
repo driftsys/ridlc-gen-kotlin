@@ -250,25 +250,26 @@ public class Waiters {
      * Stores [waker] as the one waker of [what]'s kind, and returns the waker
      * to wake: the displaced waker of another task; nothing when the same
      * waker is stored, a refresh whatever interface either key named; or
-     * [waker] itself, not stored, for `Interest.Outcome`, which a [Table] holds.
+     * [waker] itself, not stored, for `Interest.Outcome`, which a [Table] holds,
+     * and for the two stream interests, which the runtime keeps with their call.
      */
     public fun register(what: Interest, waker: Waker): Waker? = when (what) {
         Interest.Slot -> store(slot, waker).also { slot = waker }
         is Interest.Event -> store(event, waker).also { event = waker }
         is Interest.Claim -> store(claim, waker).also { claim = waker }
-        is Interest.Outcome -> waker
+        is Interest.Outcome, is Interest.Stream, is Interest.ClaimStream -> waker
     }
 
     /**
      * Takes the waker of [what]'s kind, whatever interface it was registered
      * under, which clears that kind. `null` when none is stored, and always
-     * for `Interest.Outcome`.
+     * for `Interest.Outcome` and the two stream interests.
      */
     public fun take(what: Interest): Waker? = when (what) {
         Interest.Slot -> slot.also { slot = null }
         is Interest.Event -> event.also { event = null }
         is Interest.Claim -> claim.also { claim = null }
-        is Interest.Outcome -> null
+        is Interest.Outcome, is Interest.Stream, is Interest.ClaimStream -> null
     }
 
     /** Takes every stored waker, which clears every kind, for a runtime with one unkeyed "something changed" source. */
