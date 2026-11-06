@@ -69,11 +69,12 @@ enum set `Subsystems` and the struct `Diagnostic` (driftsys/ridl#860), and
 `payload-constraints` adds `Grid32` and `Grid64` (driftsys/ridl#927).
 
 **Since ridl 0.15.0** (2026-11-04): the golden bytes are unchanged. `verify`
-checks structure alone and no longer refuses a buffer longer than `maxSize`
-(driftsys/ridl#1132), so the 16 `grown` mutants that were `Structure(TooLarge)`
-now decode in Rust and in Kotlin. Two corpus copies follow the tag and gain
-types, so their verdict files only gain lines: `cabin` adds `Setpoint`, and
-`payload-constraints` adds `Elements`, `MapValues` and `OptionalFields`.
+still checks structure and value constraints, but no longer refuses a buffer
+longer than `maxSize` (driftsys/ridl#1132), so the 16 `grown` mutants that were
+`Structure(TooLarge)` now decode in Rust and in Kotlin. Two corpus copies follow
+the tag and gain types, so their verdict files only gain lines: `cabin` adds
+`Setpoint`, and `payload-constraints` adds `Elements`, `MapValues` and
+`OptionalFields`.
 
 The corpus covers §7's malformed cases for these types — truncated buffers,
 offsets past the end, a vtable naming a field across its table's end, a missing

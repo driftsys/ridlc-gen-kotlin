@@ -101,7 +101,8 @@ internal class Links(private val model: Model, private val pkg: String, private 
      * name: a field's property, an enum value's or an enum set bit's entry, a
      * union arm's nested class. An interface with a face in this output is its
      * descriptor object, and one of its signals, commands and queries the
-     * method of `<Iface>Client`; an event and a fixed member have none.
+     * method of `<Iface>Client`; an event, a fixed member and a member with
+     * streams have none.
      *
      * A path with a segment Kotlin writes in backticks, a keyword, is `null`
      * as well, as the Rust backend drops a path with a raw identifier: a KDoc
@@ -131,6 +132,7 @@ internal class Links(private val model: Model, private val pkg: String, private 
             if (member.isEmpty()) return "$pkg.$name"
             val interaction = iface.slotsList.filter { it.hasInteraction() }.map { it.interaction }
                 .firstOrNull { it.name.declared == member.removePrefix(".") } ?: return null
+            if (interaction.streamsCount != 0) return null
             if (!(interaction.hasSignal() || interaction.hasCommand() || interaction.hasQuery())) return null
             return "$pkg.${name}Client.${interaction.name.camel.replaceFirstChar(Char::lowercaseChar)}"
         }

@@ -33,7 +33,7 @@ private fun contract(type: String, rule: Rule?) {
     if (rule != null) throw VerifyError.Contract(Violation(type, rule))
 }
 
-/** The part every codec shares: the size limit, then the root, then the type's own walk. */
+/** The part every codec shares: the root, then the type's own walk of structure and value constraints. */
 private abstract class FbCodec<T> : Payload<T, FbView> {
     override val encoding: Encoding get() = Encoding.FlatBuffers
 

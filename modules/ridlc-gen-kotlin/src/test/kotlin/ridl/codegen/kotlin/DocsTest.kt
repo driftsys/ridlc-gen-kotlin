@@ -21,6 +21,7 @@ import ridl.codegen.v1.ModelOuterClass.InteractionSlot
 import ridl.codegen.v1.ModelOuterClass.Interface
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.PrimitiveType
+import ridl.codegen.v1.ModelOuterClass.QueryShape
 import ridl.codegen.v1.ModelOuterClass.Rule
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
@@ -28,6 +29,7 @@ import ridl.codegen.v1.ModelOuterClass.Scope
 import ridl.codegen.v1.ModelOuterClass.SignalShape
 import ridl.codegen.v1.ModelOuterClass.Slot
 import ridl.codegen.v1.ModelOuterClass.Spellings
+import ridl.codegen.v1.ModelOuterClass.StreamShape
 import ridl.codegen.v1.ModelOuterClass.Struct
 import ridl.codegen.v1.ModelOuterClass.Union
 import ridl.codegen.v1.ModelOuterClass.Visibility
@@ -80,6 +82,16 @@ class DocsTest {
             Interface.newBuilder().setDeclared(spelled("Drive"))
                 .addSlots(slot("speed") { setSignal(SignalShape.getDefaultInstance()) })
                 .addSlots(slot("alarm") { setEvent(EventShape.getDefaultInstance()) })
+                .addSlots(
+                    slot("history") {
+                        setQuery(QueryShape.getDefaultInstance()).addStreams(StreamShape.newBuilder().setNo(0))
+                    },
+                )
+                .addSlots(
+                    slot("replay") {
+                        setCommand(CommandShape.getDefaultInstance()).addStreams(StreamShape.newBuilder().setNo(1))
+                    },
+                )
                 .addSlots(slot("set_gear") { setName(spelled("set_gear", "SetGear")).setCommand(CommandShape.getDefaultInstance()) }),
         )
         .addInterfaces(Interface.newBuilder().setDeclared(spelled("Hush")))
@@ -121,6 +133,19 @@ class DocsTest {
         val at = doc.indexOf(written)
         return DocLink.newBuilder().setText(written.removeSurrounding("[", "]"))
             .setOffset(doc.substring(0, at).toByteArray().size).setLen(written.toByteArray().size).setTarget(target).build()
+    }
+
+    @Test
+    fun `links to omitted stream methods are code spans in docs and see tags`() {
+        for (member in listOf("history", "replay")) {
+            val doc = "See [$member]."
+            val target = "kt.demo.Drive.$member"
+            val parts = DocParts(
+                doc, listOf(link(doc, "[$member]", target)),
+                listOf(DocLink.newBuilder().setTarget(target).build()), emptyList(), emptyList(),
+            )
+            assertEquals("See `$target`.\n\n@see `$target`", links.kdoc(parts), member)
+        }
     }
 
     @Test
