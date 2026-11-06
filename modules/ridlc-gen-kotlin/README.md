@@ -360,6 +360,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `unsubscribe<Event>`; the Rust face has neither.
 - **A port error is thrown**, and `dispatch` counts a settlement the handler
   refused with a `SettleError` as not accepted, as the Rust one counts an `Err`.
+- **A query's refused reply is settled again with `Transport.Corrupt`**
+  (driftsys/ridl#1260): a port's `SettleError.TooLarge` leaves the claim
+  settleable and no one else holds it, so without this its slot stays taken and
+  the caller gets `Timeout`, then `Send.Busy` once the slots run out. The Rust
+  `dispatch` leaves it to the handler, which neither settles it nor can hand it
+  back; `ridl-transport-ws` settles it `Corrupt`. It stays uncounted, as an
+  `Err` is. A command's settlement is not retried: its empty reply fits any
+  limit.
 - **An oversized claim is settled `Transport.Corrupt`** (#10,
   driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
   claim by its id unread, counts an accepted settlement and goes on, and ends
