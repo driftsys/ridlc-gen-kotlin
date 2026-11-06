@@ -74,10 +74,25 @@ internal sealed interface Domain {
      * An enum: `.value` out, `fromValue` in, the first member as the fallback.
      * [zero] is the member numbered 0, which an absent field reads as.
      */
-    data class EnumOf(val type: ClassName, val declared: String, val first: EnumValue, val zero: EnumValue?) : Domain
+    data class EnumOf(
+        val type: ClassName,
+        val declared: String,
+        /** The first member; `null` only for an open enum, which may declare none (TYPL-413). */
+        val first: EnumValue?,
+        val zero: EnumValue?,
+        /** typl §8.1: every integer is a value, an undeclared one being `Unknown`. */
+        val open: Boolean,
+    ) : Domain
 
     /** An enum set: `.bits` out, `ofOrNull` in, `EMPTY` as the fallback. */
-    data class SetOf(val type: ClassName, val declared: String) : Domain
+    data class SetOf(
+        val type: ClassName,
+        val declared: String,
+        /** typl §9: every bit is kept. */
+        val open: Boolean,
+        /** An open set whose field is narrower than 64 bits, so `encode` can be given a value the field cannot hold. */
+        val narrow: Boolean,
+    ) : Domain
 }
 
 /** The wire shape of one type position, rebuilt from the type as the Rust codec's `wire()` does. */
@@ -99,7 +114,7 @@ internal sealed interface Wire {
                 Domain.Primitive, is Domain.SetOf -> true
                 is Domain.Inline -> domain.scalar.constraint.holdsZero()
                 is Domain.Named -> domain.scalar.constraint.holdsZero()
-                is Domain.EnumOf -> domain.zero != null
+                is Domain.EnumOf -> domain.zero != null || domain.open
             }
 
         /** 0 as the backing [Prim.widen] produces: a `Long`, `Double` or `Boolean` literal. */
@@ -196,13 +211,16 @@ internal class Wires(private val model: Model, private val pkg: String) {
             Declaration.KindCase.SCALAR ->
                 scalar(declaration.scalar, Domain.Named(type, declaration.name.declared, declaration.scalar))
             Declaration.KindCase.ENUM -> {
-                if (declaration.enum.valuesCount == 0) refuse("the enum `$reference` has no value")
                 val enum = declaration.enum
+                if (enum.valuesCount == 0 && !enum.open) refuse("the enum `$reference` has no value")
                 val zero = if (enum.hasZeroMember()) enum.valuesList.getOrNull(enum.zeroMember) else null
-                Wire.ScalarWire(Prim.I64, Domain.EnumOf(type, declaration.name.declared, enum.getValues(0), zero))
+                Wire.ScalarWire(Prim.I64, Domain.EnumOf(type, declaration.name.declared, enum.valuesList.firstOrNull(), zero, enum.open))
             }
-            Declaration.KindCase.ENUM_SET ->
-                Wire.ScalarWire(intPrim(declaration.enumSet.width), Domain.SetOf(type, declaration.name.declared))
+            Declaration.KindCase.ENUM_SET -> {
+                val set = declaration.enumSet
+                val prim = intPrim(set.width)
+                Wire.ScalarWire(prim, Domain.SetOf(type, declaration.name.declared, set.open, set.open && prim.width < 8))
+            }
             Declaration.KindCase.STRUCT -> Wire.Table(type, Functions(owner, declaration.name.camel))
             Declaration.KindCase.UNION -> Wire.UnionOf(type, Functions(owner, declaration.name.camel))
             else -> refuse("the reference `$reference` does not name a type")
