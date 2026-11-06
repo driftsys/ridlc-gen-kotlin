@@ -351,8 +351,10 @@ reply, and a query that declares no return type, reply with
 struct a call sends is a FlatBuffers root of its own, so `Codec.kt` gives it a
 `<Name>Codec` as it gives a declaration root one, and the size table reserves
 its `maxSize`. The face still skips an interface, with a warning, for an untyped
-parameter, a stream, a fallible `T | E` reply, and an induced struct with no
-finite FlatBuffers bound, as the Rust backend does.
+parameter, a fallible `T | E` reply, and an induced struct with no finite
+FlatBuffers bound, as the Rust backend does. A member with a stream leaves the
+face alone: it has no method and no typed descriptor, and keeps its row of
+`members` and its size rows (#105).
 
 **What is deliberately the same as Rust.** The shape, the bounds rule, the
 correlation newtypes, the settlement table and the polling. The reason is the
@@ -595,10 +597,10 @@ Each decision names the alternative it rejected.
   collection gets its own `value class` over `List<T>`, as the Rust backend
   gives it a newtype, is decided with K2b's first bounded collection in the
   corpus.
-- **O-K5. Streams.** ridl §12 streams have no port in `ridl-rt` yet
-  (driftsys/ridl#336), so the Kotlin face covers the four kinds with a payload
-  and `fixed`, and refuses a package with a stream at generation time with a
-  diagnostic naming the story. Reopened by that issue.
+- **O-K5. Streams.** ridl 0.15 gives `ridl-rt` a stream port
+  (driftsys/ridl#1154), and `ridl-rt-kt` has none yet, so the Kotlin face covers
+  the four kinds with a payload and `fixed`, and leaves out a member with a
+  stream (#105). How the port maps to `Flow` or `Channel` is still to decide.
 
 ## Trace
 

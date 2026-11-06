@@ -733,3 +733,84 @@ ok:28e4b9186d8c40fe
 ok:28e4b9186d8c40fe
 ok:28e4b9186d8c40fe
 ok:0c0df84735600037
+ok:eb4b6981212e03de
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:eb4b6981212e03de
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+ok:eb4b6981212e03de
+err:Structure(MissingRequired)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Step })
+ok:5368b432997451ff
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Step })
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Step })
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Range })
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Range })
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Step })
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Range })
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Range })
+err:Contract(Violation { type_name: Some("Setpoint"), rule: Range })
+ok:a8e565fd1aff7d08

@@ -92,7 +92,11 @@ public enum class Malformed {
     /** The buffer holds more tables than the verifier's limit. */
     TooManyTables,
 
-    /** The buffer is larger than the verifier's limit. */
+    /**
+     * The buffer is larger than the verifier's limit. No generated codec
+     * throws it: `verify` applies no length check, and the transport refuses
+     * a payload above the interaction's limit.
+     */
     TooLarge,
 }
 

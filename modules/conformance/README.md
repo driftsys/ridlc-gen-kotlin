@@ -20,7 +20,7 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.10.0`, the tag that carries ridl 0.10.0's binaries. The
+Pinned to `editor-v0.16.0`, the tag that carries ridl 0.16.0's binaries. The
 tests of stage K2a run: a request the pinned `ridl` wrote parses, a request with
 an unknown key parses, a request nested 1,000 levels parses in process and
 through the installed script, a wrong schema is one error diagnostic and exit 0,
@@ -211,10 +211,16 @@ seen.
 
 Two generated names spelled from ridl names that one Kotlin namespace cannot
 hold refuse the package with one message naming both sources: the design note's
-X-6a, X-8, X-8c, X-9, X-11, X-12, X-13 and X-14b, and three cases only Kotlin
-meets: two declarations `Level` and `level`, a struct named `LevelCodec`, and a
-member named `provider` beside a call. X-8b, whose face is skipped, claims
+X-8, X-8c, X-9, X-11, X-12, X-13 and X-14b, and three cases only Kotlin meets:
+two declarations `Level` and `level`, a struct named `LevelCodec`, and a member
+named `provider` beside a call. X-6a, a tuple's `minSpeed` and `min_speed`, is
+refused by ridl since 0.15 (RIDL-149, driftsys/ridl#1210), so a tuple's `XY` and
+`x_y` test the plugin's refusal instead. X-8b, whose face is skipped, claims
 nothing and compiles, as X-14a and X-17 do.
+
+The test of #105, `StreamsTest`: a member with a stream has no method, no call
+and no typed descriptor, keeps its descriptor row and its share of the table
+budget, and leaves the rest of its interface generated and compiling.
 
 The test of #17, in `NamesTest`: X-18, a package `veh` declaring `type common`
 beside its child package `veh.common`, which uses it, compiles, and a consumer

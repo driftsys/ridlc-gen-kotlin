@@ -37,7 +37,7 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.10.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.16.0` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
@@ -277,14 +277,21 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
 
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a
-  parameter with no type or a stream, a fallible `T | E` reply, a call struct
-  the lowering induced with no finite FlatBuffers bound. Since ridl 0.10
-  (driftsys/ridl#713) a call of any other parameter list sends its induced
-  `<Iface><Call>Params`, and a tuple reply its `<Iface><Call>Reply`; a call
-  method's KDoc lists the parameters under `@param args`, as the Rust face's
-  `# Parameters` section does. The rest of the package is generated, as the Rust
-  pipeline skips such an interface with a `__RIDL_NO_FACE_*` note (E11.14
-  decision 2).
+  parameter with no type, a fallible `T | E` reply, a call struct the lowering
+  induced with no finite FlatBuffers bound. Since ridl 0.10 (driftsys/ridl#713)
+  a call of any other parameter list sends its induced `<Iface><Call>Params`,
+  and a tuple reply its `<Iface><Call>Reply`; a call method's KDoc lists the
+  parameters under `@param args`, as the Rust face's `# Parameters` section
+  does. The rest of the package is generated, as the Rust pipeline skips such an
+  interface with a `__RIDL_NO_FACE_*` note (E11.14 decision 2).
+- **A member with a stream is left out of the face without a warning**, as the
+  Rust backend left it out before its stream faces (#105): no method, no call,
+  no typed descriptor, and `serve` registers it nowhere. Since ridl 0.15 such a
+  member has a request, so only `Interaction.streams` tells it apart, and a
+  plain call would send it without its stream. Its row of `members` stays, and
+  its size rows count its request and, unless the reply is the stream, its
+  reply. The row does not list the streams yet: `ridl-rt-kt`'s `Member` has no
+  `streams`.
 - **A channel's init is the signal's own `= value`** when it declares one over a
   named scalar, else the payload type's typl init, built from the model's `Init`
   facts. The Rust face always calls the payload's `Default`, and calls the
@@ -395,7 +402,9 @@ alone. Two namespaces are checked:
   refused here, as are two declarations `Level` and `level`, a declaration named
   like another's codec, and a member named like the provider.
 - **One struct's or tuple's properties**: two fields whose `camel_case` agrees
-  (`minSpeed` and `min_speed`, X-6a) are one property.
+  (`XY` and `x_y`) are one property. RIDL-149 refuses a pair that also agrees
+  under `snake_case`, such as X-6a's `minSpeed` and `min_speed`, before the
+  plugin runs.
 
 The other scopes need no table. A constant is a property of `Constants_`, so
 X-17 builds. An enum's values and a union's arms are checked by RIDL-149, and an

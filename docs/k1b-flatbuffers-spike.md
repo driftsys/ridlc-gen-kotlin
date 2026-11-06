@@ -68,12 +68,19 @@ tag and gain types, so their verdict files only gain lines: `cabin` adds the
 enum set `Subsystems` and the struct `Diagnostic` (driftsys/ridl#860), and
 `payload-constraints` adds `Grid32` and `Grid64` (driftsys/ridl#927).
 
+**Since ridl 0.15.0** (2026-11-04): the golden bytes are unchanged. `verify`
+checks structure alone and no longer refuses a buffer longer than `maxSize`
+(driftsys/ridl#1132), so the 16 `grown` mutants that were `Structure(TooLarge)`
+now decode in Rust and in Kotlin. Two corpus copies follow the tag and gain
+types, so their verdict files only gain lines: `cabin` adds `Setpoint`, and
+`payload-constraints` adds `Elements`, `MapValues` and `OptionalFields`.
+
 The corpus covers §7's malformed cases for these types — truncated buffers,
 offsets past the end, a vtable naming a field across its table's end, a missing
-required field, an enum discriminant out of range, a value outside its range, a
-buffer over its size bound. It does not reach a vector longer than its bound, a
-union discriminant or a string, because the cabin package has none; K2c's corpus
-over `fb-demo` and `veh-common` does.
+required field, an enum discriminant out of range and a value outside its range.
+It does not reach a vector longer than its bound, a union discriminant or a
+string, because the cabin package has none; K2c's corpus over `fb-demo` and
+`veh-common` does.
 
 ## Recommendation
 

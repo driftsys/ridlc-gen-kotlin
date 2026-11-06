@@ -86,6 +86,40 @@ message Instance {
   repeated InterfaceKey offers = 5;
   // The catalogs the instance requires into: the regions it maps.
   repeated string maps = 6;
+  // The backend keys of the placement line that placed the instance, as
+  // declared (rsdl §5).
+  repeated Attribute attributes = 7;
+  // The instance's number (rsdl §7), between 1 and 2147483647; 0 when the
+  // system IR carries none.
+  int32 number = 8;
+  // True when the number is provisional: the instance has no live entry in
+  // the root `instances.lock`.
+  bool provisional = 9;
+}
+
+// A backend key as declared (rsdl §5): `namespace.key`, a flag or a value,
+// never interpreted by the compiler. The shape of the IR's `Attribute`.
+message Attribute {
+  // `linux` in `linux.priority`.
+  string namespace = 1;
+  // `priority` in `linux.priority`.
+  string key = 2;
+  // Absent for a flag.
+  AttributeValue value = 3;
+}
+
+// An attribute value as written: the text of one literal or name, or a
+// parenthesised list.
+message AttributeValue {
+  oneof kind {
+    string scalar = 10;
+    AttributeList list = 11;
+  }
+}
+
+// The items of a parenthesised attribute value, in written order.
+message AttributeList {
+  repeated AttributeValue items = 1;
 }
 
 // A placed instance, as the producer of a channel.
@@ -108,8 +142,8 @@ enum Encoding {
   ENCODING_UNSPECIFIED = 0;
   ENCODING_PROTO3 = 1;
   ENCODING_FLATBUFFERS = 2;
-  // No link carries it until driftsys/ridl#317.
-  ENCODING_REPR_C = 3;
+  // No rsdl fact selects it, so no link carries it.
+  ENCODING_PODBUF = 3;
 }
 
 // Where a sizing value comes from.

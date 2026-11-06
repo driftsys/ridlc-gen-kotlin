@@ -56,6 +56,10 @@ message Model {
   // fact rather than raised as an error: each printer refuses it with its own
   // message (design note D-1).
   repeated TupleCollision tuple_collisions = 10;
+  // The podbuf layout of every head the package reaches. Set whenever the
+  // toolchain lowers a package; a head that cannot be laid out is listed in
+  // `PodbufProjection.refused`, not left out silently.
+  PodbufProjection podbuf = 11;
 }
 
 // The packages the lowering was handed. The output depends on it, so it is
@@ -173,6 +177,16 @@ message Declaration {
   // The rules of the item, in the order `ridl_ir::rules::rules` returns
   // them (ADR-0028).
   repeated Rule rules = 23;
+  // The proto3 size state of the declaration's root message: its own
+  // message for a struct or a union, its `<Name>Box` message for a named
+  // scalar, an enum and an enum set. Absent on a constant, which has no
+  // message.
+  SizeState proto3 = 24;
+  // The podbuf size state of the declaration as a payload root: its own head
+  // for a struct or a union, the one-field head a union arm of that type gets
+  // for a named scalar, an enum and an enum set. Absent on a constant, which
+  // has no payload.
+  SizeState podbuf = 25;
 }
 
 // A named scalar, and the shape of an inline one.
@@ -275,6 +289,8 @@ message Enum {
   optional uint32 zero_member = 3;
   // Index: the zero member, else the lowest value (typl §5.8).
   optional uint32 init_member = 4;
+  // `EnumDef.open`.
+  bool open = 5;
 }
 
 message EnumValue {
@@ -298,6 +314,8 @@ message EnumSet {
   IntWidth width = 3;
   // OR of `1 << bit` over the bits in 0..=63.
   int64 declared_mask = 4;
+  // `EnumSetDef.open`.
+  bool open = 5;
 }
 
 message Union {
@@ -538,7 +556,10 @@ message Interaction {
   // The memory a call table reserves for the member, per wire encoding: the
   // sum of the sizes of its payloads. A signal and an event have one payload,
   // a command has its request, and a query has its request and then its
-  // reply. A fixed member counts no payload and is always `bytes` 0, whatever
+  // reply. A reply that is a stream adds nothing: its chunks are not held by
+  // the call table, and the member's limit bounds each one (ADR-0032
+  // decision 14), which is the row the Rust backend's size table has for it.
+  // A fixed member counts no payload and is always `bytes` 0, whatever
   // its payload: a fixed value is provisioned and never in flight, which is
   // the same number the runtime's size table carries for it.
   Reservation reservation = 8;
@@ -562,6 +583,50 @@ message Interaction {
   // The rules of the item, in the order `ridl_ir::rules::rules` returns
   // them (ADR-0028).
   repeated Rule rules = 23;
+  // The payload limit in bytes that a `[limits]` entry of the catalog gives
+  // the member (ADR-0030 decision 13): its `[limits.interaction]` entry, else
+  // the entry of its kind in `[limits.kind]`, else `default` clamped to
+  // the default ceiling of its kind; copied from the IR's `Decl.limit`.
+  // Absent when no entry applies: the member then has the default ceiling of
+  // its kind, which `ridl_rt::contract::default_ceiling` states. A plugin
+  // that emits a member table reads it there and does not compute it.
+  optional uint32 limit = 24;
+  // The streams of the member, one entry per stream, in ascending `no`: the
+  // reply stream first (`no` 0) when a query replies with a stream, then
+  // each stream parameter in declaration order. Empty for a member with no
+  // stream.
+  //
+  // A member with a stream parameter has a `request` or a `request_tuple`
+  // made of its non-stream parameters; a model written before this field
+  // existed had neither for such a member. A plugin that does not carry
+  // streams skips every member whose `streams` is not empty: emitting it as a
+  // plain call would send the request without its streams.
+  repeated StreamShape streams = 25;
+}
+
+// The form of a stream's chunks.
+enum StreamForm {
+  STREAM_FORM_UNSPECIFIED = 0;
+  // Each chunk is one element of a named type.
+  STREAM_FORM_ELEMENTS = 1;
+  // Each chunk is a run of bytes.
+  STREAM_FORM_BYTES = 2;
+  // Each chunk is a run of UTF-8 text.
+  STREAM_FORM_TEXT = 3;
+}
+
+// One stream of a call.
+message StreamShape {
+  // 0 names the reply stream; k from 1 names the k-th stream parameter,
+  // counting only the stream parameters.
+  uint32 no = 1;
+  StreamForm form = 2;
+  // The element type. Present under `STREAM_FORM_ELEMENTS` only.
+  TypeRef element = 3;
+  // The size states of the element under each wire encoding. Under
+  // `STREAM_FORM_ELEMENTS` they are the element's own; otherwise every state
+  // is `ABSENT_CAUSE_ENCODING_UNDEFINED`.
+  PayloadSizes sizes = 4;
 }
 
 // One thing that crosses, as a named type.
@@ -581,6 +646,7 @@ message Payload {
 message PayloadSizes {
   SizeState proto3 = 1;
   SizeState flatbuffers = 2;
+  SizeState podbuf = 3;
 }
 
 // One payload's state under one encoding.
@@ -612,18 +678,19 @@ enum AbsentCause {
   // box message `<Name>Box` the proto backend emits for them. The value is
   // kept so that the codegen protocol keeps its numbering.
   ABSENT_CAUSE_NO_MESSAGE = 2;
-  // proto3 only: every failure inside the message other than the depth
-  // limit — a member the proto backend refuses, a name inside the message
-  // that does not resolve, a member no proto3 leaf bounds, an enum value
-  // outside int32, and a `u64` sum or product inside the walk that does not
-  // fit. The normative statement is the rustdoc of
+  // proto3 only: a member proto3 cannot represent — a member the proto
+  // backend refuses, a name inside the message that does not resolve, an
+  // enum value outside int32. Never a size problem, which is NO_BOUND or
+  // OVERFLOW. The normative statement is the rustdoc of
   // `ridl_ir::projection::size::AbsentCause::RefusedMember`.
   ABSENT_CAUSE_REFUSED_MEMBER = 3;
-  // A string or bytes with no length bound, or a type def with no width.
+  // A string or bytes with no length bound, or a type def with no width;
+  // under proto3 also a message or a collection that holds one.
   ABSENT_CAUSE_NO_BOUND = 4;
-  // proto3 only: the bound exceeds `u32::MAX`, or the nesting passes the
-  // sizer's depth limit. The FlatBuffers sizer reports a bound it cannot
-  // derive as unbounded, so it never writes this cause.
+  // proto3 only: the bound exceeds `u32::MAX`, the nesting passes the
+  // sizer's depth limit, or a `u64` sum or product inside the walk does not
+  // fit. The FlatBuffers sizer reports a bound it cannot derive as
+  // unbounded, so it never writes this cause.
   ABSENT_CAUSE_OVERFLOW = 5;
   // A name that does not resolve, or a declaration with no root form under
   // the encoding. Under FlatBuffers that is a declaration with no root
@@ -648,7 +715,7 @@ message ReservationState {
     //   type, and otherwise what the shape is: the kind word `primitive`,
     //   `inline scalar`, `tuple`, `map`, `stream`, `array of <element>` or
     //   `no type`; the parameter list `(a, b)` of a request that has no
-    //   induced argument struct, because a parameter is a stream or untyped;
+    //   induced argument struct, because a parameter is untyped;
     //   or `<ok> | <err>` for a fallible reply.
     //
     //   `<member>: no known payload shape` — a member whose kind this
@@ -665,6 +732,7 @@ message ReservationState {
 message Reservation {
   ReservationState proto3 = 1;
   ReservationState flatbuffers = 2;
+  ReservationState podbuf = 3;
 }
 
 message SignalShape {
@@ -681,7 +749,7 @@ message EventShape {
 
 message CommandShape {
   repeated Param params = 1;
-  // Present when the call declares exactly one named parameter.
+  // Present when the call declares exactly one named non-stream parameter.
   Payload request = 2;
   // require only (RIDL-302).
   repeated Clause clauses = 3;
@@ -694,19 +762,21 @@ message CommandShape {
   // sized through their proto3 root box message and their FlatBuffers box
   // table. Every other parameter list, including none, is sized as the
   // induced argument struct `request_tuple` names, under the same rules as a
-  // declared struct. It is absent under both encodings only where no struct
-  // exists: `ABSENT_CAUSE_ENCODING_UNDEFINED` for a parameter with no
-  // declared type and for a stream parameter.
+  // declared struct. A stream parameter is not a parameter of the request:
+  // the request is made of the non-stream parameters, and the stream is in
+  // `Interaction.streams`. The state is absent under both encodings only
+  // where no struct exists: `ABSENT_CAUSE_ENCODING_UNDEFINED` for a
+  // parameter with no declared type.
   PayloadSizes request_sizes = 4;
   // The operation shape of an intent command, copied from the IR. On the
   // command shape, not on Interaction, because Interaction's oneof is named
   // shape.
   Shape shape = 5;
-  // The induced argument struct, when the call's parameters are not exactly
-  // one named type: an index into `Model.tuples`. Exactly one of `request`
-  // and `request_tuple` is present for a call this toolchain lowers. The
-  // struct has one field per declared parameter, and no field when the call
-  // declares none.
+  // The induced argument struct, when the call's non-stream parameters are
+  // not exactly one named type: an index into `Model.tuples`. Exactly one of
+  // `request` and `request_tuple` is present for a call this toolchain
+  // lowers. The struct has one field per declared non-stream parameter, and
+  // no field when the call declares none.
   optional TupleRef request_tuple = 6;
 }
 
@@ -1229,4 +1299,255 @@ enum FbScalarType {
   FB_SCALAR_TYPE_ULONG = 9;
   FB_SCALAR_TYPE_FLOAT = 10;
   FB_SCALAR_TYPE_DOUBLE = 11;
+}
+
+// ---------------------------------------------------------------------
+// The podbuf projection
+// ---------------------------------------------------------------------
+
+// The layout the podbuf encoding gives every head of the package, computed by
+// `ridl_ir::projection::podbuf`, so that a plugin never computes the layout
+// law again. A head is a struct's, a union's or a tuple's, a map entry's, the
+// head of a union arm, or a foreign struct or union reached inline. Heads are
+// ordered: the declarations in `Model.declarations` order (a struct or a union
+// has one head, any other declaration none), the induced tuples that are
+// named, in `Model.tuples` order, then the nested heads in the order the walk
+// reaches them. Every
+// `inline_head`, `entry_head` and arm `head` is an index into `heads`.
+message PodbufProjection {
+  repeated PodbufHead heads = 1;
+  // The declarations and tuples that have no head, with the cause, in the
+  // order of `heads`. A head that needs a refused head is refused too, and
+  // its cause names it.
+  repeated PodbufRefused refused = 2;
+  // The one-field head of each named scalar, enum and enum set that can be
+  // laid out, in `Model.declarations` order. Such a type is carried as a
+  // payload root by itself in a buffer: the value at offset 0 of this head.
+  // The heads of `heads` do not hold it, so no index of `heads` depends on it.
+  repeated PodbufBox boxes = 3;
+}
+
+// The head of a named scalar, an enum or an enum set as a payload root.
+message PodbufBox {
+  // Index into `Model.declarations`.
+  uint32 declaration = 1;
+  // The head: its `source` is unset, because the box belongs to no entry of
+  // `PodbufProjection.heads`, and its one field has the source `arm`.
+  PodbufHead head = 2;
+}
+
+// A struct, a union or a tuple that cannot be laid out. A valid workspace
+// reaches this only for a head larger than a `u32` offset can address, an
+// inline array of such a head included; the other causes are malformed IR
+// (a string or bytes with no bound, a stream field, an unresolved name, a type
+// that reaches itself). A head that needs a refused head is refused too.
+message PodbufRefused {
+  oneof source {
+    // Index into `Model.declarations`.
+    uint32 declaration = 10;
+    // Index into `Model.tuples`.
+    uint32 tuple = 11;
+  }
+  string cause = 2;
+}
+
+message PodbufHead {
+  // What the head belongs to.
+  oneof source {
+    // Index into `Model.declarations`.
+    uint32 declaration = 10;
+    // Index into `Model.tuples`.
+    uint32 tuple = 11;
+    // The entry head of a map. `path` holds the declaration name, then the
+    // names of the fields that lead to the map.
+    MapEntry map_entry = 12;
+    // The head of one arm of a union.
+    ArmHead arm = 13;
+    // Index into `Model.foreign`: a struct or a union of another package that
+    // a field of this package lays out inline.
+    uint32 foreign = 14;
+    // A tuple written inside a struct of another package, which no entry of
+    // `Model.tuples` stands for.
+    NestedTuple nested_tuple = 15;
+  }
+  // The head size in bytes, a multiple of `align`; 0 for a head with no field.
+  uint32 size = 2;
+  // The head alignment in bytes: 8 for every head.
+  uint32 align = 3;
+  // Every placement, the flags fields included, sorted by offset.
+  repeated PodbufField fields = 4;
+  // The unused byte runs, sorted by offset.
+  repeated PodbufPad pads = 5;
+}
+
+// One arm of a union: the declaration and the arm ordinal.
+message ArmHead {
+  // Index into `Model.declarations`; unused (0) when `foreign` is set.
+  uint32 declaration = 1;
+  // `Arm.ordinal`.
+  uint32 arm = 2;
+  // Index into `Model.foreign` when the union is declared by another package.
+  optional uint32 foreign = 3;
+}
+
+// A tuple reached inside a foreign aggregate. Each tuple has one head, which
+// every position that lays that tuple out inline names; a tuple of the same
+// shape at another position has a head of its own.
+message NestedTuple {
+  // The qualified name of the foreign declaration, then the names of the
+  // fields that lead to the tuple.
+  repeated string path = 1;
+  // The package that declares the tuple.
+  string package = 2;
+  // The induced wire name the declaring package gives the tuple, as
+  // `InducedName.wire` spells it in that package's model, so a backend names
+  // the head the way the declaring package's output names it. Empty from a
+  // producer older than this field.
+  string wire = 3;
+}
+
+// One field of a head and where the layout law put it.
+message PodbufField {
+  PodbufSource source = 1;
+  uint32 offset = 2;
+  uint32 size = 3;
+  uint32 align = 4;
+  PodbufForm form = 5;
+  // The flag bit that records the presence of an optional field.
+  optional PodbufFlagBit optional = 6;
+}
+
+// What a field holds.
+message PodbufSource {
+  oneof kind {
+    // A struct field.
+    PodbufNamedField field = 10;
+    // The flags field with this index: a `u8` whose bits record the presence
+    // of eight optional fields.
+    uint32 flags = 11;
+    // A union's tag.
+    bool tag = 12;
+    // A union head's descriptor to the active arm, or the one value field of
+    // the head of an arm whose type is a scalar, an enum or an enum set.
+    bool arm = 13;
+    // A tuple field, by its 1-based position; `position_name` carries its
+    // typl name.
+    uint32 position = 14;
+    // A map entry's key.
+    bool key = 15;
+    // A map entry's value.
+    bool value = 16;
+  }
+  // The typl name of the tuple field `position` names; empty for every other
+  // kind. A tuple field is always named (typl §11), so a backend that spells
+  // the member of a tuple head reads this name, in the package that declares
+  // the tuple and in a package that lays it out inline alike.
+  string position_name = 2;
+}
+
+message PodbufNamedField {
+  // The typl name of the field.
+  string name = 1;
+  // The 1-based ordinal.
+  uint32 ordinal = 2;
+}
+
+message PodbufFlagBit {
+  // The index of the flags field.
+  uint32 flags = 1;
+  // The bit, 0 the least significant.
+  uint32 bit = 2;
+}
+
+message PodbufPad {
+  uint32 offset = 1;
+  uint32 size = 2;
+}
+
+// The bytes a field takes in a head.
+message PodbufForm {
+  oneof kind {
+    // A `u8`, 0 or 1.
+    bool boolean = 10;
+    PodbufInt int = 11;
+    FloatWidth float = 12;
+    PodbufEnum enum = 13;
+    PodbufEnumSet enum_set = 14;
+    // A nested struct, tuple or union, inline: an index into `heads`.
+    uint32 inline_head = 15;
+    // An exact-length array or exact-length `bytes`, inline with no length.
+    PodbufInlineArray inline_array = 16;
+    // A descriptor to data in the tail.
+    PodbufDescriptor tail_descriptor = 17;
+  }
+}
+
+message PodbufInt {
+  IntWidth width = 1;
+  bool signed = 2;
+}
+
+message PodbufEnum {
+  IntWidth width = 1;
+  bool signed = 2;
+  // The name the field wrote.
+  string reference = 3;
+}
+
+message PodbufEnumSet {
+  IntWidth width = 1;
+  string reference = 2;
+}
+
+message PodbufInlineArray {
+  PodbufForm element = 1;
+  uint32 count = 2;
+}
+
+// What a descriptor points at.
+message PodbufDescriptor {
+  oneof kind {
+    // A bounded `string`: scalar values; the tail holds the UTF-8 bytes and
+    // one NUL that the length does not count.
+    PodbufBound text = 10;
+    // Bounded `bytes` whose bounds differ.
+    PodbufBound bytes = 11;
+    PodbufArray array = 12;
+    PodbufMap map = 13;
+    PodbufArms arms = 14;
+  }
+}
+
+message PodbufBound {
+  uint64 min = 1;
+  uint64 max = 2;
+}
+
+message PodbufArray {
+  PodbufForm element = 1;
+  // The stride of the array, in bytes.
+  uint32 elem_size = 2;
+  uint64 min = 3;
+  uint64 max = 4;
+}
+
+message PodbufMap {
+  // The head of one entry, `{ key, value }`: an index into `heads`.
+  uint32 entry_head = 1;
+  // The stride of the map, in bytes.
+  uint32 elem_size = 2;
+  uint64 min = 3;
+  uint64 max = 4;
+}
+
+// The arms of a union, in declaration order.
+message PodbufArms {
+  repeated PodbufArm arms = 1;
+}
+
+message PodbufArm {
+  // `Arm.ordinal`.
+  uint32 ordinal = 1;
+  // The head of the arm: an index into `heads`.
+  uint32 head = 2;
 }
