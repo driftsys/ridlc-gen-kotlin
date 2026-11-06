@@ -352,9 +352,10 @@ struct a call sends is a FlatBuffers root of its own, so `Codec.kt` gives it a
 `<Name>Codec` as it gives a declaration root one, and the size table reserves
 its `maxSize`. The face still skips an interface, with a warning, for an untyped
 parameter, a fallible `T | E` reply, and an induced struct with no finite
-FlatBuffers bound, as the Rust backend does. A member with a stream leaves the
-face alone: it has no method and no typed descriptor, and keeps its row of
-`members` and its size rows (#105).
+FlatBuffers bound, as the Rust backend does. A member with a stream is on the
+async client and the provider as a `Flow` (O-K5); one with several stream
+parameters leaves the face alone: it has no method and no typed descriptor, and
+keeps its row of `members` and its size rows (#105).
 
 **What is deliberately the same as Rust.** The shape, the bounds rule, the
 correlation newtypes, the settlement table and the polling. The reason is the
@@ -597,10 +598,15 @@ Each decision names the alternative it rejected.
   collection gets its own `value class` over `List<T>`, as the Rust backend
   gives it a newtype, is decided with K2b's first bounded collection in the
   corpus.
-- **O-K5. Streams.** ridl 0.15 gives `ridl-rt` a stream port
-  (driftsys/ridl#1154), and `ridl-rt-kt` has none yet, so the Kotlin face covers
-  the four kinds with a payload and `fixed`, and leaves out a member with a
-  stream (#105). How the port maps to `Flow` or `Channel` is still to decide.
+- **O-K5. Streams, settled.** ridl 0.15 gives `ridl-rt` a stream port
+  (driftsys/ridl#1154). `ridl-rt-kt` mirrors it one to one, and the face maps it
+  to `Flow`, not `Channel`: a `Flow` starts when it is collected, a suspended
+  collector is the backpressure, and cancelling it maps to a forget or an abort,
+  where a `Channel` is hot and adds a second buffer on top of the runtime's
+  window. Only the async client and `serveAsync` carry a stream, as the Rust
+  blocking face carries none. The forms are the Rust face's: a reply stream, one
+  stream parameter, or both. A member with several stream parameters stays out
+  (driftsys/ridl#1224).
 
 ## Trace
 

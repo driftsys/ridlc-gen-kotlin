@@ -22,6 +22,7 @@ class FacesTest {
         "cabin" to "ridl.conformance.probe.faces.cabin.CabinFaceProbe",
         "kt-values" to "ridl.conformance.probe.faces.values.ValuesFaceProbe",
         "face-induced" to "ridl.conformance.probe.faces.induced.InducedFaceProbe",
+        "stream-face" to "ridl.conformance.probe.faces.stream.StreamFaceProbe",
     )
 
     @TestFactory

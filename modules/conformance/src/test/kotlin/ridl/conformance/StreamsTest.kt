@@ -12,10 +12,11 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 
 /**
- * A member that carries a stream (#105): the face leaves it out, as the Rust
- * backend does, because a plain call would send it without its stream. Its
- * descriptor row and its row of the size table stay. Since ridl 0.15 such a
- * member has a request, so nothing but `Interaction.streams` tells it apart.
+ * A member that carries a stream: the forms the face carries, and what stays
+ * out of it, as the Rust backend leaves them out. Since ridl 0.15 such a member
+ * has a request, so nothing but `Interaction.streams` tells it apart. Its
+ * descriptor row and its row of the size table stay either way. `FacesTest`
+ * drives the forms over the loopback.
  */
 class StreamsTest {
     @TempDir
@@ -45,7 +46,7 @@ class StreamsTest {
     }
 
     @Test
-    fun `a call with a stream parameter has no method, and the plain call beside it keeps its own`() {
+    fun `a call with one stream parameter is on the async client alone, beside its plain call`() {
         val text = faces(
             "parameter",
             """
@@ -55,13 +56,37 @@ class StreamsTest {
               query lookup(samples: <Sample>): Sample @[..50ms]
             """.trimIndent(),
         )
-        assertTrue("fun ping(" in text, text)
-        for (member in listOf("putBlob", "replay", "lookup")) assertFalse("fun $member(" in text, "`$member` has a method")
-        for (member in listOf("PutBlob", "Replay", "Lookup")) {
-            assertFalse("${member}Correlation" in text, "`$member` has a correlation")
-            assertFalse("Up${member}Call" in text, "`$member` has a call")
-            assertFalse("object Up$member" in text, "`$member` has a typed descriptor")
-        }
+        val blocking = text.substring(text.indexOf("class UpClient"), text.indexOf("class UpAsyncClient"))
+        assertTrue("fun ping(" in blocking, blocking)
+        for (member in listOf("putBlob", "replay", "lookup")) assertFalse("fun $member(" in blocking, "`$member` is on the blocking client")
+        assertTrue("suspend fun putBlob(level: Level, `data`: Flow<ByteArray>)" in text || "suspend fun putBlob(level: Level, data: Flow<ByteArray>)" in text, text)
+        assertTrue("suspend fun lookup(" in text && "Flow<Sample>): Sample" in text, text)
+        for (member in listOf("PutBlob", "Replay", "Lookup")) assertFalse("Up${member}Call" in text, "`$member` has a call")
+    }
+
+    @Test
+    fun `a member with two stream parameters stays out of the face`() {
+        val text = faces(
+            "two",
+            """
+              command ping(level: Level) @[..50ms]
+              command splice(left: <Sample>, right: <Sample>) @[..50ms]
+            """.trimIndent(),
+        )
+        assertFalse("fun splice(" in text, text)
+        assertFalse("object UpSplice" in text, text)
+        assertTrue("Kind.Command, \"splice\"" in text, text)
+    }
+
+    @Test
+    fun `an interface with a stream has no blocking serve, and one with none keeps it`() {
+        val streamed = faces("streamed", "  query history(level: Level): <Sample> @[..50ms]")
+        assertFalse("fun <H> serve(" in streamed, streamed)
+        assertTrue("suspend fun <H> serveAsync(" in streamed, streamed)
+        assertTrue("P : StreamCaller" in streamed && "H : StreamHandler" in streamed, streamed)
+        val plain = faces("plain", "  query latest(level: Level): Sample @[..50ms]")
+        assertTrue("fun <H> serve(" in plain, plain)
+        assertFalse("StreamCaller" in plain || "StreamHandler" in plain, plain)
     }
 
     @Test
@@ -87,7 +112,8 @@ class StreamsTest {
             """.trimIndent(),
         )
         assertTrue("fun ping(" in text, text)
-        assertFalse("fun history(" in text, text)
+        assertFalse("fun history(" in text.substring(text.indexOf("class UpClient"), text.indexOf("class UpAsyncClient")), text)
+        assertTrue("fun history(level: Level): Flow<Sample>" in text, text)
         assertTrue(Regex("""Kind\.Query, "history", .*, listOf\(PayloadInfo\("Level"\)\), """).containsMatchIn(text), text)
         assertTrue(
             Regex("""listOf\(LevelCodec\.maxSize\.toULong\(\), LevelCodec\.maxSize\.toULong\(\)\),""").containsMatchIn(text),
@@ -126,10 +152,11 @@ class StreamsTest {
     }
 
     @Test
-    fun `an interface of stream members alone has its descriptors and no client or provider`() {
+    fun `an interface of stream members alone has an async client and a provider`() {
         val text = faces("only", "  command replay(samples: <Sample>) @[..50ms]")
         assertTrue("Kind.Command, \"replay\"" in text, text)
         assertFalse("class UpClient" in text, text)
-        assertFalse("interface UpProvider" in text, text)
+        assertTrue("class UpAsyncClient" in text, text)
+        assertTrue("interface UpProvider" in text, text)
     }
 }
