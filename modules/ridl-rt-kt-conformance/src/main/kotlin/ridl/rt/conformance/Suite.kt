@@ -115,10 +115,10 @@ public interface Factory<R>
      * caller [caller] makes on it, because the table is the runtime's and not
      * a caller's. A call holds its slot from its send until it is reclaimed by
      * `Caller.forget`, at once for a settled call and at the settlement for a
-     * call in flight (ADR-0021 decision 15), and a send with every slot held
-     * is refused with `SendError.Busy`. A call whose provider still has a stream
-     * parameter to read keeps its slot past its forget. At least 1.
-     * `Factory::SLOTS`.
+     * call in flight (ADR-0021 decision 15), and a send within its limit with
+     * every slot held is refused with `SendError.Busy`. A call whose provider
+     * still has a stream parameter to read keeps its slot past its forget. At
+     * least 1. `Factory::SLOTS`.
      *
      * The tests fill the table by sending this many calls, so a runtime whose
      * bound is large runs them more slowly, and one with no bound cannot run
