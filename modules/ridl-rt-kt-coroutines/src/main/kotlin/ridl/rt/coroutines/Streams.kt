@@ -606,14 +606,14 @@ public suspend fun <H> settleUpload(handler: H, claim: ClaimId, block: suspend (
 
 /**
  * Settles [claim]. A refused settlement leaves the claim settleable, so it
- * settles again with `Transport.Interrupted`, the outcome of a chunk the stream
- * refused for its size, rather than leave the call and its slot held.
+ * settles again with `Transport.Corrupt`, what `ridl-transport-ws` answers for
+ * a reply it refuses, rather than leave the call and its slot held.
  */
 private fun <H : StreamHandler> settle(handler: H, claim: ClaimId, outcome: Result<ByteBuffer>) {
     try {
         handler.settle(claim, outcome)
     } catch (_: SettleError.TooLarge) {
-        settle(handler, claim, Result.failure(Transport.Interrupted))
+        settle(handler, claim, Result.failure(Transport.Corrupt))
     } catch (_: SettleError) {
         // The claim is gone: its handler closed, and the call went with it.
     }

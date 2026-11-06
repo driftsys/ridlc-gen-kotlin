@@ -227,18 +227,18 @@ class StreamDriveTest {
     }
 
     @Test
-    fun `a reply above the limit settles the call with Interrupted, and its slot comes back`() = running {
+    fun `a reply above the limit settles the call with Corrupt, and its slot comes back`() = running {
         val rt = runtime()
         rt.setLimit(IFACE, ORD, 1)
         val calls = Loopback.SLOTS * 2
-        assertEquals(List(calls) { ClientError.Call(Transport.Interrupted) }, refused(rt, calls))
+        assertEquals(List(calls) { ClientError.Call(Transport.Corrupt) }, refused(rt, calls))
     }
 
     @Test
-    fun `any refused settlement of a claim still held settles the call with Interrupted`() = running {
+    fun `any refused settlement of a claim still held settles the call with Corrupt`() = running {
         val rt = runtime()
         val calls = Loopback.SLOTS * 2
-        assertEquals(List(calls) { ClientError.Call(Transport.Interrupted) }, refused(rt, calls) { rt.failNextSettle() })
+        assertEquals(List(calls) { ClientError.Call(Transport.Corrupt) }, refused(rt, calls) { rt.failNextSettle() })
     }
 
     private fun CoroutineScope.outcome(reply: Flow<ByteArray>) = async {
