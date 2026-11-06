@@ -22,9 +22,10 @@
 // one waker per kind for `Event` and `Claim`, which a change to any key of
 // that kind wakes (ADR-0021 decision 13), and an `Outcome` waker with its
 // call, and the caller one `Slot` waker, which a reclaimed slot of the call
-// table wakes and a free slot wakes at once. A registration under any other
-// kind is woken at once, because nothing that handle could read changes under
-// it.
+// table wakes and a free slot wakes at once, and each open stream a `Stream`
+// or a `ClaimStream` waker with its call. A registration under any other kind,
+// or for a stream with nothing left to wait for, is woken at once, because
+// nothing that handle could read changes under it.
 // `CallerHandle` carries `Clock`, because a client that waits for an outcome
 // within a bound reads the clock of the port it calls (ADR-0023 decision 6).
 //

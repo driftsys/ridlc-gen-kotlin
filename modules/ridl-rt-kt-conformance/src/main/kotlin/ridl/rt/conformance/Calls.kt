@@ -330,10 +330,10 @@ public class CallsContract<R>(factory: Factory<R>) : Contract<R>(factory)
 
     /**
      * The call table is the runtime's, shared by every caller on it: with
-     * [Factory.slots] calls held, whichever callers sent them, a send by any
-     * caller is refused with `SendError.Busy`. Reading an outcome does not
-     * free a slot; forgetting a settled call does, and whichever caller sends
-     * next takes it (ADR-0021 decision 15).
+     * [Factory.slots] calls held, whichever callers sent them, a send within
+     * its limit by any caller is refused with `SendError.Busy`. Reading an
+     * outcome does not free a slot; forgetting a settled call does, and
+     * whichever caller sends next takes it (ADR-0021 decision 15).
      */
     public fun `a send with every slot taken is busy for every caller`() {
         assertTrue(factory.slots > 0, "a runtime holds at least one call")
