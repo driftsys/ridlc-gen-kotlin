@@ -11,8 +11,11 @@ import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
 import ridl.rt.error.Contract
+import ridl.rt.port.RaiseError
 import ridl.rt.port.ReadError
+import ridl.rt.port.SendError
 import ridl.rt.port.SettleError
+import ridl.rt.port.WriteError
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Freshness
 import ridl.rt.sample.Provenance
@@ -36,6 +39,8 @@ import java.nio.ByteBuffer
  * - a handler that has served nothing is presented every call, this runtime's
  *   deliberate deviation from `Handler.serve`;
  * - provisioning a `fixed` has no port;
+ * - a limit other than the default ceiling is told through `Loopback.setLimit`,
+ *   this runtime's own API;
  * - which error the injected fault reports is left to a runtime;
  * - the threading model is ADR-0021 decision 12's, which the suite leaves out.
  *
@@ -129,6 +134,29 @@ class PortsTest {
         )
     }
 
+    /** A size refusal is made before the armed fault is consumed, so the fault still fails the next settlement within the limit. */
+    @Test
+    fun `a size refusal does not use up the armed settle failure`() {
+        val rt = runtime()
+        rt.serve(iface, listOf(ord))
+        rt.setLimit(iface, ord, 2)
+        rt.query(iface, ord, bytes(1), null)
+        val claim = rt.nextClaim(out(8))!!
+
+        rt.failNextSettle()
+        assertEquals(
+            SettleError.TooLarge(2),
+            assertThrows<SettleError> { rt.settle(claim.id, Result.success(bytes(1, 2, 3))) },
+            "the size refusal names the member's limit",
+        )
+        assertEquals(
+            SettleError.TooLarge(0),
+            assertThrows<SettleError> { rt.settle(claim.id, Result.success(bytes(1, 2))) },
+            "the armed fault is still there for the next settlement",
+        )
+        rt.settle(claim.id, Result.success(bytes(1, 2)))
+    }
+
     // ---------------------------------------------------------------------
     // `fixed`.
     // ---------------------------------------------------------------------
@@ -147,6 +175,112 @@ class PortsTest {
         assertEquals(2, rt.readFixed(iface, ord, buf))
         assertArrayEquals(array(1, 2), buf.written())
         assertEquals(ReadError.Short(2), assertThrows<ReadError> { rt.readFixed(iface, ord, out(1)) })
+    }
+
+    @Test
+    fun `a fixed longer than its limit is refused and reads as unprovisioned`() {
+        val rt = runtime()
+        assertEquals(
+            WriteError.TooLarge(65_280),
+            assertThrows<WriteError> { rt.provisionFixed(iface, ord, out(65_281)) },
+            "one byte above the default ceiling of a fixed is refused",
+        )
+        assertEquals(
+            ReadError.Contract(Contract.UnknownInteraction),
+            assertThrows<ReadError> { rt.readFixed(iface, ord, out(8)) },
+            "a fixed whose only provision was refused reads as an unprovisioned fixed",
+        )
+
+        rt.provisionFixed(iface, ord, out(65_280))
+        assertEquals(65_280, rt.readFixed(iface, ord, out(65_280)))
+
+        rt.setLimit(iface, ord, 2)
+        assertEquals(
+            WriteError.TooLarge(2),
+            assertThrows<WriteError> { rt.provisionFixed(iface, ord, bytes(1, 2, 3)) },
+            "a limit given to the loopback lowers the cap of a fixed",
+        )
+        assertEquals(65_280, rt.readFixed(iface, ord, out(65_280)), "a refused provision leaves the stored value as it was")
+        rt.provisionFixed(iface, ord, bytes(1, 2))
+        assertEquals(2, rt.readFixed(iface, ord, out(8)))
+    }
+
+    // ---------------------------------------------------------------------
+    // Member limits: `Loopback.setLimit` in place of the kind's default
+    // ceiling, applied by every sending port and by `provisionFixed`.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `a limit given to the loopback lowers and raises a signals cap`() {
+        val rt = runtime()
+        rt.setLimit(iface, ord, 2)
+        assertEquals(WriteError.TooLarge(2), assertThrows<WriteError> { rt.set(iface, ord, bytes(1, 2, 3)) })
+        rt.set(iface, ord, bytes(1, 2))
+        assertEquals(
+            WriteError.TooLarge(3_840),
+            assertThrows<WriteError> { rt.set(iface, other, out(3_841)) },
+            "another member keeps the default ceiling",
+        )
+
+        rt.setLimit(iface, ord, 16_128)
+        rt.set(iface, ord, out(16_128))
+        assertEquals(WriteError.TooLarge(16_128), assertThrows<WriteError> { rt.set(iface, ord, out(16_129)) })
+    }
+
+    @Test
+    fun `a limit given to the loopback lowers and raises an events cap`() {
+        val rt = runtime()
+        rt.subscribe(iface, listOf(ord))
+        rt.setLimit(iface, ord, 2)
+        assertEquals(RaiseError.TooLarge(2), assertThrows<RaiseError> { rt.raise(iface, ord, bytes(1, 2, 3), null) })
+        rt.raise(iface, ord, bytes(1, 2), null)
+
+        rt.setLimit(iface, ord, 16_128)
+        rt.raise(iface, ord, out(16_128), null)
+        assertEquals(RaiseError.TooLarge(16_128), assertThrows<RaiseError> { rt.raise(iface, ord, out(16_129), null) })
+
+        val buf = out(16_384)
+        val first = rt.next(buf)!!
+        assertEquals(2 to 1uL, first.len to first.envelope.seq)
+        buf.clear()
+        val second = rt.next(buf)!!
+        assertEquals(16_128 to 2uL, second.len to second.envelope.seq, "a refused occurrence draws no sequence number")
+        assertNull(rt.next(buf))
+    }
+
+    @Test
+    fun `a limit given to the loopback lowers and raises a calls cap`() {
+        val rt = runtime()
+        rt.serve(iface, listOf(ord))
+        rt.setLimit(iface, ord, 2)
+        assertEquals(SendError.TooLarge(2), assertThrows<SendError> { rt.command(iface, ord, bytes(1, 2, 3), null) })
+        assertEquals(SendError.TooLarge(2), assertThrows<SendError> { rt.query(iface, ord, bytes(1, 2, 3), null) })
+        val c = rt.query(iface, ord, bytes(1, 2), null)
+        val claim = rt.nextClaim(out(8))!!
+        assertEquals(1uL, claim.envelope.seq, "a refused call draws no sequence number")
+        assertEquals(
+            SettleError.TooLarge(2),
+            assertThrows<SettleError> { rt.settle(claim.id, Result.success(bytes(1, 2, 3))) },
+            "the reply is held to the same limit",
+        )
+        rt.settle(claim.id, Result.success(bytes(1, 2)))
+        assertEquals(2, rt.reply(c, out(8))?.getOrThrow())
+        rt.forget(c)
+
+        rt.setLimit(iface, ord, 65_280)
+        val large = rt.query(iface, ord, out(65_280), null)
+        assertEquals(SendError.TooLarge(65_280), assertThrows<SendError> { rt.query(iface, ord, out(65_281), null) })
+        val second = rt.nextClaim(out(65_280))!!
+        rt.settle(second.id, Result.success(out(65_280)))
+        assertEquals(65_280, rt.reply(large, out(65_280))?.getOrThrow())
+    }
+
+    @Test
+    fun `a limit is the stores so an attached aggregate applies it`() {
+        val rt = runtime()
+        rt.setLimit(iface, ord, 2)
+        assertEquals(WriteError.TooLarge(2), assertThrows<WriteError> { rt.attach().set(iface, ord, bytes(1, 2, 3)) })
+        assertEquals(WriteError.TooLarge(2), assertThrows<WriteError> { rt.writer().set(iface, ord, bytes(1, 2, 3)) })
     }
 
     // ---------------------------------------------------------------------

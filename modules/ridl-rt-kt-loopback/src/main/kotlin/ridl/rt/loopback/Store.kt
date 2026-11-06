@@ -16,7 +16,9 @@
 package ridl.rt.loopback
 
 import ridl.rt.contract.InterfaceNo
+import ridl.rt.contract.Kind
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.defaultCeiling
 import ridl.rt.correlate.Forgotten
 import ridl.rt.correlate.Settled
 import ridl.rt.correlate.Table
@@ -29,11 +31,13 @@ import ridl.rt.port.Claim
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
+import ridl.rt.port.RaiseError
 import ridl.rt.port.RawOccurrence
 import ridl.rt.port.RawSample
 import ridl.rt.port.ReadError
 import ridl.rt.port.SendError
 import ridl.rt.port.SettleError
+import ridl.rt.port.WriteError
 import ridl.rt.port.Watermark
 import ridl.rt.sample.Cause
 import ridl.rt.sample.Duration
@@ -62,7 +66,13 @@ internal sealed interface Staged {
     data object Touch : Staged
 }
 
-internal enum class CallKind { Command, Query }
+internal enum class CallKind(
+    /** The interaction kind of the call, which names its default ceiling. */
+    val kind: Kind,
+) {
+    Command(Kind.Command),
+    Query(Kind.Query),
+}
 
 /**
  * Everything two handles must agree on.
@@ -207,6 +217,12 @@ internal class Store {
     private val handlers = TreeMap<Int, HandlerState>()
     private var failNextSettle = false
 
+    /**
+     * The limit of each member `setLimit` was given, in bytes. A member with
+     * no entry has the default ceiling of its kind.
+     */
+    private val limits = TreeMap<Key, Int>()
+
     /** Runs [block] under the store's monitor. */
     inline fun <T> locked(block: Store.() -> T): T = synchronized(this) { block() }
 
@@ -217,6 +233,23 @@ internal class Store {
      */
     inline fun wakeList(block: Store.(MutableList<Waker>) -> Unit): List<Waker> =
         mutableListOf<Waker>().also { locked { block(it) } }
+
+    // -- the member limits --------------------------------------------------
+
+    fun setLimit(key: Key, limit: Int) {
+        limits[key] = limit
+    }
+
+    /**
+     * Throws what [tooLarge] makes of member [key]'s limit when a payload of
+     * [len] bytes is longer than it. The limit is the one [setLimit] gave the
+     * member, else the default ceiling of [kind], the kind of the port the
+     * payload is sent through.
+     */
+    fun admit(key: Key, kind: Kind, len: Int, tooLarge: (Int) -> Throwable) {
+        val cap = limits[key] ?: defaultCeiling(kind)
+        if (len > cap) throw tooLarge(cap)
+    }
 
     // -- the clock ----------------------------------------------------------
 
@@ -308,7 +341,14 @@ internal class Store {
 
     // -- `fixed` ------------------------------------------------------------
 
+    /**
+     * Stores the value of a `fixed`.
+     *
+     * @throws WriteError.TooLarge when it is longer than the member's limit,
+     *   and stores nothing: a value stored before stays as it was.
+     */
     fun provisionFixed(key: Key, bytes: ByteArray) {
+        admit(key, Kind.Fixed, bytes.size, WriteError::TooLarge)
         fixed[key] = bytes
     }
 
@@ -348,8 +388,12 @@ internal class Store {
      * for a late joiner on an event. Each source it queues the occurrence for
      * has its `Event` waker returned, whatever interface that waker was
      * registered under. Every copy carries the sender's [trace].
+     *
+     * @throws RaiseError.TooLarge when it is longer than the event's limit, and
+     *   queues it for no source.
      */
     fun raise(key: Key, bytes: ByteArray, seq: ULong, trace: TraceContext?): List<Waker> {
+        admit(key, Kind.Event, bytes.size, RaiseError::TooLarge)
         val envelope = Envelope(now, seq)
         val wake = mutableListOf<Waker>()
         for (state in sources.values) {
@@ -388,9 +432,12 @@ internal class Store {
      * returns its correlation and the `Claim` waker of every handler that
      * serves the member, whatever interface that waker was registered under.
      *
+     * @throws SendError.TooLarge when the arguments are longer than the call's
+     *   limit, before a slot is taken, so nothing is sent and nothing is woken.
      * @throws SendError.Busy when every slot is taken.
      */
     fun send(caller: Int, kind: CallKind, key: Key, args: ByteArray, seq: ULong, trace: TraceContext?): Pair<Correlation, List<Waker>> {
+        admit(key, kind.kind, args.size, SendError::TooLarge)
         // No budget, so the reservation is not read.
         val c = table.insert(0u) ?: throw SendError.Busy
         calls[Table.slot(c)] = CallEntry(c, caller, kind, key, args, Envelope(now, seq), trace, nextSent++)
@@ -646,6 +693,11 @@ internal class Store {
         val owner = claims[claim.value]
         // A claim another handler holds is unknown to this one.
         if (owner == null || owner.handler != handler) throw SettleError.UnknownClaim
+        // Before the injected failure, which a size refusal does not spend.
+        outcome.onSuccess { reply ->
+            val call = entry(owner.call)
+            admit(call.key, call.kind.kind, reply.size, SettleError::TooLarge)
+        }
         if (failNextSettle) {
             failNextSettle = false
             throw SettleError.TooLarge(0)
