@@ -110,6 +110,7 @@ private val CLAIM_ID = ClassName("$RT.port", "ClaimId")
 private val READ_ERROR = ClassName("$RT.port", "ReadError")
 private val SEND_ERROR = ClassName("$RT.port", "SendError")
 private val SETTLE_ERROR = ClassName("$RT.port", "SettleError")
+private val SETTLE_TOO_LARGE = SETTLE_ERROR.nestedClass("TooLarge")
 private val SERVE_ERROR = ClassName("$RT.port", "ServeError")
 private val PROVIDER_ERROR = ClassName("$RT.error", "ProviderError")
 private val BYTE_BUFFER = ClassName("java.nio", "ByteBuffer")
@@ -296,6 +297,26 @@ class FacesEmitter internal constructor(
                 .beginControlFlow("return try")
                 .addStatement("handler.settle(claim, outcome)")
                 .addStatement("true")
+                .nextControlFlow("catch (_: %T)", SETTLE_ERROR)
+                .addStatement("false")
+                .endControlFlow()
+                .build(),
+        )
+        file.addFunction(
+            FunSpec.builder("settleReply").addModifiers(KModifier.PRIVATE)
+                .addKdoc(
+                    "Settles [claim] with a query's [reply]: `true` when the handler accepted it. A refused reply leaves the " +
+                        "claim settleable and nothing else holds it, so it settles again with `Transport.Corrupt`, what " +
+                        "`ridl-transport-ws` answers, and answers `false` (driftsys/ridl#1260).",
+                )
+                .addParameter("handler", HANDLER).addParameter("claim", CLAIM_ID)
+                .addParameter("reply", BYTE_BUFFER).returns(BOOLEAN)
+                .beginControlFlow("return try")
+                .addStatement("handler.settle(claim, %T.success(reply))", RESULT)
+                .addStatement("true")
+                .nextControlFlow("catch (_: %T)", SETTLE_TOO_LARGE)
+                .addStatement("settle(handler, claim, %T.failure(%T.Corrupt))", RESULT, TRANSPORT)
+                .addStatement("false")
                 .nextControlFlow("catch (_: %T)", SETTLE_ERROR)
                 .addStatement("false")
                 .endControlFlow()
@@ -1935,7 +1956,7 @@ class FacesEmitter internal constructor(
                     .addStatement("buffer.clear()")
                     .addStatement("%T.encode(reply, buffer)", reply.codec)
                     .addStatement("buffer.flip()")
-                    .addStatement("settle(handler, claim.id, %T.success(buffer))", RESULT)
+                    .addStatement("settleReply(handler, claim.id, buffer)")
                     .endControlFlow()
                     .endControlFlow()
                     .endControlFlow()
