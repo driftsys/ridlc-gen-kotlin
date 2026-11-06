@@ -59,6 +59,7 @@ fun probe(): List<String> {
 
     // A value has one representation.
     expectEqual("a declared value is its member", DtcStatus.ACTIVE, DtcStatus.fromValue(1))
+    expectEqual("the factory in the generated module gives the member too", DtcStatus.ACTIVE, DtcStatus.Unknown.of(1))
     expectEqual("0 is its member", DtcStatus.INACTIVE, DtcStatus.fromValue(0))
     expectEqual("a member keeps its integer", 1L, DtcStatus.ACTIVE.value)
 

@@ -256,12 +256,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `data object` per declared value and a class `Unknown`, because an enum class
   has no case that carries a value. `fromValue` is not nullable and is the one
   way to an `Unknown`, and gives the declared object for a declared value, so a
-  value has one representation, as Rust's `From<i64>`. `entries` and `value`
-  keep their strict spelling; a `when` over one needs its `Unknown` arm. An open
-  enum set keeps every bit: `of` refuses none, `ofOrNull` is gone, `unknownBits`
-  reads the undeclared bits, and `encode` refuses a value its field is too
-  narrow for with `EncodeError.Contract` and the rule `Range`, as Rust's
-  `encode_check`. An open enum with no value generates, and has no init value.
+  value has one representation, as Rust's `From<i64>`. The constructor is
+  private, since generated sources usually compile in the application's module,
+  where `internal` stops nothing. `entries` and `value` keep their strict
+  spelling; a `when` over one needs its `Unknown` arm. An open enum set keeps
+  every bit: `of` refuses none, `ofOrNull` is gone, `unknownBits` reads the
+  undeclared bits, and `encode` refuses a value its field is too narrow for with
+  `EncodeError.Contract` and the rule `Range`, as Rust's `encode_check`. An open
+  enum with no value generates, and has no init value.
 - **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
   ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
   `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking
