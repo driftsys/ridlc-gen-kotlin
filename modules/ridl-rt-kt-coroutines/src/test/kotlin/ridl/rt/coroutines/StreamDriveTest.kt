@@ -24,15 +24,18 @@ import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
 import ridl.rt.error.ClientError
+import ridl.rt.error.Contract
 import ridl.rt.error.Transport
 import ridl.rt.loopback.CallerHandle
 import ridl.rt.loopback.HandlerHandle
 import ridl.rt.loopback.Loopback
 import ridl.rt.port.Claim
+import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.Encoded
 import ridl.rt.port.Interest
 import ridl.rt.port.REPLY_STREAM
+import ridl.rt.port.SettleError
 import ridl.rt.port.StreamCaller
 import ridl.rt.port.StreamHandler
 import ridl.rt.port.Wakeable
@@ -60,6 +63,19 @@ private class Poked(private val caller: CallerHandle) : StreamCaller by caller, 
     }
 
     fun poke() = wakers.toList().also { wakers.clear() }.forEach(Waker::wake)
+}
+
+/** A handler that records each outcome it is offered and refuses with [refusals], in order, then accepts. */
+private class Refusing(private val handler: HandlerHandle, refusals: List<SettleError>) : StreamHandler by handler, Wakeable by handler {
+    private val left = ArrayDeque(refusals)
+    val outcomes = mutableListOf<Result<ByteBuffer>>()
+
+    override val catalog: CatalogRef get() = handler.catalog
+
+    override fun settle(claim: ClaimId, outcome: Result<ByteBuffer>) {
+        outcomes += outcome
+        left.removeFirstOrNull()?.let { throw it }
+    }
 }
 
 /** A handler that wakes its first [times] `ClaimStream` registrations at once, as a spurious wake may, and goes on storing them. */
@@ -235,10 +251,36 @@ class StreamDriveTest {
     }
 
     @Test
-    fun `any refused settlement of a claim still held settles the call with Corrupt`() = running {
+    fun `a reply refused as too large for any reason settles the call with Corrupt`() = running {
         val rt = runtime()
         val calls = Loopback.SLOTS * 2
         assertEquals(List(calls) { ClientError.Call(Transport.Corrupt) }, refused(rt, calls) { rt.failNextSettle() })
+    }
+
+    /** The outcomes `settleUpload` offers a handler that refuses with [refusals], in order. */
+    private suspend fun offered(vararg refusals: SettleError, block: suspend () -> ByteBuffer): List<Result<ByteBuffer>> {
+        val handler = Refusing(runtime().handler(), refusals.toList())
+        settleUpload(handler, ClaimId(1), block)
+        return handler.outcomes
+    }
+
+    @Test
+    fun `a refused reply is settled again once, and not a third time`() = running {
+        val tooLarge = SettleError.TooLarge(0)
+        val reply = ByteBuffer.wrap(bytes(1))
+        assertEquals(listOf(Result.success(reply), Result.failure(Transport.Corrupt)), offered(tooLarge, tooLarge, tooLarge) { reply })
+    }
+
+    @Test
+    fun `a failed outcome refused as too large is left to the handler`() = running {
+        val failure = Result.failure<ByteBuffer>(Contract.ContractBroken)
+        assertEquals(listOf(failure), offered(SettleError.TooLarge(0)) { throw Contract.ContractBroken })
+    }
+
+    @Test
+    fun `a reply refused for another reason is left to the handler`() = running {
+        val reply = ByteBuffer.wrap(bytes(1))
+        assertEquals(listOf(Result.success(reply)), offered(SettleError.UnknownClaim) { reply })
     }
 
     private fun CoroutineScope.outcome(reply: Flow<ByteArray>) = async {
