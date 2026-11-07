@@ -241,8 +241,10 @@ public class SinkHandle internal constructor(
     override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?) {
         val key = Key(iface, ord)
         val next = (seqs[key] ?: 0u) + 1u
-        wake(store.locked { raise(key, bytes.remainingBytes(), next, trace) })
+        val wakers = store.locked { raise(key, bytes.remainingBytes(), next, trace) }
+        // Before the wakes: a waker may raise again, and draws the number after this one.
         seqs[key] = next
+        wake(wakers)
     }
 
     /** Wakes every key at once: no role of this handle observes one. */
