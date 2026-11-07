@@ -753,7 +753,8 @@ public sealed class SettleError(message: String) : RidlError(message) {
      * gives it, else the default ceiling of a command or a query
      * ([ridl.rt.contract.defaultCeiling]). This is the one refusal of a
      * reply's size on send: no outcome is recorded, and the claim stays
-     * settleable. [cap] is the limit in bytes.
+     * settleable. The generated face settles a refused query reply again with
+     * `Transport.Corrupt` (driftsys/ridl#1260). [cap] is the limit in bytes.
      */
     public data class TooLarge(public val cap: Int) : SettleError("the reply is larger than $cap bytes")
 

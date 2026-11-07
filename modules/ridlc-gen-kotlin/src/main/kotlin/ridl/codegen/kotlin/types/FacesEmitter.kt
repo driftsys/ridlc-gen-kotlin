@@ -305,9 +305,10 @@ class FacesEmitter internal constructor(
         file.addFunction(
             FunSpec.builder("settleReply").addModifiers(KModifier.PRIVATE)
                 .addKdoc(
-                    "Settles [claim] with a query's [reply]: `true` when the handler accepted it. A refused reply leaves the " +
-                        "claim settleable and nothing else holds it, so it settles again with `Transport.Corrupt`, what " +
-                        "`ridl-transport-ws` answers, and answers `false` (driftsys/ridl#1260).",
+                    "Settles [claim] with a query's [reply]: `true` when the handler accepted the last settlement. A reply " +
+                        "refused as too large leaves the claim settleable and nothing else holds it, so it settles again " +
+                        "with `Transport.Corrupt`, what `ridl-transport-ws` answers (driftsys/ridl#1260, ADR-0030). Any " +
+                        "other refusal is left to the handler.",
                 )
                 .addParameter("handler", HANDLER).addParameter("claim", CLAIM_ID)
                 .addParameter("reply", BYTE_BUFFER).returns(BOOLEAN)
@@ -316,7 +317,6 @@ class FacesEmitter internal constructor(
                 .addStatement("true")
                 .nextControlFlow("catch (_: %T)", SETTLE_TOO_LARGE)
                 .addStatement("settle(handler, claim, %T.failure(%T.Corrupt))", RESULT, TRANSPORT)
-                .addStatement("false")
                 .nextControlFlow("catch (_: %T)", SETTLE_ERROR)
                 .addStatement("false")
                 .endControlFlow()
