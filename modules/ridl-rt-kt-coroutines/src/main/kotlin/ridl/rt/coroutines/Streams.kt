@@ -6,10 +6,13 @@
 package ridl.rt.coroutines
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ChannelResult
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import ridl.rt.contract.InterfaceNo
@@ -39,9 +42,11 @@ import ridl.rt.port.StreamHandler
 import ridl.rt.port.Wakeable
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Timestamp
+import ridl.rt.task.Waker
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
+import java.util.concurrent.atomic.AtomicReference
 
 /** The one stream parameter the face carries (driftsys/ridl#1224): several stay outside it. */
 private val PARAMETER_STREAM = StreamNo(1u)
@@ -163,36 +168,39 @@ public class StreamCall<P>(
     private val max: Duration?,
     private val args: () -> ByteBuffer,
 ) where P : StreamCaller, P : Clock, P : Wakeable {
-    private var deadline: Timestamp? = null
-
-    /** [max] from now, saturating at the largest timestamp. */
-    private fun startDeadline() {
-        deadline = max?.let {
-            val now = port.now()
-            Timestamp(if (Long.MAX_VALUE - it.micros < now.micros) Long.MAX_VALUE else now.micros + it.micros)
-        }
+    /** One call this object sent: a flow it returned is cold, so each collection is a call of its own, with its own deadline. */
+    private class Sent(val correlation: Correlation, deadline: Timestamp?) {
+        @Volatile
+        var deadline: Timestamp? = deadline
     }
 
-    private fun expired(): Boolean = deadline?.let { port.now() > it } ?: false
+    /** [max] from now, saturating at the largest timestamp. */
+    private fun deadline(): Timestamp? = max?.let {
+        val now = port.now()
+        Timestamp(if (Long.MAX_VALUE - it.micros < now.micros) Long.MAX_VALUE else now.micros + it.micros)
+    }
+
+    private fun expired(deadline: Timestamp?): Boolean = deadline?.let { port.now() > it } ?: false
 
     /** The transport failure of a call past its deadline. */
     private fun lapsed(): ClientError = ClientError.Call(if (query) Transport.Timeout else Transport.Undelivered)
 
-    private suspend fun send(): Correlation {
+    private suspend fun send(): Sent {
         val bytes = args()
-        startDeadline()
-        return calls.withLock {
+        val deadline = deadline()
+        val c = calls.withLock {
             awaitPoll({}) { waker ->
                 port.wakeOn(Interest.Slot, waker)
                 try {
                     if (query) port.query(iface, ord, bytes, null) else port.command(iface, ord, bytes, null)
                 } catch (e: SendError) {
                     if (e != SendError.Busy) throw ClientError.Send(e)
-                    if (expired()) throw ClientError.Send(SendError.Busy)
+                    if (expired(deadline)) throw ClientError.Send(SendError.Busy)
                     null
                 }
             }
         }
+        return Sent(c, deadline)
     }
 
     /**
@@ -203,11 +211,11 @@ public class StreamCall<P>(
      * the stream. The next chunk is pulled once the collector took the last one.
      */
     public fun <T> reply(chunks: StreamChunks<T>): Flow<T> = flow {
-        val c = send()
+        val sent = send()
         try {
-            pullAll(c, chunks) { emit(it) }
+            pullAll(sent, chunks) { emit(it) }
         } finally {
-            port.forget(c)
+            port.forget(sent.correlation)
         }
     }
 
@@ -217,11 +225,12 @@ public class StreamCall<P>(
      * first: the provider's refusal of a chunk reaches the next push.
      */
     public suspend fun <T> upload(chunks: StreamChunks<T>, data: Flow<T>) {
-        val c = send()
+        val sent = send()
+        val c = sent.correlation
         try {
             pushAll(c, chunks, data)
             await(port, Interest.Outcome(c)) {
-                port.ack(c)?.getOrElse { throw ClientError.Call(it as CallError) } ?: if (expired()) throw lapsed() else null
+                port.ack(c)?.getOrElse { throw ClientError.Call(it as CallError) } ?: if (expired(sent.deadline)) throw lapsed() else null
             }
         } catch (e: PushError.Failed) {
             // A refusal of the whole call stops the stream, and the outcome names it.
@@ -235,19 +244,37 @@ public class StreamCall<P>(
      * Sends a query, pushes [data] to its stream parameter, ends it, and
      * suspends for the reply, of at most [replySize] bytes, which [decode]
      * reads. The reply's deadline starts at the end of the upload. A query
-     * settled before the upload ended stops the upload and answers with its
-     * outcome.
+     * settled before the upload ended stops the upload, whatever its source is
+     * waiting for, and answers with its outcome.
      */
     public suspend fun <T, R : Any> uploadQuery(chunks: StreamChunks<T>, data: Flow<T>, replySize: Int, decode: (ByteBuffer) -> R): R {
-        val c = send()
+        val sent = send()
+        val c = sent.correlation
         try {
-            try {
-                pushAll(c, chunks, data)
-            } catch (e: PushError.Failed) {
-                return reply(c, replySize, decode) ?: throw ClientError.Call(e.error)
+            return coroutineScope {
+                val refused = AtomicReference<PushError.Failed?>()
+                val upload = launch {
+                    try {
+                        pushAll(c, chunks, data)
+                        sent.deadline = deadline()
+                    } catch (e: PushError.Failed) {
+                        refused.set(e)
+                    }
+                }
+                var watching = false
+                val reply = awaitPoll({}) { waker ->
+                    port.wakeOn(Interest.Outcome(c), waker)
+                    if (!watching) {
+                        watching = true
+                        upload.invokeOnCompletion { waker.wake() }
+                    }
+                    reply(c, replySize, decode)
+                        ?: refused.get()?.let { throw ClientError.Call(it.error) }
+                        ?: if (upload.isCompleted && expired(sent.deadline)) throw lapsed() else null
+                }
+                upload.cancel()
+                reply
             }
-            startDeadline()
-            return await(port, Interest.Outcome(c)) { reply(c, replySize, decode) ?: if (expired()) throw lapsed() else null }
         } finally {
             port.forget(c)
         }
@@ -277,7 +304,8 @@ public class StreamCall<P>(
      * through the reply stream, which it stops.
      */
     public fun <T, U> duplex(up: StreamChunks<T>, data: Flow<T>, down: StreamChunks<U>): Flow<U> = flow {
-        val c = send()
+        val sent = send()
+        val c = sent.correlation
         try {
             coroutineScope {
                 val upload = launch {
@@ -287,7 +315,7 @@ public class StreamCall<P>(
                         // The reply stream reports how the call ended.
                     }
                 }
-                pullAll(c, down) { emit(it) }
+                pullAll(sent, down) { emit(it) }
                 upload.cancel()
             }
         } finally {
@@ -295,7 +323,9 @@ public class StreamCall<P>(
         }
     }
 
-    private suspend fun <T> pullAll(c: Correlation, chunks: StreamChunks<T>, emit: suspend (T) -> Unit) {
+    /** Emits the reply stream of [sent] to its end. An empty chunk carries no value in any form: a producer can push one to look at its stream. */
+    private suspend fun <T> pullAll(sent: Sent, chunks: StreamChunks<T>, emit: suspend (T) -> Unit) {
+        val c = sent.correlation
         val buf = ByteBuffer.allocate(chunks.maxChunk)
         var started = false
         while (true) {
@@ -311,10 +341,11 @@ public class StreamCall<P>(
                 }
                 when {
                     pull != Pull.Pending -> pull
-                    !started && expired() -> throw lapsed()
+                    !started && expired(sent.deadline) -> throw lapsed()
                     else -> null
                 }
             }
+            if (pull is Pull.Chunk && pull.len == 0) continue
             started = true
             when (pull) {
                 is Pull.Chunk -> {
@@ -433,17 +464,74 @@ private fun <H : StreamHandler> refuseClaim(handler: H, claim: ClaimId, error: C
 }
 
 /**
+ * Whether the reply stream of a claim stopped, for a source that has nothing to
+ * push: only a push reads that. The port stops a stream without a chunk to show
+ * for it, so the driver watches for a wake, and a wake may be spurious. A
+ * registration woken at once, on the registering thread, is the sign of a
+ * stream that will not change again, and only that sign is worth a push: an
+ * empty chunk, which an open stream takes and a stopped one refuses. One object
+ * per stream, because a waker of another object would displace and wake it.
+ */
+private class ReplyWatch<H>(private val handler: H, private val claim: ClaimId, private val changed: Waker) : Waker where H : StreamHandler, H : Wakeable {
+    private val interest = Interest.ClaimStream(claim, REPLY_STREAM)
+
+    @Volatile
+    private var registering: Thread? = null
+
+    @Volatile
+    private var atOnce = false
+
+    override fun wake() {
+        if (registering === Thread.currentThread()) atOnce = true else changed.wake()
+    }
+
+    /** Registers again, and throws what a push throws when the stream stopped. */
+    fun check() {
+        atOnce = false
+        registering = Thread.currentThread()
+        handler.wakeOn(interest, this)
+        registering = null
+        if (atOnce) {
+            handler.pushClaim(claim, REPLY_STREAM, ByteBuffer.allocate(0))
+            handler.wakeOn(interest, this)
+        }
+    }
+}
+
+/**
  * Pushes [source] to the reply stream of [claim] and ends it, which settles the
- * claim. A collector's refusal stops [source], and the claim settles with it. An
- * element that cannot be written stops the stream with that outcome. A failed
- * [source] stops the stream with `Transport.Interrupted`, the outcome a producer
- * stops a stream with, and ends here: one stream does not end `serveAsync`. A
- * cancellation stops it the same way and goes on, so a claim is always settled.
+ * claim. A collector's refusal or a forget stops [source], even one suspended
+ * between two elements, and the claim settles with it. An element that cannot
+ * be written stops the stream with that outcome. A failed [source] stops the
+ * stream with `Transport.Interrupted`, the outcome a producer stops a stream
+ * with, and ends here: one stream does not end `serveAsync`. A cancellation
+ * stops it the same way and goes on, so a claim is always settled.
  */
 public suspend fun <H, T> driveReply(handler: H, claim: ClaimId, chunks: StreamChunks<T>, source: Flow<T>) where H : StreamHandler, H : Wakeable {
     try {
-        source.collect { value ->
-            for (chunk in chunks.encode(value)) {
+        coroutineScope {
+            val ready = Channel<ByteBuffer>()
+            launch {
+                try {
+                    source.collect { value -> chunks.encode(value).forEach { ready.send(it) } }
+                    ready.close()
+                } catch (e: Throwable) {
+                    ready.close(e)
+                }
+            }
+            val changed = Channel<Unit>(Channel.CONFLATED)
+            val watch = ReplyWatch(handler, claim) { changed.trySend(Unit) }
+            while (true) {
+                watch.check()
+                val next = select<ChannelResult<ByteBuffer>?> {
+                    ready.onReceiveCatching { it }
+                    changed.onReceive { null }
+                } ?: continue
+                if (next.isClosed) {
+                    next.exceptionOrNull()?.let { throw it }
+                    break
+                }
+                val chunk = next.getOrThrow()
                 await(handler, Interest.ClaimStream(claim, REPLY_STREAM)) {
                     val length = chunk.remaining()
                     Unit.takeIf { handler.pushClaim(claim, REPLY_STREAM, chunk) == length }
@@ -516,9 +604,17 @@ public suspend fun <H> settleUpload(handler: H, claim: ClaimId, block: suspend (
     settle(handler, claim, outcome)
 }
 
+/**
+ * Settles [claim]. A reply refused as too large leaves the claim settleable, so
+ * it settles again with `Transport.Corrupt`, what `ridl-transport-ws` answers,
+ * rather than leave the call and its slot held (driftsys/ridl#1260, ADR-0030).
+ * Any other refusal, of a reply or of a failure, is left to the handler.
+ */
 private fun <H : StreamHandler> settle(handler: H, claim: ClaimId, outcome: Result<ByteBuffer>) {
     try {
         handler.settle(claim, outcome)
+    } catch (_: SettleError.TooLarge) {
+        if (outcome.isSuccess) settle(handler, claim, Result.failure(Transport.Corrupt))
     } catch (_: SettleError) {
         // The claim is gone: its handler closed, and the call went with it.
     }

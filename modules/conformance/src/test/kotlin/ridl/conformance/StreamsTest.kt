@@ -65,6 +65,48 @@ class StreamsTest {
     }
 
     @Test
+    fun `a stream parameter's name does not take its argument's place`() {
+        val text = faces(
+            "first",
+            """
+              command put(samples: <Sample>, level: Level) @[..50ms]
+              query find(args: <Sample>, level: Level): Sample @[..50ms]
+            """.trimIndent(),
+        )
+        assertTrue("suspend fun put(level: Level, samples: Flow<Sample>)" in text, text)
+        assertTrue("suspend fun find(level: Level, args: Flow<Sample>): Sample" in text, text)
+    }
+
+    @Test
+    fun `a stream parameter named args leaves the induced argument another name`() {
+        val text = faces(
+            "named",
+            """
+              command put(args: <Sample>) @[..50ms]
+              query sum(level: Level, args: <Sample>, other: Level): Sample @[..50ms]
+            """.trimIndent(),
+        )
+        assertTrue("suspend fun put(request: UpPutParams, args: Flow<Sample>)" in text, text)
+        assertTrue("suspend fun sum(request: UpSumParams, args: Flow<Sample>): Sample" in text, text)
+    }
+
+    @Test
+    fun `a doc link to a stream member names the method that has it, and one left out is no link`() {
+        val text = faces(
+            "link",
+            """
+              /// See [probe.link.Up.history] and [probe.link.Up.merge2].
+              command ping(level: Level) @[..50ms]
+              query history(level: Level): <Sample> @[..50ms]
+              command merge2(left: <Sample>, right: <Sample>) @[..50ms]
+            """.trimIndent(),
+        )
+        assertTrue("[probe.link.UpAsyncClient.history]" in text, text)
+        assertFalse("UpClient.history" in text, text)
+        assertFalse("[probe.link.UpClient.merge2]" in text || "[probe.link.UpAsyncClient.merge2]" in text, text)
+    }
+
+    @Test
     fun `a member with two stream parameters stays out of the face`() {
         val text = faces(
             "two",

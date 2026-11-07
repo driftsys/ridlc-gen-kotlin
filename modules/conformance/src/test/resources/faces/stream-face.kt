@@ -248,6 +248,28 @@ fun probe(): List<String> = runBlocking(Dispatchers.Default) {
         expectEqual("a corrupt chunk refuses the stream", ClientError.Call(Transport.Corrupt), outcome { client3.history(Level.of(1)).toList() })
         bad.join()
 
+        // A reply that fails its check, raw over the port: the same outcome as a plain query's.
+        val rt7 = Loopback(Log.catalog)
+        val client7 = LogAsyncClient(rt7.caller())
+        val handler7 = rt7.handler()
+        handler7.serve(Log.number, listOf(Ordinal(4u)))
+        val truncated = launch(Dispatchers.Default) {
+            while (true) {
+                val claim = handler7.nextClaim(ByteBuffer.allocate(64))
+                if (claim != null) {
+                    handler7.settle(claim.id, Result.success(ByteBuffer.wrap(byteArrayOf(1, 2, 3))))
+                    break
+                }
+                kotlinx.coroutines.yield()
+            }
+        }
+        expectEqual(
+            "a corrupt reply to an upload",
+            ClientError.Call(Transport.Corrupt),
+            outcome { client7.summarize(face.stream.LogSummarizeParams(), flowOf(reading(1))) },
+        )
+        truncated.join()
+
         // Bytes and text: a value longer than a chunk is split, and text stays whole characters.
         val documents = Documents()
         val rt4 = Loopback(Docs.catalog)

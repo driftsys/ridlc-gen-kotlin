@@ -109,6 +109,23 @@ class WakeableTest {
     }
 
     @Test
+    fun `a waker that raises again draws the next sequence number`() {
+        val rt = runtime()
+        val sink = rt.sink()
+        val source = rt.source()
+        source.subscribe(iface, listOf(ord))
+        fun raise() = sink.raise(iface, ord, ByteBuffer.allocate(1), null)
+        source.wakeOn(Interest.Event(iface), Waker { raise() })
+        raise()
+        val out = ByteBuffer.allocate(8)
+        val seqs = generateSequence {
+            out.clear()
+            source.next(out)?.envelope?.seq
+        }.toList()
+        assertEquals(listOf<ULong>(1u, 2u), seqs)
+    }
+
+    @Test
     fun `a raise wakes a subscribed source and not an unsubscribed one`() {
         val rt = runtime()
         val sink = rt.sink()

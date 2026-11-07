@@ -1,6 +1,7 @@
 package ridl.conformance
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -17,14 +18,26 @@ class OpenEnumsTest {
     @TempDir
     lateinit var work: Path
 
-    @Test
-    fun `an open declaration keeps what it does not name`() {
+    private fun generated(): Map<String, String> {
         val requests = Harness.capturedRequests("open-enums", work.resolve("capture")).values.map(Wire::readRequest)
-        val sources = requests.flatMap { request ->
+        return requests.flatMap { request ->
             val response = Generator.generate(request)
             assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
             response.filesList.map { it.path to it.text }
         }.toMap()
+    }
+
+    @Test
+    fun `no code beside the generated sources builds an Unknown of a declared value`() {
+        val misuse = "package misuse\n\nfun declared() = open.demo.DtcStatus.Unknown(1L)\n"
+        val compiled = Compiler.compile(generated() + ("misuse/misuse.kt" to misuse), work.resolve("misuse"))
+        assertFalse(compiled.ok, "an application module reached the constructor")
+        assertTrue("private" in compiled.messages, compiled.messages)
+    }
+
+    @Test
+    fun `an open declaration keeps what it does not name`() {
+        val sources = generated()
         val probe = checkNotNull(javaClass.getResource("/open/open-enums.kt")).readText()
         val compiled = Compiler.compile(sources + ("open/open-enums.kt" to probe), work.resolve("compile"))
         assertTrue(compiled.ok, compiled.messages)

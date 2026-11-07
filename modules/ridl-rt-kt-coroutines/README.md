@@ -43,6 +43,16 @@ values to chunks: `elementChunks`, `byteChunks` and `textChunks`. `FacesTest`
 drives them over the loopback, and `StreamChunksTest` pins the split of bytes
 and text.
 
+The port has no read for "this stream stopped" but a push, and a wake may be
+spurious, so `driveReply` cannot tell a forget from a freed window by the wake
+alone. Waiting on a source that has nothing to push, it registers again: a
+registration woken at once, on the registering thread, marks a stream that will
+not change, and only then does it push an empty chunk, which a stopped stream
+refuses. A runtime that wakes such a registration from another thread is not
+wrong, but `driveReply` then learns of a forget at the source's next element.
+This goes beyond the Rust face, whose `drive_stream` returns on a pending
+source. So an empty chunk carries no value here, in any stream form.
+
 `SignalState<T>` is a signal as a shared `StateFlow` of its samples (#76), what
 a generated `<signal>` property of an async client returns; a client keeps its
 states in one `SignalStates`, one per signal and period. The runtime has no
