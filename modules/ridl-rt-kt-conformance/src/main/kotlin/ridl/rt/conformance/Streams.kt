@@ -9,8 +9,8 @@
 // a push takes the whole chunk or nothing, and answers 0 for a non-empty chunk
 // the full window did not take; an empty chunk is always taken and is pulled as
 // `Pull.Chunk(0)`; the reply stream ends with the call's settlement; a stop on
-// purpose is an abort, and a forget stops every stream of the call that its
-// producer has not ended with `Transport.Interrupted`, and keeps the ended ones.
+// purpose is an abort, and a forget stops every stream of the call that was
+// neither ended nor stopped with `Transport.Interrupted`, and keeps the others.
 //
 // Every test asks for `StreamCaller`, `StreamHandler` and `Wakeable` on the
 // runtime, so these tests are in their own suite. The tests send each call

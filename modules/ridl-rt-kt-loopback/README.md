@@ -31,10 +31,14 @@ driftsys/ridlc-gen-kotlin#5 adds the `Wakeable` of ridl `main` (story E11.16, as
 c2543c2 left it). Every handle is `Wakeable`, and stores one waker per kind of
 key it observes: `SourceHandle` one `Event` waker, `HandlerHandle` one `Claim`
 waker, `CallerHandle` an `Outcome` waker with each call and one `Slot` waker;
-any other kind is woken at once. The aggregate routes each key to the handle
-that observes it, and `CallerHandle` also carries `Clock`. Closing a handler
-returns the claims it held and had not settled to the waiting calls, in send
-order, and wakes the handlers that serve them (ADR-0021 decision 5).
+each open stream of a call also keeps a `Stream` waker for the caller and a
+`ClaimStream` waker for the provider. Any other kind is woken at once. The
+aggregate routes each key to the handle that observes it, and `CallerHandle`
+also carries `Clock`. Closing a handler returns the claims it held and had not
+settled to the waiting calls, in send order, and wakes the handlers that serve
+them (ADR-0021 decision 5). A claim on which it already moved a stream does not
+go back, because another handler would read partial streams: its streams stop
+and the call settles with `Transport.Interrupted`.
 
 `attach()`, of ridl 0.5.0 (driftsys/ridl#488), makes a second aggregate on the
 same store: six new role handles, opened as `reader()` to `handler()` open one
@@ -67,20 +71,22 @@ too.
 
 The call table is `ridl-rt-kt`'s `correlate.Table`, with `Loopback.SLOTS`
 (sixteen) slots and no byte budget, as story E11.18 moved the Rust loopback onto
-it (ridl `main` at eb41a7a). A send with every slot taken throws
-`SendError.Busy` on every caller and draws no sequence number. `forget`, or the
-close of the caller that sent the call, is what frees a slot, and a freed slot
-wakes every caller's `Slot` waker; a `Slot` registration while a slot is free is
-woken at once. A forgotten call that no handler has claimed is withdrawn at once
-(ridl `main` at 5ac7082): it is never presented, and its slot comes back, so
-calls to a member no handler serves do not fill the table for good. A claimed
-one keeps its slot until its settlement, and a handler closed while it holds a
-forgotten call withdraws that call rather than returning it. The withdrawal is
-this runtime's behaviour, not a port contract. A returned claim goes back in
-send order, which a reused slot's correlation does not give. `WakeableTest` is
-the "Waking" and "The bounded call table" tests of `ports.rs` at 44e59fa, the
-ones only this runtime can express, under the same names and in the same order;
-the 15 that story E11.20 moved into the suite run from `ConformanceTest`.
+it (ridl `main` at eb41a7a). A send within its limit with every slot taken
+throws `SendError.Busy` on every caller and draws no sequence number; arguments
+above the limit are refused first, with `TooLarge`. `forget`, or the close of
+the caller that sent the call, is what frees a slot, and a freed slot wakes
+every caller's `Slot` waker; a `Slot` registration while a slot is free is woken
+at once. A forgotten call that no handler has claimed is withdrawn at once (ridl
+`main` at 5ac7082): it is never presented, and its slot comes back, so calls to
+a member no handler serves do not fill the table for good. A claimed one keeps
+its slot until its settlement, and past it while the provider has a stream
+parameter to read, and a handler closed while it holds a forgotten call
+withdraws that call rather than returning it. The withdrawal is this runtime's
+behaviour, not a port contract. A returned claim goes back in send order, which
+a reused slot's correlation does not give. `WakeableTest` is the "Waking" and
+"The bounded call table" tests of `ports.rs` at 44e59fa, the ones only this
+runtime can express, under the same names and in the same order; the 15 that
+story E11.20 moved into the suite run from `ConformanceTest`.
 
 ## Where the code departs from the Rust loopback
 

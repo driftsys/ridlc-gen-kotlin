@@ -371,7 +371,7 @@ class TypesEmitter internal constructor(
 
     // -- enums and enum sets -----------------------------------------------
 
-    /** An enum class over the declared discriminants; an undefined one is `null` from `fromValue` (E10.5). */
+    /** A closed enum's enum class over the declared discriminants, an undefined one `null` from `fromValue` (E10.5); an open enum is [openEnum]'s. */
     private fun enum(declaration: Declaration, enum: Enum): TypeSpec {
         if (enum.open) return openEnum(declaration, enum)
         val self = ClassName(pkg, declaration.name.camel)

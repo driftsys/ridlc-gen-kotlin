@@ -23,9 +23,10 @@ and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
 in the one response: a stream (O-K5), a reference that resolves to nothing, two
-tuples spelling one name, an enum with no value, a union with no arm, and every
-position the Rust codec emitter refuses — a type with no finite FlatBuffers
-bound, a bare `string` or `bytes`, an optional array element or map part.
+tuples spelling one name, a closed enum with no value, a union with no arm, and
+every position the Rust codec emitter refuses — a type with no finite
+FlatBuffers bound, a bare `string` or `bytes`, an optional array element or map
+part.
 
 Every file starts with the request's generated-file marker and the project's
 header (driftsys/ridl#746, ridl 0.6.0): the marker, then each line of the
@@ -116,8 +117,9 @@ why, and how the rule was last checked; CI does not check it.
   backing is `i64` or `f64`; the declared widths are the codec's.
 - **An enum's discriminant is a `Long`**, not the `Int` of §4, because the
   model's is an `int64`.
-- **An enum set has a private constructor** and `of`, which refuses a bit no
-  member declares with the rule `Variant`, as the Rust `TryFrom` does.
+- **An enum set has a private constructor** and `of`. A closed set's `of`
+  refuses a bit no member declares with the rule `Variant`, as the Rust
+  `TryFrom` does; an open set's keeps every bit, below.
 - **A bytes scalar is a final class**, not a value class: a value class cannot
   compare a `ByteArray` by content. It holds a private copy.
 - **O-K4 is decided as §4 has it**: an array's and a map's bounds are checked
@@ -162,10 +164,11 @@ to that over 15,780 buffers (`CodecTest`).
   tuple's or a map entry's table, a union arm's box and a box root. When 0 is
   not a legal value of the field's type it is still `MissingRequired`. Legality
   is decided at generation time by the Rust rule (`Zero.kt`, after
-  `ridl_ir::zero::range_holds_zero`): an enum needs a zero member, and a numeric
-  range must hold 0, on the grid of its `step` when it has one, read from the
-  model's exact decimal text. A step with no minimum counts from 0 since ridl
-  0.5.1 (driftsys/ridl#654). The bytes the codec writes do not change.
+  `ridl_ir::zero::range_holds_zero`): a closed enum needs a zero member, an open
+  enum always admits 0, as `Unknown(0)` when no member is 0, and a numeric range
+  must hold 0, on the grid of its `step` when it has one, read from the model's
+  exact decimal text. A step with no minimum counts from 0 since ridl 0.5.1
+  (driftsys/ridl#654). The bytes the codec writes do not change.
 - **A map decodes to a `Map`**, where the Rust codec keeps a `Vec` of pairs.
   `verify` refuses two entries with one key with the rule `Unique`, as the Rust
   verifier does since ridl 0.5.1 (driftsys/ridl#654), comparing the keys as
@@ -217,12 +220,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   timeout)`, the suspending `<Iface>AsyncClient<P>`,
   and `serve` and `serveAsync` on the descriptor, all over one internal
   `<Iface><Member>Call` per command and query, whose `InteractionCall_` base
-  carries every call rule. The poll face, `<Iface>PollClient`, its correlations,
-  its `…Ack` and `…Reply` methods and `dispatch` are internal. A call returns
-  its reply and throws `ClientError` for anything else; `serve` throws
-  `ProviderError`. A signal-only interface has one plain `<Iface>Client` beside
-  its descriptors and publisher, an `<Iface>AsyncClient` holding the signal
-  states below, and no poll face or `serve`.
+  carries every call rule. An interface of stream members alone has neither the
+  blocking client nor `serve`, and a stream member has no `…Call`. The poll
+  face, `<Iface>PollClient`, its correlations, its `…Ack` and `…Reply` methods
+  and `dispatch` are internal. A call returns its reply and throws `ClientError`
+  for anything else; `serve` throws `ProviderError`. A signal-only interface has
+  one plain `<Iface>Client` beside its descriptors and publisher, an
+  `<Iface>AsyncClient` holding the signal states below, and no poll face or
+  `serve`.
 - **Each signal is a shared state on the suspending client** (#72, #76): the
   extension property `<signal>: SignalState<T>`, a `StateFlow<Sample<T>>` of
   `ridl-rt-kt-coroutines`, replaces both the async client's read `<signal>()`

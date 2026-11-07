@@ -1967,7 +1967,8 @@ class FacesEmitter internal constructor(
                 .endControlFlow()
             return FunSpec.builder("dispatch")
                 .addKdoc(
-                    "Settles every claim of interface `%L` that is waiting, and returns how many the handler accepted. It " +
+                    "Settles every claim of interface `%L` that is waiting, and returns how many the handler accepted, a " +
+                        "streamed query counting once its coroutine is started, before it settles. It " +
                         "does not wait. [buffer] holds the arguments and then the reply, so it is at least the " +
                         "`maxBufferSize` of the size table in [handler]'s encoding; a shorter one returns 0 and consumes nothing.\n\nEvery claim taken is settled: an unknown " +
                         "interface or ordinal `UnknownInteraction`, bytes that fail their structure `Transport.Corrupt`, a " +
