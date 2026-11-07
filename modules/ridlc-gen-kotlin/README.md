@@ -362,6 +362,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `unsubscribe<Event>`; the Rust face has neither.
 - **A port error is thrown**, and `dispatch` counts a settlement the handler
   refused with a `SettleError` as not accepted, as the Rust one counts an `Err`.
+- **A query's reply refused as too large is settled again with
+  `Transport.Corrupt`** (driftsys/ridl#1260, ADR-0030): `SettleError.TooLarge`
+  leaves the claim settleable and no one else holds it, so without this its slot
+  stays taken and the caller gets `Timeout`, then `Send.Busy` once the slots run
+  out. `dispatch` counts the claim by that second settlement, which is not tried
+  a third time. Any other refusal is left to the handler, and a command's
+  settlement is not retried: its empty reply fits any limit. The Rust face
+  follows this rule from the first release after `editor-v0.16.0`.
 - **An oversized claim is settled `Transport.Corrupt`** (#10,
   driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
   claim by its id unread, counts an accepted settlement and goes on, and ends
