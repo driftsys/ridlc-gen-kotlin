@@ -64,12 +64,14 @@ public class Handles internal constructor(
  * owner: it names no payload type and never verifies a payload on its own. It
  * calls the check a generated binding registers for a signal
  * (`SignalReader.checkWith`) on each payload it commits for that signal. It
- * holds no catalog descriptor, so it never reports `NotOwner`, never a
- * `Contract` error except from an unprovisioned [readFixed], and every value's
- * freshness is `Unbounded`.
+ * holds no catalog descriptor, so it never reports `NotOwner`, and every
+ * value's freshness is `Unbounded`. A `Contract` error comes only from an
+ * unprovisioned [readFixed], or from a stream call that names a correlation or
+ * a claim it does not know, or the wrong side of a stream.
  * Nothing detaches, so `Detached` never appears. Three things are bounded. A
  * stream's [STREAM_WINDOW]: a push into a full one returns 0. The
- * call table's [SLOTS]: a send with every slot taken throws `SendError.Busy`.
+ * call table's [SLOTS]: a send within its limit with every slot taken throws
+ * `SendError.Busy`.
  * And the size of a payload: a sending port refuses a payload longer than its
  * member's limit with `TooLarge` — the limit [setLimit] gave the member, else
  * the default ceiling of the port's kind (ADR-0030 decision 16) — and
@@ -308,12 +310,14 @@ public class Loopback private constructor(
          * released by `Caller.forget` or by the close of the caller handle
          * that sent them. A settled call keeps its slot until it is released.
          * With every slot taken, `command` and `query` throw `SendError.Busy`
-         * on every caller handle, because the table is the runtime's.
+         * on every caller handle, because the table is the runtime's; arguments
+         * above the member's limit are refused first, with `TooLarge`.
          *
          * Sixteen is small on purpose, so a test reaches it in a few sends and
          * a program that never forgets a call finds out at once. The loopback
-         * has no catalog descriptor to size a byte budget from, so the slot
-         * count is its only bound (note F-9 of the async face design).
+         * has no catalog descriptor to size a byte budget from, so the table
+         * has no byte budget, and a slot holds any call within its member's
+         * limit (note F-9 of the async face design).
          *
          * A forgotten call that no handler has claimed is withdrawn at once
          * and gives its slot back, so calls to a member no handler serves do
@@ -332,10 +336,10 @@ public class Loopback private constructor(
         /**
          * The number of non-empty chunks one stream of a call holds, pushed
          * and not yet pulled. A push of a non-empty chunk into a stream that
-         * holds this many returns 0 and takes nothing, and the receiver's next
-         * pull frees room for one. An empty chunk is always taken, whatever the
-         * window holds. Four is small, so that a test reaches the bound in a
-         * few pushes, as with [SLOTS].
+         * holds this many returns 0 and takes nothing, and a pull of a
+         * non-empty chunk frees room for one. An empty chunk is always taken,
+         * whatever the window holds. Four is small, so that a test reaches the
+         * bound in a few pushes, as with [SLOTS].
          */
         public const val STREAM_WINDOW: Int = 4
     }

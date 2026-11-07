@@ -219,9 +219,10 @@ internal class Store {
      * `Interest.Outcome` waker are the table's.
      *
      * A forgotten call that a handler holds keeps its entry until its
-     * settlement reclaims the slot, because a claim already presented is the
-     * provider's and is still settled. A forgotten call that no handler holds
-     * is withdrawn: its entry goes with its slot, at the `forget` for a
+     * settlement reclaims the slot, or until the provider is done with every
+     * stream parameter when that is later, because a claim already presented
+     * is the provider's and is still settled. A forgotten call that no handler
+     * holds is withdrawn: its entry goes with its slot, at the `forget` for a
      * waiting call and at the handler's close for a claimed one.
      */
     private class CallEntry(
@@ -660,7 +661,8 @@ internal class Store {
      *   stream parameter or its handler is closed.
      * - **Claimed by a handler and not settled**: it is marked forgotten and
      *   keeps its slot. The provider still settles it, and the slot is
-     *   reclaimed when that settlement lands. If the handler is closed first,
+     *   reclaimed when that settlement lands, or after it once the provider
+     *   is done with every stream parameter. If the handler is closed first,
      *   [closeHandler] withdraws the call instead of returning it.
      * - **Waiting, claimed by no handler**: it is withdrawn. It leaves the
      *   waiting calls, so no handler is ever presented it, and its slot is
@@ -965,7 +967,9 @@ internal class Store {
      * settleable. A recorded outcome wakes the call's `Outcome` waker, ends the
      * reply stream, or stops it with the error, after the chunks already pushed,
      * and wakes every `Stream` waker of the call. The settlement of a call the
-     * caller forgot records nothing and reclaims its slot.
+     * caller forgot records nothing and reclaims its slot, unless the provider
+     * still has a stream parameter to read: then the slot stays until it is
+     * done.
      */
     fun settle(handler: Int, claim: ClaimId, outcome: Result<ByteArray>, wake: MutableList<Waker>) {
         val owner = claims[claim.value]

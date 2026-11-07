@@ -71,7 +71,8 @@ internal sealed interface Domain {
     data class Named(val type: ClassName, val declared: String, val scalar: Scalar) : Domain
 
     /**
-     * An enum: `.value` out, `fromValue` in, the first member as the fallback.
+     * An enum: `.value` out, `fromValue` in, the first member as the fallback
+     * of a closed one; an open one reads an absent field as `fromValue(0)`.
      * [zero] is the member numbered 0, which an absent field reads as.
      */
     data class EnumOf(
@@ -84,7 +85,7 @@ internal sealed interface Domain {
         val open: Boolean,
     ) : Domain
 
-    /** An enum set: `.bits` out, `ofOrNull` in, `EMPTY` as the fallback. */
+    /** An enum set: `.bits` out, `ofOrNull` in for a closed one and `of` for an open one, `EMPTY` as the fallback. */
     data class SetOf(
         val type: ClassName,
         val declared: String,

@@ -315,7 +315,8 @@ tool produces (D-K5).
   verify failure settles `Transport.Corrupt`; a constraint failure
   `Contract.InvalidValue`; a failed `require` `PreconditionFailed`; a failed
   `ensure` `ContractBroken`. A command settles before the provider method runs;
-  a query after. The return is the number of claims `settle` accepted.
+  a query after. The return is the number of claims `settle` accepted, and a
+  streamed query counts once its coroutine is started, before it settles.
 
 **An `internal` interface has its descriptors and no face** (driftsys/ridl#832):
 the descriptor object and its interaction objects, `internal`, and no client,
@@ -342,9 +343,10 @@ face built over a port of another encoding is refused.
 
 **A call sends one named type** (driftsys/ridl#713, ADR-0023 decisions 2 and 6
 as amended 2026-10-13). A command or query with exactly one parameter of a named
-type sends that type, and its method takes the parameter by its own name. Every
-other parameter list, none included, sends the struct the lowering induced for
-it, `<Iface><Call>Params`, and its methods take that struct as `args`; a tuple
+type sends that type, and its method takes the parameter by its own name; a
+stream parameter travels apart and does not count here. Every other parameter
+list, none included, sends the struct the lowering induced for it,
+`<Iface><Call>Params`, and its methods take that struct as `args`; a tuple
 reply, and a query that declares no return type, reply with
 `<Iface><Call>Reply`. The lowering names both (ADR-0016, amendment of
 2026-10-13), and the plugin reads the name and never builds one. Each induced
