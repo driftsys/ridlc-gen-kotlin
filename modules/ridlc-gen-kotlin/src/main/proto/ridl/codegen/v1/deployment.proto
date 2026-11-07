@@ -25,7 +25,8 @@ syntax = "proto3";
 // guards as the model.
 //
 // Field numbering scheme, as `model.proto` has it: envelope and data fields
-// start at 1; `oneof` members start at 10. This file has no `oneof`.
+// start at 1; `oneof` members start at 10. `AttributeValue` is the one
+// `oneof` of this file.
 package ridl.codegen.v1;
 
 import "ridl/codegen/v1/model.proto";
