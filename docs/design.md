@@ -608,7 +608,9 @@ Each decision names the alternative it rejected.
   window. Only the async client and `serveAsync` carry a stream, as the Rust
   blocking face carries none. The forms are the Rust face's: a reply stream, one
   stream parameter, or both. A member with several stream parameters stays out
-  (driftsys/ridl#1224).
+  (driftsys/ridl#1224). A forget stops a source even while it is suspended,
+  which the Rust face leaves to the source's next element
+  (`modules/ridl-rt-kt-coroutines/README.md`).
 
 ## Trace
 

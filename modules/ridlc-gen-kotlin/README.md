@@ -261,12 +261,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `data object` per declared value and a class `Unknown`, because an enum class
   has no case that carries a value. `fromValue` is not nullable and is the one
   way to an `Unknown`, and gives the declared object for a declared value, so a
-  value has one representation, as Rust's `From<i64>`. `entries` and `value`
-  keep their strict spelling; a `when` over one needs its `Unknown` arm. An open
-  enum set keeps every bit: `of` refuses none, `ofOrNull` is gone, `unknownBits`
-  reads the undeclared bits, and `encode` refuses a value its field is too
-  narrow for with `EncodeError.Contract` and the rule `Range`, as Rust's
-  `encode_check`. An open enum with no value generates, and has no init value.
+  value has one representation, as Rust's `From<i64>`. The constructor is
+  private, since generated sources usually compile in the application's module,
+  where `internal` stops nothing. `entries` and `value` keep their strict
+  spelling; a `when` over one needs its `Unknown` arm. An open enum set keeps
+  every bit: `of` refuses none, `ofOrNull` is gone, `unknownBits` reads the
+  undeclared bits, and `encode` refuses a value its field is too narrow for with
+  `EncodeError.Contract` and the rule `Range`, as Rust's `encode_check`. An open
+  enum with no value generates, and has no init value.
 - **The fixed and derived operations are extensions** (#9, driftsys/ridl#580, as
   ridl 0.4.0's Rust face moved them behind traits): `nextEvent`,
   `subscribe<Event>` and `unsubscribe<Event>` of the clients, the blocking
@@ -365,6 +367,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `unsubscribe<Event>`; the Rust face has neither.
 - **A port error is thrown**, and `dispatch` counts a settlement the handler
   refused with a `SettleError` as not accepted, as the Rust one counts an `Err`.
+- **A query's reply refused as too large is settled again with
+  `Transport.Corrupt`** (driftsys/ridl#1260, ADR-0030): `SettleError.TooLarge`
+  leaves the claim settleable and no one else holds it, so without this its slot
+  stays taken and the caller gets `Timeout`, then `Send.Busy` once the slots run
+  out. `dispatch` counts the claim by that second settlement, which is not tried
+  a third time. Any other refusal is left to the handler, and a command's
+  settlement is not retried: its empty reply fits any limit. The Rust face
+  follows this rule from the first release after `editor-v0.16.0`.
 - **An oversized claim is settled `Transport.Corrupt`** (#10,
   driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
   claim by its id unread, counts an accepted settlement and goes on, and ends

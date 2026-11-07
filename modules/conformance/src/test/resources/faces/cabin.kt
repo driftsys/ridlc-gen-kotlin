@@ -259,6 +259,40 @@ fun probe(): List<String> {
     expectEqual("and the claim waits for the next dispatch", 1, Cabin.dispatch(rt, provider, buffer))
     expectEqual("which acknowledges it", Result.success(Unit), client.setLevelAck(waiting))
 
+    // A query's reply refused as too large settles again with Corrupt, and
+    // dispatch counts the claim by that second settlement: nothing else can
+    // settle the claim, and its slot would stay taken (driftsys/ridl#1260,
+    // ADR-0030). More calls than there are slots show each one comes back.
+    Loopback(Cabin.catalog).let { fresh ->
+        val bound = CabinPollClient(fresh)
+        repeat(Loopback.SLOTS + 1) {
+            val refused = bound.average(Window.of(500))
+            fresh.failNextSettle()
+            expectEqual("a reply settled again is counted", 1, Cabin.dispatch(fresh, provider, buffer))
+            expectEqual("its call is settled Corrupt", Result.failure<Average>(Transport.Corrupt), bound.averageReply(refused))
+            fresh.forget(refused.correlation)
+        }
+    }
+
+    // The count and the settlements of one query under the given refusals.
+    fun refusedReply(vararg refusals: ridl.rt.port.SettleError): Pair<Int, Int> {
+        val fresh = Loopback(Cabin.catalog)
+        CabinPollClient(fresh).average(Window.of(500))
+        val left = ArrayDeque(refusals.toList())
+        var settles = 0
+        val refusing = object : ridl.rt.port.Handler by fresh, ridl.rt.port.Encoded by fresh {
+            override fun settle(claim: ridl.rt.port.ClaimId, outcome: Result<ByteBuffer>) {
+                settles++
+                left.removeFirstOrNull()?.let { throw it }
+                fresh.settle(claim, outcome)
+            }
+        }
+        return Cabin.dispatch(refusing, provider, buffer) to settles
+    }
+    val tooLarge = ridl.rt.port.SettleError.TooLarge(0)
+    expectEqual("a reply refused twice is not counted, nor tried again", 0 to 2, refusedReply(tooLarge, tooLarge))
+    expectEqual("another refusal is left to the handler", 0 to 1, refusedReply(ridl.rt.port.SettleError.UnknownClaim))
+
     // driftsys/ridl#569: a claim whose arguments exceed maxBufferSize comes
     // back as ReadError.ShortClaim. dispatch settles it Corrupt unread, counts
     // it, and serves the claim behind it; only a raw Caller can send one.
