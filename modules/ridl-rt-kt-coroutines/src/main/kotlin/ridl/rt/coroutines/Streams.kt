@@ -502,10 +502,12 @@ private class ReplyWatch<H>(private val handler: H, private val claim: ClaimId, 
  * Pushes [source] to the reply stream of [claim] and ends it, which settles the
  * claim. A collector's refusal or a forget stops [source], even one suspended
  * between two elements, and the claim settles with it. An element that cannot
- * be written stops the stream with that outcome. A failed [source] stops the
- * stream with `Transport.Interrupted`, the outcome a producer stops a stream
- * with, and ends here: one stream does not end `serveAsync`. A cancellation
- * stops it the same way and goes on, so a claim is always settled.
+ * be written stops the stream with that outcome. A [source] that fails with a
+ * [CallError], a refusal from [claimStream] included, stops the stream with
+ * that error, and another failure with `Transport.Interrupted`, the outcome a
+ * producer stops a stream with. Either ends here: one stream does not end
+ * `serveAsync`. A cancellation stops it with `Transport.Interrupted` and goes
+ * on, so a claim is always settled.
  */
 public suspend fun <H, T> driveReply(handler: H, claim: ClaimId, chunks: StreamChunks<T>, source: Flow<T>) where H : StreamHandler, H : Wakeable {
     try {
