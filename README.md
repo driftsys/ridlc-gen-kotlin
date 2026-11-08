@@ -53,9 +53,9 @@ build needs only `mavenCentral()`:
 repositories { mavenCentral() }
 
 dependencies {
-    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0")
-    implementation("org.driftsys.ridl:ridl-rt-kt-coroutines:0.3.0")   // optional: await, signal flows
-    testImplementation("org.driftsys.ridl:ridl-rt-kt-loopback:0.3.0") // optional: in-process runtime
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.4.0")
+    implementation("org.driftsys.ridl:ridl-rt-kt-coroutines:0.4.0")   // optional: await, signal flows
+    testImplementation("org.driftsys.ridl:ridl-rt-kt-loopback:0.4.0") // optional: in-process runtime
 }
 ```
 
