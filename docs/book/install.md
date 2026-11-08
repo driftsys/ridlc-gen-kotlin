@@ -47,11 +47,11 @@ A release needs no repository beyond `mavenCentral()`:
 
 ```kts
 dependencies {
-    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0")
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.4.0")
     // Faces.kt's suspending client, its signal flows and serveAsync.
-    implementation("org.driftsys.ridl:ridl-rt-kt-coroutines:0.3.0")
+    implementation("org.driftsys.ridl:ridl-rt-kt-coroutines:0.4.0")
     // An in-process runtime, for tests and demos.
-    implementation("org.driftsys.ridl:ridl-rt-kt-loopback:0.3.0")
+    implementation("org.driftsys.ridl:ridl-rt-kt-loopback:0.4.0")
 }
 ```
 

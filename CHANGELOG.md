@@ -48,8 +48,7 @@
   must handle the new cases.
 - a closed handler no longer returns a claim on which it moved a stream.
   Loopback and the two role handles gain the stream methods.
-- a generated codec's verify accepts a buffer longer than maxSize, and a face
-  has no method or typed descriptor for a member with a stream.
+- a generated codec's verify accepts a buffer longer than maxSize.
 
 [0.4.0]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.3.0...v0.4.0
 [0e5ed5a]: https://github.com/driftsys/ridlc-gen-kotlin/commit/0e5ed5a

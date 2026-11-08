@@ -34,8 +34,8 @@ the suite in its test source set, with the JUnit engine that runs it:
 
 ```kotlin
 dependencies {
-    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0")
-    testImplementation("org.driftsys.ridl:ridl-rt-kt-conformance:0.3.0")
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.4.0")
+    testImplementation("org.driftsys.ridl:ridl-rt-kt-conformance:0.4.0")
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
