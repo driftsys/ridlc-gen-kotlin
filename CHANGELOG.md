@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.4.0] (2026-11-08)
+
+### Documentation
+
+- **ridlc-gen-kotlin:** correct what the face says about serve and streams
+  ([#127]) ([0e5ed5a])
+- **repo:** state what a failed provider flow stops its stream with ([#125])
+  ([7286c6b])
+- **repo:** correct statements the ridl 0.15 and 0.16 follow made false ([#122])
+  ([c05dbc6])
+- **repo:** add badges and the Maven Central and GitHub Packages install
+  ([#104]) ([1ee1f36])
+
+### Features
+
+- **ridlc-gen-kotlin:** generate stream members as Flows ([#112]) ([3516390])
+- **ridl-rt-kt:** add the stream ports and carry them on the loopback ([#113])
+  ([cf0b783])
+- **ridlc-gen-kotlin:** generate open enums and open enum sets ([#111])
+  ([04e2147])
+- **ridl-rt-kt:** mirror the ridl 0.15 runtime surface ([#110]) ([960f395])
+- **ridl-rt-kt:** keep a signal's last good value when a payload fails ([#109])
+  ([c8b9535])
+- **ridl-rt-kt-loopback:** refuse a payload above its member's limit ([#108])
+  ([30d6a56]), refs [#106]
+- **repo:** follow ridl 0.16.0 ([#107]) ([5846c24])
+
+### Bug Fixes
+
+- **ridlc-gen-kotlin:** settle a query's refused reply with Corrupt ([#121])
+  ([f288c84])
+- **repo:** keep one representation of an event number and an open enum value
+  ([#120]) ([357d453])
+- **repo:** stop leaks and wrong outcomes in the stream face ([#119])
+  ([9e0d20a])
+
+### BREAKING CHANGES
+
+- code compiled beside the generated sources can no longer call an open enum's
+  Unknown constructor. Use fromValue.
+- SignalReader gains the required method checkWith, so every runtime must
+  implement it. A client now reads the last good value, not the init value,
+  after a payload fails its check.
+- Encoding.ReprC is renamed Encoding.Podbuf, the Member constructor takes
+  streams, and a when over Interest, Transport, Rule, Malformed or EncodeError
+  must handle the new cases.
+- a closed handler no longer returns a claim on which it moved a stream.
+  Loopback and the two role handles gain the stream methods.
+- a generated codec's verify accepts a buffer longer than maxSize, and a face
+  has no method or typed descriptor for a member with a stream.
+
+[0.4.0]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.3.0...v0.4.0
+[0e5ed5a]: https://github.com/driftsys/ridlc-gen-kotlin/commit/0e5ed5a
+[#127]: https://github.com/driftsys/ridlc-gen-kotlin/issues/127
+[7286c6b]: https://github.com/driftsys/ridlc-gen-kotlin/commit/7286c6b
+[#125]: https://github.com/driftsys/ridlc-gen-kotlin/issues/125
+[c05dbc6]: https://github.com/driftsys/ridlc-gen-kotlin/commit/c05dbc6
+[#122]: https://github.com/driftsys/ridlc-gen-kotlin/issues/122
+[1ee1f36]: https://github.com/driftsys/ridlc-gen-kotlin/commit/1ee1f36
+[#104]: https://github.com/driftsys/ridlc-gen-kotlin/issues/104
+[3516390]: https://github.com/driftsys/ridlc-gen-kotlin/commit/3516390
+[#112]: https://github.com/driftsys/ridlc-gen-kotlin/issues/112
+[cf0b783]: https://github.com/driftsys/ridlc-gen-kotlin/commit/cf0b783
+[#113]: https://github.com/driftsys/ridlc-gen-kotlin/issues/113
+[04e2147]: https://github.com/driftsys/ridlc-gen-kotlin/commit/04e2147
+[#111]: https://github.com/driftsys/ridlc-gen-kotlin/issues/111
+[960f395]: https://github.com/driftsys/ridlc-gen-kotlin/commit/960f395
+[#110]: https://github.com/driftsys/ridlc-gen-kotlin/issues/110
+[c8b9535]: https://github.com/driftsys/ridlc-gen-kotlin/commit/c8b9535
+[#109]: https://github.com/driftsys/ridlc-gen-kotlin/issues/109
+[30d6a56]: https://github.com/driftsys/ridlc-gen-kotlin/commit/30d6a56
+[#108]: https://github.com/driftsys/ridlc-gen-kotlin/issues/108
+[#106]: https://github.com/driftsys/ridlc-gen-kotlin/issues/106
+[5846c24]: https://github.com/driftsys/ridlc-gen-kotlin/commit/5846c24
+[#107]: https://github.com/driftsys/ridlc-gen-kotlin/issues/107
+[f288c84]: https://github.com/driftsys/ridlc-gen-kotlin/commit/f288c84
+[#121]: https://github.com/driftsys/ridlc-gen-kotlin/issues/121
+[357d453]: https://github.com/driftsys/ridlc-gen-kotlin/commit/357d453
+[#120]: https://github.com/driftsys/ridlc-gen-kotlin/issues/120
+[9e0d20a]: https://github.com/driftsys/ridlc-gen-kotlin/commit/9e0d20a
+[#119]: https://github.com/driftsys/ridlc-gen-kotlin/issues/119
+
 ## [0.3.0] (2026-10-14)
 
 ### Features
