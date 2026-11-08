@@ -7,8 +7,8 @@ the release this repository pins with its install script; `RIDL_VERSION` names
 the release:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/driftsys/ridl/editor-v0.16.0/install.sh \
-  | RIDL_VERSION=editor-v0.16.0 bash
+curl -fsSL https://raw.githubusercontent.com/driftsys/ridl/editor-v0.16.1/install.sh \
+  | RIDL_VERSION=editor-v0.16.1 bash
 ```
 
 ## The plugin
