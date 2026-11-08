@@ -52,6 +52,7 @@ class TypesEmitterTest {
         assertNull(emitted.text)
         assertEquals(1, emitted.errors.size)
         assertTrue("kt.demo.Feed" in emitted.errors[0] && "O-K5" in emitted.errors[0], emitted.errors[0])
+        assertTrue("a stream is only a member's parameter or reply" in emitted.errors[0], emitted.errors[0])
     }
 
     @Test

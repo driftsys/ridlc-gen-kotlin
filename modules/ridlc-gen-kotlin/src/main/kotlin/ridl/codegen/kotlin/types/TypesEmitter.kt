@@ -145,7 +145,7 @@ class TypesEmitter internal constructor(
             }
             Type.KindCase.ARRAY -> LIST.parameterizedBy(kotlinType(type.array.element))
             Type.KindCase.MAP -> MAP.parameterizedBy(kotlinType(type.map.key), kotlinType(type.map.value))
-            Type.KindCase.STREAM -> refuse("a stream has no port in ridl-rt yet (O-K5, driftsys/ridl#336)")
+            Type.KindCase.STREAM -> refuse("a stream is only a member's parameter or reply (O-K5, driftsys/ridl#336)")
             else -> refuse("a type position carries no type")
         }
         return if (type.optional) base.copy(nullable = true) else base

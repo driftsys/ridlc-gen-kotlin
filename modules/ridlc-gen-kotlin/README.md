@@ -22,11 +22,11 @@ and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
-in the one response: a stream (O-K5), a reference that resolves to nothing, two
-tuples spelling one name, a closed enum with no value, a union with no arm, and
-every position the Rust codec emitter refuses — a type with no finite
-FlatBuffers bound, a bare `string` or `bytes`, an optional array element or map
-part.
+in the one response: a stream outside a member's parameters or reply (O-K5), a
+reference that resolves to nothing, two tuples spelling one name, a closed enum
+with no value, a union with no arm, and every position the Rust codec emitter
+refuses — a type with no finite FlatBuffers bound, a bare `string` or `bytes`,
+an optional array element or map part.
 
 Every file starts with the request's generated-file marker and the project's
 header (driftsys/ridl#746, ridl 0.6.0): the marker, then each line of the
@@ -220,14 +220,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   timeout)`, the suspending `<Iface>AsyncClient<P>`,
   and `serve` and `serveAsync` on the descriptor, all over one internal
   `<Iface><Member>Call` per command and query, whose `InteractionCall_` base
-  carries every call rule. An interface of stream members alone has neither the
-  blocking client nor `serve`, and a stream member has no `…Call`. The poll
-  face, `<Iface>PollClient`, its correlations, its `…Ack` and `…Reply` methods
-  and `dispatch` are internal. A call returns its reply and throws `ClientError`
-  for anything else; `serve` throws `ProviderError`. A signal-only interface has
-  one plain `<Iface>Client` beside its descriptors and publisher, an
-  `<Iface>AsyncClient` holding the signal states below, and no poll face or
-  `serve`.
+  carries every call rule. An interface with a stream member on the face has no
+  `serve`, and one of stream members alone has no blocking client either. A
+  stream member has no `…Call`. The poll face, `<Iface>PollClient`, its
+  correlations, its `…Ack` and `…Reply` methods and `dispatch` are internal. A
+  call returns its reply and throws `ClientError` for anything else; `serve`
+  throws `ProviderError`. A signal-only interface has one plain `<Iface>Client`
+  beside its descriptors and publisher, an `<Iface>AsyncClient` holding the
+  signal states below, and no poll face or `serve`.
 - **Each signal is a shared state on the suspending client** (#72, #76): the
   extension property `<signal>: SignalState<T>`, a `StateFlow<Sample<T>>` of
   `ridl-rt-kt-coroutines`, replaces both the async client's read `<signal>()`
@@ -313,14 +313,14 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   stream parameter makes it take one, after the call's `args`. `T` is the
   element, `ByteArray` for `<bytes>` and `String` for `<string>`. The provider's
   method mirrors it, and `serveAsync` drives each stream as a child coroutine,
-  so an interface with a stream has no blocking `serve`, and its blocking client
-  carries no streamed member, as in the Rust face. The logic is in
-  `ridl-rt-kt-coroutines`' `Streams.kt`; the emitted code names the call and its
-  `StreamChunks`. Two departures from Rust: a value longer than a chunk is split
-  by the runtime, where a Rust `ByteSource` chooses, and an `ensure` clause is
-  not read on a streamed reply, as there. A provider's flow that fails with a
-  `CallError`, a refused chunk of a stream parameter it collects included, stops
-  its stream with that error, and any other failure with
+  so an interface with a stream member on the face has no blocking `serve`, and
+  its blocking client carries no streamed member, as in the Rust face. The logic
+  is in `ridl-rt-kt-coroutines`' `Streams.kt`; the emitted code names the call
+  and its `StreamChunks`. Two departures from Rust: a value longer than a chunk
+  is split by the runtime, where a Rust `ByteSource` chooses, and an `ensure`
+  clause is not read on a streamed reply, as there. A provider's flow that fails
+  with a `CallError`, a refused chunk of a stream parameter it collects
+  included, stops its stream with that error, and any other failure with
   `Transport.Interrupted`. Neither ends `serveAsync`, unlike a plain provider
   method's exception: a `Flow` that fails is how Kotlin stops one.
 - **A member with several stream parameters is left out of the face without a
@@ -372,10 +372,10 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `Transport.Corrupt`** (driftsys/ridl#1260, ADR-0030): `SettleError.TooLarge`
   leaves the claim settleable and no one else holds it, so without this its slot
   stays taken and the caller gets `Timeout`, then `Send.Busy` once the slots run
-  out. `dispatch` counts the claim by that second settlement, which is not tried
-  a third time. Any other refusal is left to the handler, and a command's
-  settlement is not retried: its empty reply fits any limit. The Rust face
-  follows the same rule from `editor-v0.16.1`.
+  out. `dispatch` counts a query that is not streamed by that second settlement,
+  which is not tried a third time. Any other refusal is left to the handler, and
+  a command's settlement is not retried: its empty reply fits any limit. The
+  Rust face follows the same rule from `editor-v0.16.1`.
 - **An oversized claim is settled `Transport.Corrupt`** (#10,
   driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
   claim by its id unread, counts an accepted settlement and goes on, and ends
