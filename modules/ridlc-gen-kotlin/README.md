@@ -220,8 +220,9 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   timeout)`, the suspending `<Iface>AsyncClient<P>`,
   and `serve` and `serveAsync` on the descriptor, all over one internal
   `<Iface><Member>Call` per command and query, whose `InteractionCall_` base
-  carries every call rule. An interface with a stream member has no `serve`, one
-  of stream members alone has no blocking client either, and a stream member has
+  carries every call rule. An interface with a stream member on the face has no
+  `serve`, and one of stream members alone has no blocking client either. A
+  member with several stream parameters is not on the face. A stream member has
   no `…Call`. The poll face, `<Iface>PollClient`, its correlations, its `…Ack`
   and `…Reply` methods and `dispatch` are internal. A call returns its reply and
   throws `ClientError` for anything else; `serve` throws `ProviderError`. A
