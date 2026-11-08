@@ -1858,8 +1858,9 @@ class FacesEmitter internal constructor(
          * that fail their structure `Transport.Corrupt`, a constraint
          * `InvalidValue`, a failed `require` `PreconditionFailed`, a failed
          * `ensure` `ContractBroken`. A command settles before its provider
-         * method runs, a query after. It returns the settlements the handler
-         * accepted.
+         * method runs, a query after. A query's reply refused as too large is
+         * settled again with `Transport.Corrupt`, and counts by that second
+         * settlement. It returns the settlements the handler accepted.
          */
         private fun dispatch(): FunSpec {
             val provider = ClassName(pkg, "${name}Provider")
@@ -1974,7 +1975,9 @@ class FacesEmitter internal constructor(
                         "interface or ordinal `UnknownInteraction`, bytes that fail their structure `Transport.Corrupt`, a " +
                         "constraint `InvalidValue`, a failed `require` `PreconditionFailed`, a failed `ensure` " +
                         "`ContractBroken`. A command is settled before its provider method runs, because its " +
-                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A claim " +
+                        "acknowledgment is a delivery acknowledgment (ridl §6.1); a query after, with the reply. A reply " +
+                        "refused as too large is settled again with `Transport.Corrupt`, and counts by that second " +
+                        "settlement. A claim " +
                         "whose arguments do not fit that size, reported as `ReadError.ShortClaim`, is larger " +
                         "than any valid encoding of this interface's members: it is settled `Transport.Corrupt` by its " +
                         "id without being read, whichever interface or member it names, and when the handler refuses " +
