@@ -71,7 +71,7 @@ repositories {
 }
 
 dependencies {
-    implementation("org.driftsys.ridl:ridl-rt-kt:0.3.0-SNAPSHOT")
+    implementation("org.driftsys.ridl:ridl-rt-kt:0.5.0-SNAPSHOT")
 }
 ```
 
