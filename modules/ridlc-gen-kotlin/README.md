@@ -38,7 +38,7 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.16.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.16.1` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
@@ -375,7 +375,7 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   out. `dispatch` counts the claim by that second settlement, which is not tried
   a third time. Any other refusal is left to the handler, and a command's
   settlement is not retried: its empty reply fits any limit. The Rust face
-  follows this rule from the first release after `editor-v0.16.0`.
+  follows the same rule from `editor-v0.16.1`.
 - **An oversized claim is settled `Transport.Corrupt`** (#10,
   driftsys/ridl#569): `dispatch` catches `ReadError.ShortClaim`, settles that
   claim by its id unread, counts an accepted settlement and goes on, and ends

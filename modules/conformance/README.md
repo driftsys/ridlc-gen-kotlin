@@ -20,7 +20,7 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.16.0`, the tag that carries ridl 0.16.0's binaries. The
+Pinned to `editor-v0.16.1`, the tag that carries ridl 0.16.1's binaries. The
 tests of stage K2a run: a request the pinned `ridl` wrote parses, a request with
 an unknown key parses, a request nested 1,000 levels parses in process and
 through the installed script, a wrong schema is one error diagnostic and exit 0,
