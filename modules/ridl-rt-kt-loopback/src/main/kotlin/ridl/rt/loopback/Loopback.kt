@@ -322,7 +322,8 @@ public class Loopback private constructor(
          * A forgotten call that no handler has claimed is withdrawn at once
          * and gives its slot back, so calls to a member no handler serves do
          * not fill the table for good; a claimed one keeps its slot until its
-         * settlement.
+         * settlement, and past it while the provider has a stream parameter to
+         * read.
          *
          * The generated face does not call `forget` yet. Until the clients of
          * driftsys/ridlc-gen-kotlin#7, which forget each call once they have

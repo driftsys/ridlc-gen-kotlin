@@ -318,10 +318,11 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `ridl-rt-kt-coroutines`' `Streams.kt`; the emitted code names the call and its
   `StreamChunks`. Two departures from Rust: a value longer than a chunk is split
   by the runtime, where a Rust `ByteSource` chooses, and an `ensure` clause is
-  not read on a streamed reply, as there. A provider's flow that fails stops its
-  stream with `Transport.Interrupted`, and does not end `serveAsync`, unlike a
-  plain provider method's exception: a `Flow` that fails is how Kotlin stops
-  one.
+  not read on a streamed reply, as there. A provider's flow that fails with a
+  `CallError`, a refused chunk of a stream parameter it collects included, stops
+  its stream with that error, and any other failure with
+  `Transport.Interrupted`. Neither ends `serveAsync`, unlike a plain provider
+  method's exception: a `Flow` that fails is how Kotlin stops one.
 - **A member with several stream parameters is left out of the face without a
   warning**, as the Rust backend leaves it out (driftsys/ridl#1224): no method,
   no call, no typed descriptor, and `serve` registers it nowhere. Its row of

@@ -292,6 +292,42 @@ class StreamDriveTest {
         }
     }
 
+    /** What the caller of [collect] reads when the provider drives the flow [source] gives it. */
+    private suspend fun CoroutineScope.stoppedBy(
+        collect: (Loopback) -> Flow<ByteArray> = { call(it).reply(CHUNKS) },
+        source: (HandlerHandle, Claim) -> Flow<ByteArray>,
+    ): ClientError? {
+        val rt = runtime()
+        val handler = rt.handler()
+        val server = serving(handler) { claim -> driveReply(handler, claim.id, CHUNKS, source(handler, claim)) }
+        val error = outcome(collect(rt)).await()
+        server.cancelAndJoin()
+        return error
+    }
+
+    @Test
+    fun `a provider flow failing with a call error stops the stream with that error`() = running {
+        val error = stoppedBy { _, _ -> flow { throw Contract.ContractBroken } }
+        assertEquals(ClientError.Call(Contract.ContractBroken), error)
+    }
+
+    @Test
+    fun `a provider flow failing with anything else stops the stream with Interrupted`() = running {
+        val error = stoppedBy { _, _ -> flow { error("the provider failed") } }
+        assertEquals(ClientError.Call(Transport.Interrupted), error)
+    }
+
+    @Test
+    fun `a duplex flow that passes on a refused chunk stops the stream with that refusal`() = running {
+        val refusing = object : StreamChunks<ByteArray> by CHUNKS {
+            override fun decode(chunk: ByteBuffer): ByteArray = throw Transport.Corrupt
+        }
+        val error = stoppedBy({ call(it).duplex(CHUNKS, flowOf(bytes(1)), CHUNKS) }) { handler, claim ->
+            claimStream(handler, claim.id, refusing)
+        }
+        assertEquals(ClientError.Call(Transport.Corrupt), error)
+    }
+
     @Test
     fun `each collection of a reply stream has its own deadline`() = running {
         val rt = runtime()
