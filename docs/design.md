@@ -141,25 +141,26 @@ it compiles and its round trips run on a workstation with no Android SDK.
 item it spells, so ADR-0021's decisions and the frame specification apply to it
 without a second record. The table is the contract of the module:
 
-| `ridl-rt`                                                                                           | `ridl-rt-kt`                                                                                                                                                                                | Note                                                 |
-| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `Ordinal(u32)`, `InterfaceNo(u32)`                                                                  | `@JvmInline value class Ordinal(val value: UInt)`, `InterfaceNo` likewise                                                                                                                   | inline, so a port method takes them at no allocation |
-| `CatalogHash([u8; 32])`, `CatalogRef`                                                               | `class CatalogHash(bytes: ByteArray)` with structural equality, `data class CatalogRef(name, hash)`                                                                                         |                                                      |
-| `Kind` 1 to 5                                                                                       | `enum class Kind(val value: Int)` in the language order                                                                                                                                     |                                                      |
-| `Member`, `Timing`, `TimingMode`, `PayloadInfo`                                                     | `data class` each                                                                                                                                                                           | the `MEMBERS` row of a generated descriptor          |
-| `Sizes<E>`, `Interaction::ROW`, `reservation`, `table_budget`                                       | `class Sizes(encoding, reservations, maxBufferSize, eventSourceBufferSize)` from `Interface.sizes(encoding)`, `Interaction.row`, `reservation(x, encoding)`, `tableBudget(iface, encoding)` | the encoding a value; one table per codec, §5        |
-| `Timestamp(i64)`, `Duration(i64)`                                                                   | `value class` each over `Long`                                                                                                                                                              |                                                      |
-| `Envelope`, `Provenance`, `Cause`, `Detection`, `Freshness`                                         | `data class Envelope`, `sealed interface Provenance`, `enum class` for the rest                                                                                                             | as `sample.rs`                                       |
-| `Sample<T>`, `Occurrence<T>`                                                                        | `data class Sample<T>(value: T, envelope, provenance, freshness)`, `Occurrence<T>`                                                                                                          |                                                      |
-| `Correlation`, `ClaimId`, `Claim`                                                                   | `value class Correlation(Long)`, `ClaimId`, `data class Claim`                                                                                                                              | untyped, as ADR-0023 decision 4 keeps them           |
-| `Contract`, `Transport`, `CallError`                                                                | `sealed interface CallError` with `Contract` and `Transport` arms, each a `sealed interface` of the same variants                                                                           |                                                      |
-| `ReadError`, `WriteError`, `SendError`, `SubscribeError`, `RaiseError`, `ServeError`, `SettleError` | one `sealed interface` each, thrown, not returned                                                                                                                                           | D-K3                                                 |
-| `Attached`, `Clock`                                                                                 | `interface Attached { val catalog: CatalogRef }`, `interface Clock { fun now(): Timestamp }`                                                                                                |                                                      |
-| `Encoded`                                                                                           | `interface Encoded { val encoding: Encoding }`, the associated type a value                                                                                                                 | a face reads it from its port, §5                    |
-| `SignalReader`, `SignalWriter`, `EventSource`, `EventSink`, `Caller`, `Handler`                     | one `interface` each, same method names, same semantics                                                                                                                                     | §3, "the ports"                                      |
-| `FixedReader`, `ScannableSignals`, `CoherentSignals`                                                | the same three, optional for a runtime                                                                                                                                                      |                                                      |
-| `Payload<E: Encoding>`                                                                              | `interface Payload<T> { val maxSize: Int; fun encode(value: T, out: ByteBuffer): Int; fun verify(buf: ByteBuffer): View; fun decode(view: View): T }`                                       | one object per generated type per encoding, §4       |
-| `Encoding` with `FlatBuffers`, `Proto3`, `Podbuf`                                                   | `enum class Encoding(val tag: Int)` 1, 2, 3                                                                                                                                                 | the frame's tags                                     |
+| `ridl-rt`                                                                                           | `ridl-rt-kt`                                                                                                                                                                                | Note                                                                                 |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `Ordinal(u32)`, `InterfaceNo(u32)`                                                                  | `@JvmInline value class Ordinal(val value: UInt)`, `InterfaceNo` likewise                                                                                                                   | inline, so a port method takes them at no allocation                                 |
+| `CatalogHash([u8; 32])`, `CatalogRef`                                                               | `class CatalogHash(bytes: ByteArray)` with structural equality, `data class CatalogRef(name, hash)`                                                                                         |                                                                                      |
+| `Kind` 1 to 5                                                                                       | `enum class Kind(val value: Int)` in the language order                                                                                                                                     |                                                                                      |
+| `Member`, `Timing`, `TimingMode`, `PayloadInfo`                                                     | `data class` each                                                                                                                                                                           | the `MEMBERS` row of a generated descriptor                                          |
+| `Sizes<E>`, `Interaction::ROW`, `reservation`, `table_budget`                                       | `class Sizes(encoding, reservations, maxBufferSize, eventSourceBufferSize)` from `Interface.sizes(encoding)`, `Interaction.row`, `reservation(x, encoding)`, `tableBudget(iface, encoding)` | the encoding a value; one table per encoding the package carries, §5                 |
+| `Timestamp(i64)`, `Duration(i64)`                                                                   | `value class` each over `Long`                                                                                                                                                              |                                                                                      |
+| `Envelope`, `Provenance`, `Cause`, `Detection`, `Freshness`                                         | `data class Envelope`, `sealed interface Provenance`, `enum class` for the rest                                                                                                             | as `sample.rs`                                                                       |
+| `Sample<T>`, `Occurrence<T>`                                                                        | `data class Sample<T>(value: T, envelope, provenance, freshness)`, `Occurrence<T>`                                                                                                          |                                                                                      |
+| `Correlation`, `ClaimId`, `Claim`                                                                   | `value class Correlation(Long)`, `ClaimId`, `data class Claim`                                                                                                                              | untyped, as ADR-0023 decision 4 keeps them                                           |
+| `Contract`, `Transport`, `CallError`                                                                | `sealed interface CallError` with `Contract` and `Transport` arms, each a `sealed interface` of the same variants                                                                           |                                                                                      |
+| `ReadError`, `WriteError`, `SendError`, `SubscribeError`, `RaiseError`, `ServeError`, `SettleError` | one `sealed interface` each, thrown, not returned                                                                                                                                           | D-K3                                                                                 |
+| `Attached`, `Clock`                                                                                 | `interface Attached { val catalog: CatalogRef }`, `interface Clock { fun now(): Timestamp }`                                                                                                |                                                                                      |
+| `Encoded`                                                                                           | `interface Encoded { val encoding: Encoding }`, the associated type a value                                                                                                                 | a face reads it from its port, §5                                                    |
+| `SignalReader`, `SignalWriter`, `EventSource`, `EventSink`, `Caller`, `Handler`                     | one `interface` each, same method names, same semantics                                                                                                                                     | §3, "the ports"                                                                      |
+| `FixedReader`, `ScannableSignals`, `CoherentSignals`                                                | the same three, optional for a runtime                                                                                                                                                      |                                                                                      |
+| `Payload<E: Encoding>`                                                                              | `interface Payload<T> { val maxSize: Int; fun encode(value: T, out: ByteBuffer): Int; fun verify(buf: ByteBuffer): View; fun decode(view: View): T }`                                       | one object per generated type per encoding, `<Type>Codec` or `<Type>PodbufCodec`, §4 |
+| `Encoding` with `FlatBuffers`, `Proto3`, `Podbuf`                                                   | `enum class Encoding(val tag: Int)` 1, 2, 3                                                                                                                                                 | the frame's tags; FlatBuffers and podbuf have a codec, §4                            |
+| `podbuf`: `Preamble`, `Region`, `Desc`, `ArrayDesc`, `tail_range`, `text`, `Writer`                 | `ridl.rt.podbuf`, the same items over a `ByteBuffer`, every load and store little-endian                                                                                                    | what a generated podbuf codec calls, §4                                              |
 
 **The ports.** Each port interface keeps `ridl-rt`'s method names and semantics,
 with two spellings changed for the JVM and recorded here so the Rust record
@@ -218,14 +219,32 @@ exception type is one `class ConstraintViolation(type, rule, value)` in
 `ridl-rt-kt`, mirroring `ridl_rt::payload::Violation` with its five rule
 variants.
 
-**The codec.** For every payload type of every interaction, and for every named
-type a payload reaches, the plugin emits one one `<Type>Codec` object
-implementing `Payload` in `Codec.kt`, for the encodings the `encodings` option
-names. The codec's obligation is the frame's §9: `verify` rejects a buffer that
-is not structurally a value of the type, `decode` runs every typl constraint on
-the way to a value object through `unchecked`, and `encode` writes a legal value
-into a buffer no larger than `maxSize`, which is the model's
-`Payload.flatbuffers_max_size` carried as a constant.
+**The codec, one per encoding the package selects.** The manifest's
+`[backend.kotlin] encodings` chooses the codecs, and the plugin generates
+exactly those: a codec for each encoding named and none for another, a face that
+serves exactly those encodings (§5), and, with no encoding named, `Types.kt`
+alone. FlatBuffers and podbuf are supported; proto3 is refused until ridl
+projects it into `ridl.codegen.v1`, as it projects podbuf into `Model.podbuf`.
+For every payload type of every interaction, and for every named type a payload
+reaches, the plugin emits one object implementing `Payload` per encoding:
+`<Type>Codec` in `Codec.kt` for FlatBuffers, `<Type>PodbufCodec` in
+`PodbufCodec.kt` for podbuf. A codec's name does not depend on how many
+encodings the package carries, so a name never changes meaning when a second is
+added, and proto3's will be `<Type>Proto3Codec` in `Proto3Codec.kt`. The codec's
+obligation is the frame's §9: `verify` rejects a buffer that is not structurally
+a value of the type, `decode` runs every typl constraint on the way to a value
+object through `unchecked`, and `encode` writes a legal value into a buffer no
+larger than `maxSize`, which is the model's bound in that encoding carried as a
+constant: `Payload.flatbuffers_max_size`, or the podbuf size state of the
+declaration or the call.
+
+**The podbuf codec** is the Rust podbuf codec of the pinned release
+(`codec_podbuf.rs`, after `docs/design/podbuf-codec.md` and ADR-0031) spelled in
+Kotlin over `ridl.rt.podbuf`. It computes no layout: every offset, size, pad,
+flag bit, descriptor and tail order is read from the model's `PodbufProjection`.
+As in Rust, a head the projection refuses, or a model with no projection,
+refuses the package with an error diagnostic, and every struct and union of the
+package gets a codec, not only those an interface sends.
 
 **O-K1 is disposed: FlatBuffers with a verifier in `ridl-rt-kt`, option A
 below.** The K1b spike ([`k1b-flatbuffers-spike.md`](k1b-flatbuffers-spike.md))
@@ -338,8 +357,21 @@ refuses, at compile time, a port whose encoding the package has no codec for;
 Kotlin's generics are erased, so the encoding is a value (`Encoded.encoding`),
 and each binding checks it once, beside the catalog, throwing
 `IllegalArgumentException` for such a port. The face holds no encoding of its
-own: it reads the port's. With FlatBuffers the one codec the plugin emits, a
-face built over a port of another encoding is refused.
+own: it reads the port's, and a face built over a port of an encoding its
+package does not carry is refused.
+
+**A face serves every encoding its package carries** (#134). With one encoding,
+each use names that encoding's codec object, as the face did when FlatBuffers
+was the only codec. With several, each interaction's descriptor carries one
+codec per encoding, `flatBuffersCodec` and `podbufCodec`, and a query's
+descriptor one reply codec per encoding, and `codec(encoding)` and
+`replyCodec(encoding)` pick among them; every use picks the codec of its own
+port's encoding, and a stream's element, which no descriptor holds, picks it
+with a `when` over the carried encodings. `sizes(encoding)` gives the table of
+each carried encoding, built from that encoding's codecs' `maxSize`, and throws
+`IllegalArgumentException` for any other, so a binding's check accepts exactly
+the carried set. An interface with a payload bounded in one carried encoding and
+not in another is skipped with a warning, as the Rust backend skips it.
 
 **A call sends one named type** (driftsys/ridl#713, ADR-0023 decisions 2 and 6
 as amended 2026-10-13). A command or query with exactly one parameter of a named
@@ -350,14 +382,15 @@ list, none included, sends the struct the lowering induced for it,
 reply, and a query that declares no return type, reply with
 `<Iface><Call>Reply`. The lowering names both (ADR-0016, amendment of
 2026-10-13), and the plugin reads the name and never builds one. Each induced
-struct a call sends is a FlatBuffers root of its own, so `Codec.kt` gives it a
-`<Name>Codec` as it gives a declaration root one, and the size table reserves
-its `maxSize`. The face still skips an interface, with a warning, for an untyped
-parameter, a fallible `T | E` reply, and an induced struct with no finite
-FlatBuffers bound, as the Rust backend does. A member with a stream is on the
-async client and the provider as a `Flow` (O-K5); one with several stream
-parameters leaves the face alone: it has no method and no typed descriptor, and
-keeps its row of `members` and its size rows (#105).
+struct a call sends is a root of its own in each encoding, so `Codec.kt` gives
+it a `<Name>Codec` and `PodbufCodec.kt` a `<Name>PodbufCodec` as each gives a
+declaration root one, and each size table reserves its `maxSize`. The face still
+skips an interface, with a warning, for an untyped parameter, a fallible `T | E`
+reply, and an induced struct with no finite bound in a carried encoding, as the
+Rust backend does. A member with a stream is on the async client and the
+provider as a `Flow` (O-K5); one with several stream parameters leaves the face
+alone: it has no method and no typed descriptor, and keeps its row of `members`
+and its size rows (#105).
 
 **What is deliberately the same as Rust.** The shape, the bounds rule, the
 correlation newtypes, the settlement table and the polling. The reason is the
@@ -459,9 +492,10 @@ mutation pass is what keeps the snapshot tests honest.
   request nested to 1,000 levels parses; a request with a wrong `schema` gets
   exactly one error diagnostic and exit 0.
 - **The output compiles.** For every corpus package, the generated `Types.kt`,
-  `Codec.kt` and `Faces.kt` compile with `kotlin-compile-testing` against
-  `ridl-rt-kt` and the `flatc --kotlin` (or `protoc`) output for that package,
-  in one JUnit test per package, with warnings as errors.
+  `Codec.kt`, `PodbufCodec.kt` and `Faces.kt` compile with
+  `kotlin-compile-testing` against `ridl-rt-kt` and the `flatc --kotlin` (or
+  `protoc`) output for that package, in one JUnit test per package, with
+  warnings as errors.
 - **The value objects refuse invalid values.** For every constrained type of the
   corpus, one value inside the range constructs and one value one step outside
   each bound throws `ConstraintViolation` with the right rule. The mutation:
@@ -470,7 +504,8 @@ mutation pass is what keeps the snapshot tests honest.
   encode then verify then decode gives an equal value; a corpus of malformed
   buffers (truncated, an offset past the end, a vector longer than its bound, a
   union discriminant out of range) is refused by `verify`, never by an exception
-  out of `decode`. This is the test that decides O-K1's spike.
+  out of `decode`. This is the test that decides O-K1's spike. The podbuf codec
+  is held to the Rust podbuf codec's verdicts the same way.
 - **The face round-trips on the loopback.** The cabin package's four interaction
   kinds: a signal set and read, an event raised and received, a command sent,
   dispatched to a provider and acknowledged, a query sent, dispatched, replied
@@ -512,6 +547,7 @@ half, Opus for the code, Sonnet for the mechanical rows.
 | K3b   | The AIDL templates and their `aidl` check                                                                                                                                           | Opus, high                                                        | K3a                      |
 | K4    | `samples/cabin`: the plugin's output for the cabin package, a Kotlin consumer and a Kotlin provider round-tripping over the loopback; the JVM demo                                  | Opus, high                                                        | K3b                      |
 | K5    | `ridl-rt-kt-coroutines` and the `*Await` extensions, O-K3                                                                                                                           | Opus                                                              | K3a; in parallel with K4 |
+| K6    | podbuf (#134): `ridl.rt.podbuf`, `PodbufCodec.kt`, the face over every encoding its package carries, and the podbuf codec held to the Rust codec's verdicts                         | Opus, high                                                        | K2c, K3a                 |
 
 K1 and K2a run in parallel: the runtime library and the plugin's reader touch no
 common file. The on-device demo, Kotlin on both sides by the disposition of
@@ -587,7 +623,8 @@ Each decision names the alternative it rejected.
 - **O-K1. The payload encoding: FlatBuffers with a verifier, or proto3.**
   Disposed: FlatBuffers with a verifier in `ridl-rt-kt` (§4), after K1b's spike
   ([`k1b-flatbuffers-spike.md`](k1b-flatbuffers-spike.md);
-  driftsys/ridlc-gen-kotlin#65).
+  driftsys/ridlc-gen-kotlin#65). K6 adds podbuf beside it (#134); proto3 waits
+  on a ridl projection.
 - **O-K2. The `kotlin-package` default.** The ridl package's dotted name
   (`veh.cabin`) is a legal Kotlin package and the natural default, but a
   consumer who already owns `veh.*` on the JVM may want a prefix. The option

@@ -680,6 +680,9 @@ class FacesEmitter internal constructor(
             if (WireEncoding.FlatBuffers in carried && !payload.hasFlatbuffersMaxSize()) {
                 refuse("$what `${payload.type.reference}` has no FlatBuffers bound")
             }
+            // Kotlin's own: the Rust face checks only an induced tuple's podbuf
+            // bound. For a type of this package the podbuf codec has already
+            // refused the package, so only a payload from another package gets here.
             val podbuf = payload.sizes.podbuf
             if (WireEncoding.Podbuf in carried && !(payload.sizes.hasPodbuf() && podbuf.stateCase == SizeState.StateCase.BOUNDED)) {
                 refuse("$what `${payload.type.reference}` has no podbuf bound")
@@ -1507,6 +1510,9 @@ class FacesEmitter internal constructor(
          * with the runtime (driftsys/ridl#1237), so a payload that fails is
          * rejected before it replaces the value the runtime holds: the Rust
          * `Client::new`. A client that reads signals calls it once per binding.
+         * With several encodings it also takes `encoding`, the client's port's,
+         * because a `SignalReader` states none, and each check picks the codec
+         * of that encoding.
          */
         private fun bindChecks(): FunSpec = FunSpec.builder("bindChecks").addModifiers(KModifier.INTERNAL)
             .addKdoc(

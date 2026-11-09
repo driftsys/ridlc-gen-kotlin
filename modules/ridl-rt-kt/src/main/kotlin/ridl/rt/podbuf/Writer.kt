@@ -111,6 +111,7 @@ public class Writer(private val out: ByteBuffer) {
         return false
     }
 
+    /** Stores the low 8 bits of [v], an unsigned value carried as `Int`; higher bits are dropped unchecked. */
     public fun putU8(at: Int, v: Int) {
         if (inside(at, 1)) buf.put(at, v.toByte())
     }
@@ -119,6 +120,7 @@ public class Writer(private val out: ByteBuffer) {
         if (inside(at, 1)) buf.put(at, v)
     }
 
+    /** Stores the low 16 bits of [v], an unsigned value carried as `Int`; higher bits are dropped unchecked. */
     public fun putU16(at: Int, v: Int) {
         if (inside(at, 2)) buf.putShort(at, v.toShort())
     }
@@ -170,7 +172,11 @@ public class Writer(private val out: ByteBuffer) {
         putU32(at.plusSat(4), d.len)
     }
 
-    /** Stores the array descriptor [d] at [at]. */
+    /**
+     * Stores the array descriptor [d] at [at]: the low 32 bits of `off`, and
+     * the low 16 bits of `len` and of `elemSize`; higher bits are dropped
+     * unchecked, so the caller keeps each within its width.
+     */
     public fun putArrayDesc(at: Int, d: ArrayDesc) {
         putU32(at, d.off)
         putU16(at.plusSat(4), d.len)

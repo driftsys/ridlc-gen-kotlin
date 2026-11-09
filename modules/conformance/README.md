@@ -50,7 +50,7 @@ differs from the committed file, and the `rust-verdicts` workflow runs it (#39);
 The test of stage K2c, `CodecTest`: for every corpus package that selects
 FlatBuffers, the generated `Codec.kt` encodes sample values of every public
 root, written from the model (`RoundTrip`), and a corpus of those buffers and
-their mutants — 15,780 in all — goes through `verify`, `decode` and `encode`
+their mutants — 19,023 in all — goes through `verify`, `decode` and `encode`
 again in Kotlin and, once, in the Rust codec of the pinned release, whose
 verdicts are checked in as
 `resources/flatbuffers/<package>-codec-rust-verdicts.txt`. Every sample
@@ -81,7 +81,21 @@ offset, a string length read before its bound is checked, or map entries written
 unsorted each turns it red. `EncodingsFaceTest` drives `cabin`'s face over a
 FlatBuffers and a podbuf loopback, and a package of its own over both with a
 reply stream served by `serveAsync` and read by the async client, whose element
-codec is chosen from the port's encoding on each side.
+codec is chosen from the port's encoding on each side; a podbuf-only face serves
+a podbuf port and refuses a FlatBuffers one. `PodbufEmitterRunTest` compiles
+packages of its own with warnings as errors and runs what the corpus cannot pin
+by verdict: a u64 at 2^63, every byte of a buffer replaced by six hostile values
+and every truncation, the tail's placement order, map key order over UTF-8 bytes
+and over -0.0 and 0.0, a string holding U+0000, a stride, a length checked
+before its data, a deprecated field and an empty union arm.
+
+`SelectionTest` holds the selection rule (docs/design.md §4): the output of
+every corpus package, and of every package its build reaches, generated with
+`encodings` set to `flatbuffers` alone, has the digests in
+`resources/flatbuffers/output-digests.txt`, one line per file, 43 in all. The
+lines of every package older than #134 were taken from `main`'s output before
+podbuf, so podbuf changed no byte of a FlatBuffers-only package. That output
+also names no podbuf item.
 
 Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
 `ridl.toml`, and every catalog hash changed. `UnitTest` builds the corpus

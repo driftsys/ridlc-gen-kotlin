@@ -68,9 +68,9 @@ and adds `Rule.Utf8`, `Transport.Interrupted`, `EncodeError.Contract`,
 `StreamNo`, `StreamForm`, `StreamInfo`, `Member.streams`, `REPLY_STREAM`, the
 `Stream` and `ClaimStream` interests, and the `rateFloor` and `stalenessBound`
 accessors. The variants of an encoding Kotlin has no codec for are mirrored all
-the same, so a `when` over them stays the Rust one. `TranscodeError`,
-`ridl_rt::podbuf` and `ridl_rt::proto3` have no Kotlin item: nothing here
-transcodes or reads either encoding.
+the same, so a `when` over them stays the Rust one. `TranscodeError` and
+`ridl_rt::proto3` have no Kotlin item: nothing here transcodes or reads proto3.
+`ridl_rt::podbuf` is `ridl.rt.podbuf` since stage K6, below.
 
 ridl 0.15 adds the stream ports (driftsys/ridl#1154), `StreamCaller` and
 `StreamHandler` with `Pull` and `PushError`, and `Table`'s stream wakers,
@@ -95,7 +95,7 @@ carry it, under the delivery contract the port interfaces state. `TraceTest` is
 `ProcessHookTagTest` fails on a test file that calls `setPropagation` without
 the `process-hook` tag (#65).
 
-Stage K1c adds `ridl.rt.podbuf` (driftsys/ridlc-gen-kotlin#134), the spelling of
+Stage K6 adds `ridl.rt.podbuf` (driftsys/ridlc-gen-kotlin#134), the spelling of
 `ridl_rt::podbuf` that a generated podbuf codec calls: `Buffer` and `Preamble`,
 `Region`, which reads 0 past the size the producer wrote, `Desc` and
 `ArrayDesc`, `tailRange`, `text`, `hasNul` and `scalarCount`, and `Writer`.

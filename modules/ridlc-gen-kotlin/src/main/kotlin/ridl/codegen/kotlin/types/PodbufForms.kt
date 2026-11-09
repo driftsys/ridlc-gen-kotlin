@@ -57,7 +57,12 @@ internal class PodbufPlace(val at: String, val size: String, private val name: S
     /** The `at` and `size` of a head inline at [off] of this one: the bytes past the producer's size are the parent's. */
     fun inline(off: String): Pair<String, String> = if (off == "0") at to size else "$at + $off" to "maxOf($size - $off, 0)"
 
-    /** `val <name> = buffer.region(at, size)` when the code reads the region, else nothing. */
+    /**
+     * `val <name> = buffer.region(at, size)` when the code reads the region,
+     * else nothing. Reading [region] is what marks it read, so call this only
+     * once the code that reads this place is built: called before, it binds
+     * nothing that code then names.
+     */
     fun binding(): CodeBlock = if (used) CodeBlock.of("val %L = buffer.region(%L, %L)\n", name, at, size) else CodeBlock.of("")
 }
 
