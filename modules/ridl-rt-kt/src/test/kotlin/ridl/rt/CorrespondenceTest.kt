@@ -222,6 +222,24 @@ class CorrespondenceTest {
         ),
         Row("ridl_rt::flatbuffers::TableField", ridl.rt.flatbuffers.TableField::class, members = listOf("slot", "offset", "value")),
         Row("ridl_rt::flatbuffers::Vector", ridl.rt.flatbuffers.Vector::class, members = listOf("len", "first", "element")),
+        // podbuf: the free functions are top-level and carry no class, `Aligned` has no spelling
+        // (README, "Where the code departs"), and `Buffer` is Kotlin's own.
+        Row("ridl_rt::podbuf::Preamble", ridl.rt.podbuf.Preamble::class, members = listOf("head_size")),
+        Row(
+            "ridl_rt::podbuf::Region", ridl.rt.podbuf.Region::class,
+            members = listOf(
+                "u8_at", "i8_at", "u16_at", "i16_at", "u32_at", "i32_at", "u64_at", "i64_at", "f32_at", "f64_at", "bytes_at",
+            ),
+        ),
+        Row("ridl_rt::podbuf::Desc", ridl.rt.podbuf.Desc::class, members = listOf("off", "len", "is_zero")),
+        Row("ridl_rt::podbuf::ArrayDesc", ridl.rt.podbuf.ArrayDesc::class, members = listOf("off", "len", "elem_size", "is_zero")),
+        Row(
+            "ridl_rt::podbuf::Writer", ridl.rt.podbuf.Writer::class,
+            members = listOf(
+                "reserve_head", "tail", "tail_data", "put_u8", "put_i8", "put_u16", "put_i16", "put_u32", "put_i32",
+                "put_u64", "put_i64", "put_f32", "put_f64", "put_bytes", "put_desc", "put_array_desc", "finish",
+            ),
+        ),
         // port
         Row("ridl_rt::port::Attached", Attached::class, members = listOf("catalog")),
         Row("ridl_rt::port::Encoded", Encoded::class, members = listOf("encoding")),
@@ -329,6 +347,7 @@ class CorrespondenceTest {
             ridl.rt.task.Waker::class,
             ridl.rt.flatbuffers.Reader::class,
             ridl.rt.flatbuffers.TableView::class,
+            ridl.rt.podbuf.Buffer::class,
         )
         return publicTopLevelClasses().map { kclass ->
             DynamicTest.dynamicTest(kclass.qualifiedName!!) {

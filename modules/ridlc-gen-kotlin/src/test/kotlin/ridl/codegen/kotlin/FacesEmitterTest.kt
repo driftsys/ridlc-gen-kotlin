@@ -25,6 +25,9 @@ import ridl.codegen.v1.ModelOuterClass.IntWidth
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.Param
 import ridl.codegen.v1.ModelOuterClass.Payload
+import ridl.codegen.v1.ModelOuterClass.PayloadSizes
+import ridl.codegen.v1.ModelOuterClass.PodbufProjection
+import ridl.codegen.v1.ModelOuterClass.SizeState
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
 import ridl.codegen.v1.ModelOuterClass.Shape
@@ -399,5 +402,154 @@ class FacesEmitterTest {
         assertTrue("\npublic fun <P> DriveClient<P>.unsubscribeWarning()" in text, "an extension no member shadows is not suppressed")
         assertTrue("public fun setTimeout(level: Level)" in text, "a command keeps its member")
         assertTrue("public var <P> DriveClient<P>.timeout:" in text, "the timeout is an extension property")
+    }
+
+    // -- the encodings the face serves (docs/design.md §5) -------------------------
+
+    /** A payload of one `Level`, bounded in FlatBuffers when [flatBuffers] and in podbuf when [podbuf]. */
+    private fun levelPayload(flatBuffers: Boolean = true, podbuf: Boolean = true) = Payload.newBuilder().setType(level).apply {
+        if (flatBuffers) setFlatbuffersMaxSize(43)
+        if (podbuf) setSizes(PayloadSizes.newBuilder().setPodbuf(SizeState.newBuilder().setBounded(16)))
+    }
+
+    /**
+     * Interface `Drive` of every kind over `Level`: signal `level`, event
+     * `alarm`, command `set` and query `probe`, each payload bounded in
+     * FlatBuffers and in podbuf.
+     */
+    private fun everyKind(): Model {
+        val param = Param.newBuilder().setName(spelled("level")).setType(Type.newBuilder().setNamed(level))
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(InteractionSlot.newBuilder().setOrdinal(1).setInteraction(Interaction.newBuilder().setName(spelled("level")).setSignal(SignalShape.newBuilder().setPayload(levelPayload()))))
+            .addSlots(InteractionSlot.newBuilder().setOrdinal(2).setInteraction(Interaction.newBuilder().setName(spelled("alarm")).setEvent(EventShape.newBuilder().setPayload(levelPayload()))))
+            .addSlots(InteractionSlot.newBuilder().setOrdinal(3).setInteraction(Interaction.newBuilder().setName(spelled("set")).setCommand(CommandShape.newBuilder().addParams(param).setRequest(levelPayload()))))
+            .addSlots(
+                InteractionSlot.newBuilder().setOrdinal(4).setInteraction(
+                    Interaction.newBuilder().setName(spelled("probe")).setQuery(
+                        QueryShape.newBuilder().addParams(param).setRequest(levelPayload()).setReplyPayload(levelPayload())
+                            .setReply(Reply.newBuilder().setValue(Type.newBuilder().setNamed(level))),
+                    ),
+                ),
+            )
+        val level = scalar("Level").setInit(Init.newBuilder().setDerivable(true).setValue("0").setOneLevel(true)).build()
+        return demo().addDeclarations(level).addInterfaces(iface).build()
+    }
+
+    private fun everyKindFace(vararg encodings: WireEncoding): String {
+        val emitted = FacesEmitter(everyKind(), Options("kt.demo", encodings.toList())).emit()
+        assertEquals(emptyList<String>(), emitted.warnings)
+        return checkNotNull(emitted.text)
+    }
+
+    @Test
+    fun `a flatbuffers-only face names no podbuf item`() {
+        val text = everyKindFace(WireEncoding.FlatBuffers)
+        for (item in listOf("Podbuf", "podbuf", "PODBUF", "flatBuffersCodec", "fun codec(")) assertFalse(item in text, "`$item`\n$text")
+        assertTrue("public val codec: LevelCodec = LevelCodec" in text, text)
+        assertTrue("require(encoding == Encoding.FlatBuffers)" in text, text)
+    }
+
+    @Test
+    fun `a podbuf-only face names PodbufCodec and sizes(Podbuf)`() {
+        val text = everyKindFace(WireEncoding.Podbuf)
+        assertFalse(Regex("\\bLevelCodec\\b").containsMatchIn(text), "no FlatBuffers codec\n$text")
+        assertFalse("FlatBuffers" in text || "FLATBUFFERS" in text, text)
+        assertTrue("public val codec: LevelPodbufCodec = LevelPodbufCodec" in text, text)
+        assertTrue("public val replyCodec: LevelPodbufCodec = LevelPodbufCodec" in text, text)
+        assertTrue("private val PODBUF_SIZES: Sizes = Sizes(\n      Encoding.Podbuf," in text, text)
+        assertTrue("LevelPodbufCodec.maxSize.toULong() + LevelPodbufCodec.maxSize.toULong()" in text, "the query's row\n$text")
+        assertTrue("require(encoding == Encoding.Podbuf)" in text && "its package carries podbuf only" in text, text)
+        assertTrue("return PODBUF_SIZES" in text, text)
+        assertTrue("encoded(LevelPodbufCodec, level)" in text, "the send encodes with the podbuf codec\n$text")
+    }
+
+    @Test
+    fun `a two-encoding face picks the codec of the port's encoding`() {
+        val text = everyKindFace(WireEncoding.FlatBuffers, WireEncoding.Podbuf)
+        assertEquals(text, everyKindFace(WireEncoding.Podbuf, WireEncoding.FlatBuffers), "the manifest's order changes nothing")
+        for (descriptor in listOf("DriveLevel", "DriveAlarm", "DriveSet", "DriveProbe")) {
+            val body = text.substringAfter("object $descriptor :").substringBefore("\n}\n")
+            assertTrue("public val flatBuffersCodec: LevelCodec = LevelCodec" in body, "$descriptor\n$body")
+            assertTrue("public val podbufCodec: LevelPodbufCodec = LevelPodbufCodec" in body, "$descriptor\n$body")
+            assertTrue("public fun codec(encoding: Encoding): Payload<Level, *> = when (encoding) {" in body, "$descriptor\n$body")
+            assertTrue("Encoding.FlatBuffers -> flatBuffersCodec" in body && "Encoding.Podbuf -> podbufCodec" in body, "$descriptor\n$body")
+            assertFalse("public val codec:" in body, "$descriptor\n$body")
+        }
+        val probe = text.substringAfter("object DriveProbe :").substringBefore("\n}\n")
+        assertTrue("public val flatBuffersReplyCodec: LevelCodec = LevelCodec" in probe && "public val podbufReplyCodec: LevelPodbufCodec = LevelPodbufCodec" in probe, probe)
+        assertTrue("public fun replyCodec(encoding: Encoding): Payload<Level, *> = when (encoding) {" in probe, probe)
+        // One table per encoding, and `sizes` picks one.
+        assertTrue("private val FLATBUFFERS_SIZES: Sizes = Sizes(\n      Encoding.FlatBuffers," in text, text)
+        assertTrue("private val PODBUF_SIZES: Sizes = Sizes(\n      Encoding.Podbuf," in text, text)
+        assertTrue("override fun sizes(encoding: Encoding): Sizes = when (encoding) {" in text, text)
+        assertTrue("Encoding.FlatBuffers -> FLATBUFFERS_SIZES" in text && "Encoding.Podbuf -> PODBUF_SIZES" in text, text)
+        // Every use reads the port's encoding.
+        for (use in listOf(
+            "encoded(DriveSet.codec(this.port.encoding), level)",
+            "callOutcome(DriveProbe.replyCodec(port.encoding), buf)",
+            "sampled(DriveLevel.codec(port.encoding), DriveLevel, port.read(",
+            "checked(DriveAlarm.codec(port.encoding), buf)",
+            "encoded(DriveLevel.codec(port.encoding), value)",
+            "encoded(DriveAlarm.codec(port.encoding), value)",
+            "callOutcome(DriveSet.codec(handler.encoding), args)",
+            "DriveProbe.replyCodec(handler.encoding).encode(reply, buffer)",
+            "request(DriveSet.require(value), DriveSet.codec(port.encoding), value)",
+            "check(DriveLevel.codec(encoding), it)",
+            "Drive.bindChecks(port, port.encoding)",
+        )) {
+            assertTrue(use in text, "`$use`\n$text")
+        }
+        assertFalse(Regex("\\bLevel(Podbuf)?Codec\\.maxSize\\b").containsMatchIn(text.substringAfter("class DriveProbeCall")), "no buffer is sized by one encoding's codec\n$text")
+    }
+
+    @Test
+    fun `checkEncoding refuses proto3 on a flatbuffers+podbuf package`() {
+        val text = everyKindFace(WireEncoding.FlatBuffers, WireEncoding.Podbuf)
+        val q = "\"\"\""
+        val refusal = "else -> throw IllegalArgumentException($q" +
+            "interface `Drive` has no ${'$'}{encoding.encodingName} codec: its package carries flatbuffers and podbuf$q)"
+        assertTrue(refusal in text.substringAfter("override fun sizes(encoding: Encoding)"), text)
+        val check = text.substringAfter("internal fun checkEncoding(found: Encoding) {").substringBefore("}")
+        assertEquals("\n    sizes(found)\n  ", check, "checkEncoding accepts what sizes accepts")
+    }
+
+    @Test
+    fun `a two-encoding interface with a payload unbounded under podbuf is skipped with a warning`() {
+        val both = Options("kt.demo", listOf(WireEncoding.FlatBuffers, WireEncoding.Podbuf))
+        val declared = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
+        declared.getSlotsBuilder(0).interactionBuilder.commandBuilder.setRequest(levelPayload(podbuf = false))
+        val emitted = FacesEmitter(demo().addDeclarations(scalar("Level")).addInterfaces(declared).build(), both).emit()
+        assertNull(emitted.text)
+        assertEquals(
+            listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: interaction `set`'s parameter `Level` has no podbuf bound"),
+            emitted.warnings,
+        )
+        // The struct induced for a call, bounded in FlatBuffers and not in podbuf: Rust's `induced_name`.
+        val induced = FacesEmitter(induced(bounded = true), both).emit()
+        assertNull(induced.text)
+        assertEquals(
+            listOf(
+                "$PLUGIN: interface `kt.demo.Drive` has no generated face: `kt.demo.DriveGoParams` has no finite podbuf bound: its " +
+                    "largest buffer does not fit a u32 offset, or an array or map of it passes a descriptor limit",
+            ),
+            induced.warnings,
+        )
+        // Bounded in podbuf too, it is faced.
+        val bounded = induced(bounded = true).toBuilder()
+        bounded.getInterfacesBuilder(0).getSlotsBuilder(0).interactionBuilder.commandBuilder
+            .setRequestSizes(PayloadSizes.newBuilder().setPodbuf(SizeState.newBuilder().setBounded(24)))
+        val faced = FacesEmitter(bounded.build(), both).emit()
+        assertEquals(emptyList<String>(), faced.warnings)
+        assertTrue("public val podbufCodec: DriveGoParamsPodbufCodec = DriveGoParamsPodbufCodec" in checkNotNull(faced.text), faced.text)
+    }
+
+    @Test
+    fun `a podbuf-only package with an interface gets its face`() {
+        val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA)
+            .addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("podbuf"))
+            .setModel(everyKind().toBuilder().setPodbuf(PodbufProjection.getDefaultInstance())).build()
+        val response = Generator.generate(request)
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        assertTrue("kt/demo/Faces.kt" in response.filesList.map { it.path }, response.toString())
     }
 }

@@ -76,6 +76,13 @@ object Harness {
         Regex("""(?m)^name\s*=\s*"([^"]+)"""").find(corpus.resolve(name).resolve("ridl.toml").readText())
             ?.groupValues?.get(1) ?: error("corpus/$name/ridl.toml names no package")
 
+    /** The encodings a corpus package's `ridl.toml` selects for this plugin, `[backend.kotlin]`'s `encodings`. */
+    fun encodings(name: String): List<String> {
+        val kotlin = corpus.resolve(name).resolve("ridl.toml").readText().substringAfter("[backend.kotlin]", "").substringBefore("\n[")
+        val list = Regex("""(?m)^encodings\s*=\s*\[([^\]]*)]""").find(kotlin)?.groupValues?.get(1) ?: return emptyList()
+        return Regex(""""([^"]+)"""").findAll(list).map { it.groupValues[1] }.toList()
+    }
+
     /**
      * Every request the pinned `ridl` writes to a plugin for the corpus
      * package, byte for byte, by the package each is for: the package itself

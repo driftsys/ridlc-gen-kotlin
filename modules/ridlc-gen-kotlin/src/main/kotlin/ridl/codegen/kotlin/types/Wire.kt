@@ -246,7 +246,7 @@ internal class Wires(private val model: Model, private val pkg: String) {
         else -> refuse("scalar class `${scalar.class_}` is not one this plugin reads")
     }
 
-    private fun intPrim(width: IntWidth): Prim = when (width) {
+    fun intPrim(width: IntWidth): Prim = when (width) {
         IntWidth.INT_WIDTH_U8 -> Prim.U8
         IntWidth.INT_WIDTH_I8 -> Prim.I8
         IntWidth.INT_WIDTH_U16 -> Prim.U16

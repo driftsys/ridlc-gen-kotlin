@@ -55,11 +55,30 @@ class OptionsTest {
     }
 
     @Test
-    fun `an encoding with no Kotlin codec is refused by name`() {
-        for (name in listOf("proto3", "podbuf")) {
-            assertTrue("no `$name` codec" in refused(Options.parse(request("encodings" to name)))[0])
-        }
+    fun `podbuf is accepted`() {
+        assertEquals(
+            Options.Parsed.Ok(Options("veh.cabin", listOf(WireEncoding.Podbuf))),
+            Options.parse(request("encodings" to "podbuf")),
+        )
+    }
+
+    @Test
+    fun `proto3 is still refused, naming it`() {
+        assertEquals(listOf("$PLUGIN: the Kotlin plugin has no `proto3` codec"), refused(Options.parse(request("encodings" to "proto3"))))
         assertTrue("no `proto3` codec" in refused(Options.parse(request("encodings" to "flatbuffers,proto3")))[0])
+        assertTrue("no `proto3` codec" in refused(Options.parse(request("encodings" to "podbuf,proto3")))[0])
+    }
+
+    @Test
+    fun `flatbuffers,podbuf keeps manifest order`() {
+        assertEquals(
+            listOf(WireEncoding.FlatBuffers, WireEncoding.Podbuf),
+            (Options.parse(request("encodings" to "flatbuffers,podbuf")) as Options.Parsed.Ok).options.encodings,
+        )
+        assertEquals(
+            listOf(WireEncoding.Podbuf, WireEncoding.FlatBuffers),
+            (Options.parse(request("encodings" to "podbuf,flatbuffers")) as Options.Parsed.Ok).options.encodings,
+        )
     }
 
     @Test

@@ -3,9 +3,11 @@ package ridl.conformance
 import ridl.codegen.kotlin.types.plain
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.Model
+import ridl.codegen.v1.ModelOuterClass.PodbufHead
 import ridl.codegen.v1.ModelOuterClass.PrimitiveType
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import ridl.codegen.v1.ModelOuterClass.SizeState
 import ridl.codegen.v1.ModelOuterClass.Type
 import ridl.codegen.v1.ModelOuterClass.Visibility
 import java.math.BigDecimal
@@ -27,29 +29,43 @@ object RoundTrip {
     const val SAMPLE_MINIMAL = 0
     const val SAMPLE_FULL = 1
 
-    fun source(models: List<Model>): String {
+    /**
+     * The `i`th sample of a named string, by type, where the default's
+     * letters would not do: `kt.podbuf.Glyph` keys a map with U+FFFD and
+     * U+1F600, whose UTF-8 order differs from their UTF-16 order.
+     */
+    private val TEXT_SAMPLES: Map<String, List<String>> = mapOf("kt.podbuf.Glyph" to listOf("\uFFFD", "\uD83D\uDE00"))
+
+    /**
+     * The round trip over [models]' FlatBuffers codecs, `<Type>Codec`, or,
+     * with [podbuf], over their podbuf codecs, `<Type>PodbufCodec`.
+     */
+    fun source(models: List<Model>, podbuf: Boolean = false): String {
         val samples = StringBuilder()
         val dispatch = StringBuilder()
+        val suffix = if (podbuf) "PodbufCodec" else "Codec"
         for (model in models) {
             val pkg = model.name.dotted
-            for (root in model.flatbuffers.rootsList.filter { it.hasMaxSize() && it.hasTuple() }) {
+            val tupleRoots = if (podbuf) podbufTupleRoots(model) else model.flatbuffers.rootsList.filter { it.hasMaxSize() && it.hasTuple() }.map { it.tuple }
+            val declarationRoots = if (podbuf) podbufDeclarationRoots(model) else model.flatbuffers.rootsList.filter { it.hasMaxSize() && !it.hasTuple() }.map { it.declaration }
+            for (index in tupleRoots) {
                 // A call's induced argument or reply struct (driftsys/ridl#713): sampled as a struct is.
-                val tuple = model.getTuples(root.tuple)
+                val tuple = model.getTuples(index)
                 if (tuple.visibility == Visibility.VISIBILITY_INTERNAL) continue
                 val type = "$pkg.${tuple.name.rust}"
-                val codec = "${type}Codec"
-                dispatch.append("        \"$type\" -> roundTrip($codec, hex)\n")
+                val codec = "$type$suffix"
+                dispatch.append("        \"$type\" -> roundTrip($codec, hex, shift)\n")
                 val writer = Writer(model, models)
                 for ((label, variant) in listOf("minimal" to SAMPLE_MINIMAL, "full" to SAMPLE_FULL)) {
                     samples.append("        \"$type $label \" + encode($codec, ${writer.record(type, tuple.fieldsList, variant, variant)}),\n")
                 }
             }
-            for (root in model.flatbuffers.rootsList.filter { it.hasMaxSize() && !it.hasTuple() }) {
-                val declaration = model.getDeclarations(root.declaration)
+            for (index in declarationRoots) {
+                val declaration = model.getDeclarations(index)
                 if (declaration.visibility == Visibility.VISIBILITY_INTERNAL) continue
                 val type = "$pkg.${declaration.name.camel}"
-                val codec = "${type}Codec"
-                dispatch.append("        \"$type\" -> roundTrip($codec, hex)\n")
+                val codec = "$type$suffix"
+                dispatch.append("        \"$type\" -> roundTrip($codec, hex, shift)\n")
                 val writer = Writer(model, models)
                 val values = if (declaration.hasUnion()) {
                     declaration.union.armsList.mapIndexed { i, arm ->
@@ -68,19 +84,19 @@ object RoundTrip {
             |
             |package ridl.conformance.roundtrip
             |
-            |import ridl.rt.flatbuffers.TableView
             |import ridl.rt.payload.Payload
             |import ridl.rt.payload.VerifyError
             |import java.nio.ByteBuffer
             |
-            |private fun hex(bytes: ByteArray, size: Int) = (0 until size).joinToString("") { "%02x".format(bytes[it]) }
+            |private fun hex(bytes: ByteArray, from: Int, size: Int) = (from until from + size).joinToString("") { "%02x".format(bytes[it]) }
             |
             |private fun unhex(hex: String) = ByteArray(hex.length / 2) { hex.substring(2 * it, 2 * it + 2).toInt(16).toByte() }
             |
-            |private fun <T> encode(codec: Payload<T, TableView>, value: T): String {
-            |    val out = ByteBuffer.allocate(1 shl 16)
+            |/** Encodes [value] into a buffer whose position is [shift], and spells the bytes written. */
+            |private fun <T, V> encode(codec: Payload<T, V>, value: T, shift: Int = 0): String {
+            |    val out = ByteBuffer.wrap(ByteArray(shift + (1 shl 16)), shift, 1 shl 16)
             |    val written = codec.encode(value, out)
-            |    return hex(out.array(), written)
+            |    return hex(out.array(), shift, written)
             |}
             |
             |private fun debug(error: VerifyError): String = when (error) {
@@ -89,22 +105,65 @@ object RoundTrip {
             |        "Contract(Violation { type_name: ${'$'}{error.violation.typeName?.let { "Some(\"${'$'}it\")" } ?: "None"}, rule: ${'$'}{error.violation.rule.name} })"
             |}
             |
-            |private fun <T> roundTrip(codec: Payload<T, TableView>, hex: String): String {
+            |/**
+            | * Verifies the bytes [hex] spells, placed at position [shift] of a
+            | * larger buffer, decodes them, and encodes the value again at [shift].
+            | */
+            |private fun <T, V> roundTrip(codec: Payload<T, V>, hex: String, shift: Int): String {
+            |    val bytes = unhex(hex)
+            |    val buffer = ByteBuffer.wrap(ByteArray(shift + bytes.size), shift, bytes.size)
+            |    bytes.copyInto(buffer.array(), shift)
             |    val view = try {
-            |        codec.verify(ByteBuffer.wrap(unhex(hex)))
+            |        codec.verify(buffer)
             |    } catch (e: VerifyError) {
             |        return "err ${'$'}{debug(e)}"
             |    }
-            |    return "ok " + encode(codec, codec.decode(view))
+            |    return "ok " + encode(codec, codec.decode(view), shift)
             |}
             |
             |fun samples(): List<String> = listOf(
             |$samples)
             |
-            |fun verdict(type: String, hex: String): String = when (type) {
+            |fun verdict(type: String, hex: String): String = verdictAt(type, hex, 0)
+            |
+            |fun verdictAt(type: String, hex: String, shift: Int): String = when (type) {
             |$dispatch        else -> error("no codec for ${'$'}type")
             |}
             |""".trimMargin()
+    }
+
+    /**
+     * The structs and unions with a head, and the named scalars, enums and
+     * enum sets with a box, whose podbuf bound a Kotlin `Int` holds: the
+     * declarations the package's `PodbufCodec.kt` gives a codec, in
+     * declaration order.
+     */
+    private fun podbufDeclarationRoots(model: Model): List<Int> {
+        val headed = model.podbuf.headsList.filter { it.sourceCase == PodbufHead.SourceCase.DECLARATION }.map { it.declaration }
+        val boxed = model.podbuf.boxesList.map { it.declaration }
+        return (headed + boxed).toSortedSet().filter { index ->
+            val state = model.getDeclarations(index).podbuf
+            state.stateCase == SizeState.StateCase.BOUNDED && Integer.toUnsignedLong(state.bounded) <= Int.MAX_VALUE
+        }
+    }
+
+    /** The induced tuples a command or a query sends on their own, with a podbuf bound: the Rust backend's `tuple_roots`. */
+    private fun podbufTupleRoots(model: Model): List<Int> {
+        val roots = sortedSetOf<Int>()
+        for (slot in model.interfacesList.flatMap { it.slotsList }.filter { it.hasInteraction() }) {
+            val interaction = slot.interaction
+            val payloads = when {
+                interaction.hasCommand() -> with(interaction.command) { listOf(Triple(hasRequestTuple(), requestTuple, requestSizes)) }
+                interaction.hasQuery() -> with(interaction.query) {
+                    listOf(Triple(hasRequestTuple(), requestTuple, requestSizes), Triple(hasReplyTuple(), replyTuple, replySizes))
+                }
+                else -> emptyList()
+            }
+            for ((has, tuple, sizes) in payloads) {
+                if (has && sizes.podbuf.stateCase == SizeState.StateCase.BOUNDED) roots += tuple.index
+            }
+        }
+        return roots.toList()
     }
 
     /** Kotlin expressions for sample values of the types [model] declares or reaches. */
@@ -205,7 +264,7 @@ object RoundTrip {
                 ScalarClass.SCALAR_CLASS_BOOLEAN -> if (i % 2 == 0) "true" else "false"
                 ScalarClass.SCALAR_CLASS_STRING -> {
                     val key = if (declaration != null) "$pkg.${declaration.name.camel}" else null
-                    val sample = key?.let { Probe.SAMPLES[it] }
+                    val sample = key?.let { TEXT_SAMPLES[it]?.let { values -> values[i % values.size] } ?: Probe.SAMPLES[it] }
                     val text = when {
                         sample != null -> sample
                         c.hasPattern() -> Probe.PATTERN_SAMPLES[c.pattern] ?: error("no sample for the patterned $key")

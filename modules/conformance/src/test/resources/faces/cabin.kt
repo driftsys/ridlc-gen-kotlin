@@ -368,8 +368,9 @@ fun probe(): List<String> {
     )
 
     // driftsys/ridl#887: a face reads its encoding from its port, and refuses
-    // a port whose encoding the package carries no codec for.
-    for (encoding in listOf(ridl.rt.encoding.Encoding.Proto3, ridl.rt.encoding.Encoding.Podbuf)) {
+    // a port whose encoding the package carries no codec for. Cabin carries
+    // FlatBuffers and podbuf; EncodingsFaceTest drives it over both.
+    for (encoding in listOf(ridl.rt.encoding.Encoding.Proto3)) {
         val foreign = Loopback(Cabin.catalog, encoding)
         try {
             CabinPublisher(foreign)
