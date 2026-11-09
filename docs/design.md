@@ -370,8 +370,11 @@ port's encoding, and a stream's element, which no descriptor holds, picks it
 with a `when` over the carried encodings. `sizes(encoding)` gives the table of
 each carried encoding, built from that encoding's codecs' `maxSize`, and throws
 `IllegalArgumentException` for any other, so a binding's check accepts exactly
-the carried set. An interface with a payload bounded in one carried encoding and
-not in another is skipped with a warning, as the Rust backend skips it.
+the carried set. An interface with a call struct that the lowering induced,
+bounded in one carried encoding and not in another, is skipped with a warning,
+as the Rust backend skips it. Kotlin also skips an interface whose declared
+payload has no finite bound in a carried encoding, which the Rust backend does
+not check; the departure is recorded in `modules/ridlc-gen-kotlin/README.md`.
 
 **A call sends one named type** (driftsys/ridl#713, ADR-0023 decisions 2 and 6
 as amended 2026-10-13). A command or query with exactly one parameter of a named
