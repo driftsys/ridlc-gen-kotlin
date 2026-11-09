@@ -15,10 +15,9 @@ import ridl.codegen.kotlin.Options
 import ridl.codegen.kotlin.PLUGIN
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.Field
-import ridl.codegen.v1.ModelOuterClass.FloatWidth
-import ridl.codegen.v1.ModelOuterClass.IntWidth
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.PodbufBox
+import ridl.codegen.v1.ModelOuterClass.PodbufDescriptor
 import ridl.codegen.v1.ModelOuterClass.PodbufField
 import ridl.codegen.v1.ModelOuterClass.PodbufForm
 import ridl.codegen.v1.ModelOuterClass.PodbufHead
@@ -27,24 +26,18 @@ import ridl.codegen.v1.ModelOuterClass.PodbufSource
 import ridl.codegen.v1.ModelOuterClass.SizeState
 import ridl.codegen.v1.ModelOuterClass.Type
 import ridl.codegen.v1.ModelOuterClass.TypeRef
+import ridl.codegen.v1.ModelOuterClass.Union
 import ridl.codegen.v1.ModelOuterClass.Visibility
 
 private const val PODBUF = "ridl.rt.podbuf"
-private val PB_BUFFER = ClassName(PODBUF, "Buffer")
 private val PB_WRITER = ClassName(PODBUF, "Writer")
 private val PB_PREAMBLE = ClassName(PODBUF, "Preamble")
 private val PB_PREAMBLE_SIZE = MemberName(PODBUF, "PREAMBLE_SIZE")
+private val PB_TAIL_RANGE = MemberName(PODBUF, "tailRange")
 private val PB_PAYLOAD = ClassName("ridl.rt.payload", "Payload")
-private val PB_VERIFY_ERROR = ClassName("ridl.rt.payload", "VerifyError")
-private val PB_ENCODE_ERROR = ClassName("ridl.rt.payload", "EncodeError")
-private val PB_VIOLATION = ClassName("ridl.rt.payload", "Violation")
-private val PB_RULE = ClassName("ridl.rt.payload", "Rule")
 private val PB_ENCODING = ClassName("ridl.rt.encoding", "Encoding")
 private val PB_BYTE_BUFFER = ClassName("java.nio", "ByteBuffer")
 private val PB_REGEX = ClassName("kotlin.text", "Regex")
-
-/** What a tail form gets until the tail is emitted. */
-private const val TAIL_FORMS = "tail forms are not emitted yet"
 
 /**
  * `PodbufCodec.kt`: one podbuf codec per payload root of the package
@@ -56,26 +49,23 @@ private const val TAIL_FORMS = "tail forms are not emitted yet"
  * `verify` also checks what the value objects check, because `decode`
  * builds them through `unchecked` and must never throw.
  *
- * Per head `T`: `podbufEncodeT(value, w, at)` writes `T`'s head at `at`,
- * `podbufVerifyT(buffer, at, size, tail)` checks a head its producer wrote
- * `size` bytes of, and `podbufDecodeT(buffer, at, size)` reads one `verify`
- * passed; each is `internal`, so another package's codec writes a head it
- * lays out inline through them. Per root, `TPodbufView` is what `verify`
- * hands `decode`, and `object TPodbufCodec` is the `Payload`.
- *
- * This stage emits the fixed-size forms: booleans, integers, floats, enums
- * and enum sets, inline heads and exact-length arrays. A head with a tail
- * descriptor refuses its package.
+ * Per head `T` (a struct, a union or a named tuple): `podbufEncodeT(value, w,
+ * at)` writes `T`'s head at `at` and appends its tail, `podbufVerifyT(buffer,
+ * at, size, tail)` checks a head its producer wrote `size` bytes of, below
+ * whose `tail` no descriptor may point, and `podbufDecodeT(buffer, at, size)`
+ * reads one `verify` passed; each is `internal`, so another package's codec
+ * writes a head it lays out inline through them. Per root, `TPodbufView` is
+ * what `verify` hands `decode`, and `object TPodbufCodec` is the `Payload`.
+ * [PodbufForms] holds the write, the checks and the read of each form.
  */
 class PodbufCodecEmitter(private val model: Model, private val options: Options) {
     private val pkg = options.kotlinPackage
     private val file = FileSpec.builder(pkg, "PodbufCodec").jvmName("PodbufCodec")
-    private val wires = Wires(model, pkg)
+    private val forms = PodbufForms(model, pkg)
+    private val wires = forms.wires
     private val inits = Inits(model, pkg, wires)
     private val errors = mutableListOf<String>()
     private val claims = mutableListOf<Claim>()
-    private val patterns = mutableListOf<String>()
-    private var names = 0
 
     fun emit(): EmittedTypes {
         val path = pkg.replace('.', '/') + "/PodbufCodec.kt"
@@ -89,23 +79,22 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
             when (head.sourceCase) {
                 PodbufHead.SourceCase.DECLARATION -> {
                     val declaration = model.declarationsList.getOrNull(head.declaration) ?: continue
-                    when (declaration.kindCase) {
+                    val name = declaration.name.declared
+                    val emitted = when (declaration.kindCase) {
                         Declaration.KindCase.STRUCT -> {
-                            val name = declaration.name.declared
                             val fields = declaration.struct.slotsList.filter { it.hasField() }.map { it.field }
-                            val emitted = guarded(name) {
+                            guarded(name) {
                                 record(declaration.name.camel, name, head) { source ->
                                     if (source.kindCase != PodbufSource.KindCase.FIELD) null else fields.firstOrNull { it.name.declared == source.field.name }
                                 }
                             }
-                            val bound = declaredBound(declaration, head = true)
-                            if (emitted && bound != null) {
-                                codec(declaration.name.camel, declaration.visibility, "declaration `$name`", head.size, bound)
-                            }
                         }
-                        // A union's arm is a tail descriptor.
-                        Declaration.KindCase.UNION -> guarded(declaration.name.declared) { refuse(TAIL_FORMS) }
-                        else -> {}
+                        Declaration.KindCase.UNION -> guarded(name) { union(declaration, declaration.union, head) }
+                        else -> continue
+                    }
+                    val bound = declaredBound(declaration, head = true)
+                    if (emitted && bound != null) {
+                        codec(declaration.name.camel, declaration.visibility, "declaration `$name`", head.size, bound)
                     }
                 }
                 PodbufHead.SourceCase.TUPLE -> {
@@ -123,16 +112,19 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
                         codec(name, tuple.visibility, "the struct induced for a call", head.size, bound)
                     }
                 }
+                // A map entry's and a union arm's head are written by the head that holds them, and a
+                // foreign or nested head by the package that declares it.
                 else -> {}
             }
         }
         for (boxed in model.podbuf.boxesList) box(boxed)
         if (errors.isNotEmpty()) return EmittedTypes(path, null, errors)
-        for ((index, body) in patterns.withIndex()) {
+        for ((index, body) in forms.patterns.withIndex()) {
             file.addProperty(
                 PropertySpec.builder("PODBUF_PATTERN_$index", PB_REGEX, KModifier.PRIVATE).initializer("%T(%S)", PB_REGEX, body).build(),
             )
         }
+        forms.privateHelpers().forEach(file::addFunction)
         if (deprecated()) file.addAnnotation(AnnotationSpec.builder(Suppress::class).addMember("%S", "DEPRECATION").build())
         file.addFileComment("Generated by %L from `%L`. Do not edit.", PLUGIN, model.name.dotted)
         return EmittedTypes(path, file.build().toString(), emptyList(), claims)
@@ -165,7 +157,7 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
         false
     }
 
-    private fun fresh(stem: String): String = "$stem${names++}"
+    private fun fresh(stem: String): String = forms.fresh(stem)
 
     // -- bounds -------------------------------------------------------------------
 
@@ -261,8 +253,23 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
         file.addType(codecSpec.build())
     }
 
-    /** The three helpers of one head, internal to the generated module. */
-    private fun helpers(functions: PodbufFunctions, type: ClassName, encode: CodeBlock, verify: CodeBlock, decode: CodeBlock) {
+    /** A head's own place in `verify` and `decode`: `at`, `size`, read through `region`. */
+    private fun headPlace() = PodbufPlace("at", "size", "region")
+
+    /**
+     * The three helpers of one head, internal to the generated module.
+     * [verify] and [decode] read through [verifyPlace] and [decodePlace],
+     * whose `region` is declared only when the body reads it.
+     */
+    private fun helpers(
+        functions: PodbufFunctions,
+        type: ClassName,
+        encode: CodeBlock,
+        verify: CodeBlock,
+        verifyPlace: PodbufPlace,
+        decode: CodeBlock,
+        decodePlace: PodbufPlace,
+    ) {
         file.addFunction(
             FunSpec.builder(functions.encode).addModifiers(KModifier.INTERNAL)
                 .addParameter("value", type).addParameter("w", PB_WRITER).addParameter("at", INT)
@@ -271,23 +278,20 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
         file.addFunction(
             FunSpec.builder(functions.verify).addModifiers(KModifier.INTERNAL)
                 .addParameter("buffer", PB_BUFFER).addParameter("at", INT).addParameter("size", INT).addParameter("tail", INT)
-                .addCode(withRegion(verify)).build(),
+                .addCode(verifyPlace.binding()).addCode(verify).build(),
         )
         file.addFunction(
             FunSpec.builder(functions.decode).addModifiers(KModifier.INTERNAL)
                 .addParameter("buffer", PB_BUFFER).addParameter("at", INT).addParameter("size", INT).returns(type)
-                .addCode(withRegion(decode)).build(),
+                .addCode(decodePlace.binding()).addCode(decode).build(),
         )
     }
 
-    /** [body], after the `region` it reads through when it reads one: the head, reading 0 past `size`. */
-    private fun withRegion(body: CodeBlock): CodeBlock =
-        if ("region." !in body.toString()) body else CodeBlock.builder().addStatement("val region = buffer.region(at, size)").add(body).build()
-
     /**
      * A struct's or a tuple's head: every placement written, checked and read
-     * at the offset the projection gives it; a flags byte computed from the
-     * optional fields it records; a deprecated field written as its init value.
+     * at the offset the projection gives it, its tail appended in placement
+     * order; a flags byte computed from the optional fields it records; a
+     * deprecated field written as its init value.
      */
     private fun record(name: String, owner: String, head: PodbufHead, fieldOf: (PodbufSource) -> Field?) {
         val type = ClassName(pkg, name)
@@ -309,12 +313,13 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
         val operands = placed.associateWith { p ->
             val member = p.member ?: return@associateWith null
             if (!member.hasDeprecated()) return@associateWith Operand("value.${escaped(member.name.property)}", member.type.optional)
+            // An optional field with no declared init has none: it stays absent, its bytes zero (Inits.field's `null`).
+            if (member.type.optional && !member.hasDeclaredInit()) return@associateWith null
             val init = try {
                 inits.field(member)
             } catch (_: Refusal) {
-                null
+                return@associateWith null
             }
-            if (init == null || init.toString() == "null") return@associateWith null
             val binding = fresh("deprecated")
             encode.addStatement("val %L = %L", binding, init)
             Operand(binding, false)
@@ -326,48 +331,50 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
                 continue
             }
             val operand = operands[p] ?: continue
-            val form = formOf(p.field, owner)
-            val present = present(p.member.type)
+            val form = forms.formOf(p.field.form, owner)
+            val present = forms.present(p.member.type)
             if (!operand.nullable) {
-                encode.add(writeForm(form, present, operand.expr, at, owner))
+                encode.add(forms.writeForm(form, present, operand.expr, at, owner))
             } else {
                 val o = fresh("present")
-                val write = writeForm(form, present, o, at, owner)
+                val write = forms.writeForm(form, present, o, at, owner)
                 if (!write.isEmpty()) encode.beginControlFlow("%L?.let { %L ->", operand.expr, o).add(write).endControlFlow()
             }
         }
+        val verifyPlace = headPlace()
+        val decodePlace = headPlace()
         val verify = CodeBlock.builder()
         val decode = CodeBlock.builder().add("return %T(\n", type).indent()
         for (p in placed) {
             val member = p.member ?: continue
-            val form = formOf(p.field, owner)
+            val form = forms.formOf(p.field.form, owner)
             val off = p.field.offset.toString()
-            val presence = presence(head, p.field, owner)
-            if (presence == null) {
-                verify.add(verifyForm(form, member.type, off, owner))
-                decode.add("%L = %L,\n", escaped(member.name.property), decodeForm(form, member.type, off))
+            if (!p.field.hasOptional()) {
+                verify.add(forms.verifyForm(form, member.type, verifyPlace, off, owner))
+                decode.add("%L = %L,\n", escaped(member.name.property), forms.decodeForm(form, member.type, decodePlace, off))
                 continue
             }
-            // An absent optional's bytes are zero; a present one is checked as any value.
-            val inner = verifyForm(form, present(member.type), off, owner)
+            // ADR-0031 decision 8 rule 2: an absent optional's bytes are zero; a present one is checked as any value.
+            val inner = forms.verifyForm(form, forms.present(member.type), verifyPlace, off, owner)
             val byte = fresh("byte")
             val nonZero = CodeBlock.of(
-                "region.bytesAt(%L, %L).any { %L -> %L.toInt() != 0 }", off, p.field.size, byte, byte,
+                "%L.bytesAt(%L, %L).any { %L -> %L.toInt() != 0 }", verifyPlace.region, off, p.field.size, byte, byte,
             )
-            val refused = CodeBlock.of("throw %T.Contract(%T(%S, %T.Variant))", PB_VERIFY_ERROR, PB_VIOLATION, owner, PB_RULE)
+            val presence = presence(head, p.field, verifyPlace, owner)
             if (inner.isEmpty()) {
-                verify.beginControlFlow("if (!(%L) && %L)", presence, nonZero).addStatement("%L", refused).endControlFlow()
+                verify.beginControlFlow("if (!(%L) && %L)", presence, nonZero).add(forms.verifyRefusal(owner, RuleName.Variant)).endControlFlow()
             } else {
                 verify.beginControlFlow("if (%L)", presence).add(inner)
-                    .nextControlFlow("else if (%L)", nonZero).addStatement("%L", refused).endControlFlow()
+                    .nextControlFlow("else if (%L)", nonZero).add(forms.verifyRefusal(owner, RuleName.Variant)).endControlFlow()
             }
             decode.add(
                 "%L = if (%L) %L else null,\n",
-                escaped(member.name.property), presence, decodeForm(form, present(member.type), off),
+                escaped(member.name.property), presence(head, p.field, decodePlace, owner),
+                forms.decodeForm(form, forms.present(member.type), decodePlace, off),
             )
         }
         decode.unindent().add(")\n")
-        helpers(PodbufFunctions(pkg, name), type, encode.build(), verify.build(), decode.build())
+        helpers(PodbufFunctions(pkg, name), type, encode.build(), verify.build(), verifyPlace, decode.build(), decodePlace)
     }
 
     private class Placed(val field: PodbufField, val member: Field?)
@@ -396,310 +403,169 @@ class PodbufCodecEmitter(private val model: Model, private val options: Options)
         return code.addStatement("w.putU8(%L, %L)", at, flags).build()
     }
 
-    /** The condition that an optional [field]'s flag bit is set, or `null` for a required field. */
-    private fun presence(head: PodbufHead, field: PodbufField, owner: String): CodeBlock? {
-        if (!field.hasOptional()) return null
+    /** The condition that the optional [field]'s flag bit is set, read at [place]. */
+    private fun presence(head: PodbufHead, field: PodbufField, place: PodbufPlace, owner: String): CodeBlock {
         val bit = field.optional
         val flags = head.fieldsList.firstOrNull { it.source.kindCase == PodbufSource.KindCase.FLAGS && it.source.flags == bit.flags }
             ?: refuse("the podbuf head of `$owner` has no flags byte ${bit.flags}")
-        return CodeBlock.of("(region.u8At(%L) and %L) != 0", flags.offset, 1 shl bit.bit)
+        return CodeBlock.of("(%L.u8At(%L) and %L) != 0", place.region, flags.offset, 1 shl bit.bit)
+    }
+
+    /**
+     * A union's head: the arm's ordinal as the tag, and a descriptor to the
+     * arm's head in the tail, which a struct or union arm's own helpers write
+     * and read and whose one value field a scalar, enum or enum set arm's
+     * head holds. An arm whose head has no field is a zero descriptor, and
+     * `verify` only bounds-checks its descriptor, so the arm a newer producer
+     * gave a field is read (ADR-0031 decision 3).
+     */
+    private fun union(declaration: Declaration, union: Union, head: PodbufHead) {
+        val owner = declaration.name.declared
+        val name = declaration.name.camel
+        val type = ClassName(pkg, name)
+        if (union.armsCount == 0) refuse("`$owner` declares no arm, so it decodes no value")
+        val tag = head.fieldsList.firstOrNull { it.source.kindCase == PodbufSource.KindCase.TAG }
+            ?: refuse("the podbuf head of `$owner` has no tag")
+        val tagPrim = if (tag.form.kindCase == PodbufForm.KindCase.INT) wires.intPrim(tag.form.int.width) else refuse("the podbuf tag of `$owner` is not an integer")
+        val armField = head.fieldsList.firstOrNull { it.source.kindCase == PodbufSource.KindCase.ARM }
+            ?: refuse("the podbuf head of `$owner` has no arm descriptor")
+        if (armField.form.kindCase != PodbufForm.KindCase.TAIL_DESCRIPTOR) refuse("the podbuf arm field of `$owner` is no descriptor")
+        if (armField.form.tailDescriptor.kindCase != PodbufDescriptor.KindCase.ARMS) refuse("the podbuf arm field of `$owner` is no arm descriptor")
+        val layouts = armField.form.tailDescriptor.arms.armsList
+        val arms = union.armsList.map { arm ->
+            val armHead = layouts.firstOrNull { it.ordinal == arm.ordinal }?.let { model.podbuf.headsList.getOrNull(it.head) }
+                ?: refuse("the podbuf layout of `$owner` has no head for arm `${arm.name.declared}`")
+            if (!arm.hasType()) refuse("arm `${arm.name.declared}` of `$owner` names no type")
+            val armType = Type.newBuilder().setNamed(arm.type).build()
+            val (_, declared) = wires.declarationOf(arm.type)
+            val value = if (declared.hasStruct() || declared.hasUnion()) {
+                null
+            } else {
+                armHead.fieldsList.firstOrNull { it.source.kindCase == PodbufSource.KindCase.ARM }
+                    ?: refuse("the podbuf arm head of `$owner` has no value field")
+            }
+            UnionArm(type.nestedClass(arm.name.camel), tagLiteral(tagPrim, arm.ordinal), armHead, armType, value)
+        }
+        val tagAt = position("at", tag.offset.toLong())
+        val descAt = position("at", armField.offset.toLong())
+        val encode = CodeBlock.builder().beginControlFlow("when (value)")
+        for (arm in arms) {
+            encode.beginControlFlow("is %T ->", arm.variant).addStatement("w.put%L(%L, %L)", tagPrim.field, tagAt, arm.tag)
+            if (arm.head.size > 0) {
+                val block = fresh("block")
+                encode.addStatement("val %L = w.tail(%L, 8)", block, arm.head.size)
+                    .addStatement("w.putDesc(%L, %T(%L.toLong(), %L))", descAt, PB_DESC, block, "${arm.head.size}L")
+                if (arm.value == null) {
+                    val functions = forms.headFunctions(arm.type)
+                    encode.addStatement("%M(value.value, w, %L)", MemberName(functions.pkg, functions.encode), block)
+                } else {
+                    encode.add(forms.writeForm(forms.formOf(arm.value.form, owner), arm.type, "value.value", position(block, arm.value.offset.toLong()), owner))
+                }
+            }
+            encode.endControlFlow()
+        }
+        encode.endControlFlow()
+
+        val verifyPlace = headPlace()
+        val d = fresh("desc")
+        val load = tagPrim.widen("${verifyPlace.region}.${tagPrim.read}At(${tag.offset})")
+        val verify = CodeBlock.builder()
+            .addStatement("val %L = %T.read(%L, %L)", d, PB_DESC, verifyPlace.region, armField.offset)
+            .beginControlFlow("if (%L.len %% 8 != 0L)", d).add(forms.malformed("Union")).endControlFlow()
+            .beginControlFlow("when (%L)", load)
+        for (arm in arms) {
+            verify.beginControlFlow("%L ->", "${arm.tag.removeSuffix("L")}L")
+                .beginControlFlow("if (%L.len == 0L)", d)
+                .beginControlFlow("if (%L.off != 0L)", d).add(forms.malformed("OutOfBounds")).endControlFlow()
+                .nextControlFlow("else")
+                .addStatement("%M(%L.off, %L.len, buffer.size, tail, 8)", PB_TAIL_RANGE, d, d)
+                .endControlFlow()
+            if (arm.head.size > 0) {
+                if (arm.value == null) {
+                    val functions = forms.headFunctions(arm.type)
+                    verify.addStatement("%M(buffer, %L.off.toInt(), %L.len.toInt(), tail)", MemberName(functions.pkg, functions.verify), d, d)
+                } else {
+                    val place = PodbufPlace("$d.off.toInt()", "$d.len.toInt()", fresh("arm"))
+                    val check = forms.verifyForm(forms.formOf(arm.value.form, owner), arm.type, place, arm.value.offset.toString(), owner)
+                    verify.add(place.binding()).add(check)
+                }
+            }
+            verify.endControlFlow()
+        }
+        verify.add("else -> %L", forms.malformed("Union")).endControlFlow()
+
+        val decodePlace = headPlace()
+        val read = fresh("desc")
+        var described = false
+        fun build(arm: UnionArm): CodeBlock {
+            if (arm.value == null) {
+                described = true
+                val functions = forms.headFunctions(arm.type)
+                return CodeBlock.of("%T(%M(buffer, %L.off.toInt(), %L.len.toInt()))", arm.variant, MemberName(functions.pkg, functions.decode), read, read)
+            }
+            val place = PodbufPlace("$read.off.toInt()", "$read.len.toInt()", fresh("arm"))
+            val value = forms.decodeForm(forms.formOf(arm.value.form, owner), arm.type, place, arm.value.offset.toString())
+            if (!place.used) return CodeBlock.of("%T(%L)", arm.variant, value)
+            described = true
+            return CodeBlock.of(
+                "buffer.region(%L.off.toInt(), %L.len.toInt()).let { %L -> %T(%L) }",
+                read, read, place.region, arm.variant, value,
+            )
+        }
+        val matches = CodeBlock.builder()
+        for (arm in arms) matches.add("%L -> %L\n", "${arm.tag.removeSuffix("L")}L", build(arm))
+        matches.add("else -> %L\n", build(arms.first()))
+        val decode = CodeBlock.builder()
+        if (described) decode.addStatement("val %L = %T.read(%L, %L)", read, PB_DESC, decodePlace.region, armField.offset)
+        decode.add("return when (%L) {\n", tagPrim.widen("${decodePlace.region}.${tagPrim.read}At(${tag.offset})")).indent()
+            .add(matches.build()).unindent().add("}\n")
+        helpers(PodbufFunctions(pkg, name), type, encode.build(), verify.build(), verifyPlace, decode.build(), decodePlace)
+    }
+
+    /** One arm of a union: its class, its tag literal, its head, its type position and, for a scalar arm, its value field. */
+    private class UnionArm(val variant: ClassName, val tag: String, val head: PodbufHead, val type: Type, val value: PodbufField?)
+
+    /** The arm [ordinal] as the argument of `Writer.put<prim>` for an unsigned tag. */
+    private fun tagLiteral(prim: Prim, ordinal: Int): String = when (prim) {
+        Prim.U32, Prim.U64 -> "${ordinal}L"
+        else -> "$ordinal"
     }
 
     /**
      * The codec of a named scalar, an enum or an enum set carried as a
      * payload root: the value alone at its offset of its one-field head
-     * (`Model.podbuf.boxes`).
+     * (`Model.podbuf.boxes`). Its bound is checked first, as Rust's `boxed`
+     * checks it, so a box with no bound is refused before its head is read.
      */
     private fun box(boxed: PodbufBox) {
         val declaration = model.declarationsList.getOrNull(boxed.declaration) ?: return
         if (!boxed.hasHead()) return
+        val bound = declaredBound(declaration, head = false) ?: return
         val head = boxed.head
         val owner = declaration.name.declared
         val name = declaration.name.camel
         val emitted = guarded(owner) {
             val field = head.fieldsList.firstOrNull() ?: refuse("the podbuf box of `$owner` has no field")
-            val form = formOf(field, owner)
+            val form = forms.formOf(field.form, owner)
             val ref = TypeRef.newBuilder().setReference(owner).setResolved(true).setPackage(model.scope.`package`)
                 .setForeign(false).setIndex(boxed.declaration)
             val type = Type.newBuilder().setNamed(ref).build()
             val off = field.offset.toString()
+            val verifyPlace = headPlace()
+            val decodePlace = headPlace()
             helpers(
                 PodbufFunctions(pkg, name),
                 ClassName(pkg, name),
-                writeForm(form, type, "value", position("at", field.offset.toLong()), owner),
-                verifyForm(form, type, off, owner),
-                CodeBlock.of("return %L\n", decodeForm(form, type, off)),
+                forms.writeForm(form, type, "value", position("at", field.offset.toLong()), owner),
+                forms.verifyForm(form, type, verifyPlace, off, owner),
+                verifyPlace,
+                CodeBlock.of("return %L\n", forms.decodeForm(form, type, decodePlace, off)),
+                decodePlace,
             )
         }
-        val bound = declaredBound(declaration, head = false)?.takeIf { emitted } ?: return
-        codec(name, declaration.visibility, "declaration `$owner`", head.size, bound)
-    }
-
-    // -- forms ----------------------------------------------------------------------
-
-    private fun formOf(field: PodbufField, owner: String): PodbufForm =
-        if (field.hasForm()) field.form else refuse("a podbuf field of `$owner` carries no form")
-
-    /** [type] with its `optional` cleared: the type of a present value. */
-    private fun present(type: Type): Type = if (type.optional) type.toBuilder().setOptional(false).build() else type
-
-    /** The size in bytes of a value of [form], which is an inline array's stride. */
-    private fun formSize(form: PodbufForm): Long = when (form.kindCase) {
-        PodbufForm.KindCase.BOOLEAN -> 1
-        PodbufForm.KindCase.INT -> wires.intPrim(form.int.width).width.toLong()
-        PodbufForm.KindCase.FLOAT -> floatPrim(form.float).width.toLong()
-        PodbufForm.KindCase.ENUM -> wires.intPrim(form.enum.width).width.toLong()
-        PodbufForm.KindCase.ENUM_SET -> wires.intPrim(form.enumSet.width).width.toLong()
-        PodbufForm.KindCase.INLINE_HEAD -> headSize(form.inlineHead).toLong()
-        PodbufForm.KindCase.INLINE_ARRAY -> formSize(form.inlineArray.element) * form.inlineArray.count
-        PodbufForm.KindCase.TAIL_DESCRIPTOR -> refuse(TAIL_FORMS)
-        else -> refuse("a podbuf field carries no form")
-    }
-
-    private fun headSize(index: Int): Int = model.podbuf.headsList.getOrNull(index)?.size ?: 0
-
-    private fun floatPrim(width: FloatWidth): Prim = when (width) {
-        FloatWidth.FLOAT_WIDTH_F32 -> Prim.F32
-        FloatWidth.FLOAT_WIDTH_F64 -> Prim.F64
-        else -> refuse("a podbuf float carries no width")
-    }
-
-    /** The primitive a scalar, enum or enum set [form] is loaded and stored as. */
-    private fun scalarPrim(form: PodbufForm): Prim = when (form.kindCase) {
-        PodbufForm.KindCase.BOOLEAN -> Prim.Bool
-        PodbufForm.KindCase.INT -> wires.intPrim(form.int.width)
-        PodbufForm.KindCase.FLOAT -> floatPrim(form.float)
-        PodbufForm.KindCase.ENUM -> wires.intPrim(form.enum.width)
-        PodbufForm.KindCase.ENUM_SET -> wires.intPrim(form.enumSet.width)
-        else -> error("not a scalar form")
-    }
-
-    /** What a scalar type position holds in Kotlin. */
-    private fun domainOf(type: Type): Domain = when (val wire = wires.of(type)) {
-        is Wire.ScalarWire -> wire.domain
-        is Wire.Bytes -> wire.domain
-        is Wire.Text -> wire.domain
-        else -> refuse("a podbuf scalar is written from no scalar type")
-    }
-
-    /** The helpers of the struct, union or tuple [type] names, in the package that declares it. */
-    private fun headFunctions(type: Type): PodbufFunctions = when (type.kindCase) {
-        Type.KindCase.NAMED -> {
-            val (owner, declaration) = wires.declarationOf(type.named)
-            if (!declaration.hasStruct() && !declaration.hasUnion()) refuse("an inline podbuf head is written from no struct, union or tuple")
-            PodbufFunctions(owner, declaration.name.camel)
-        }
-        Type.KindCase.TUPLE -> {
-            val name = model.tuplesList.getOrNull(type.tuple.index)?.name?.rust.orEmpty()
-            if (name.isEmpty()) refuse("an inline tuple has no Kotlin class")
-            PodbufFunctions(pkg, name)
-        }
-        else -> refuse("an inline podbuf head is written from no struct, union or tuple")
-    }
-
-    // -- encoding ---------------------------------------------------------------------
-
-    /** The statements that write a present value [expr] of [form] at [at], from the type position [type]. */
-    private fun writeForm(form: PodbufForm, type: Type, expr: String, at: String, owner: String): CodeBlock = when (form.kindCase) {
-        PodbufForm.KindCase.BOOLEAN -> CodeBlock.of("w.putU8(%L, if (%L) 1 else 0)\n", at, base(domainOf(type), expr))
-        PodbufForm.KindCase.INT, PodbufForm.KindCase.FLOAT -> {
-            val prim = scalarPrim(form)
-            CodeBlock.of("w.put%L(%L, %L)\n", prim.field, at, narrowed(prim, base(domainOf(type), expr)))
-        }
-        PodbufForm.KindCase.ENUM, PodbufForm.KindCase.ENUM_SET -> {
-            val prim = scalarPrim(form)
-            val domain = domainOf(type)
-            val range = openRange(domain, form)
-            if (range == null) {
-                CodeBlock.of("w.put%L(%L, %L)\n", prim.field, at, narrowed(prim, base(domain, expr)))
-            } else {
-                // An open enum admits every Long; one the field cannot hold is refused, not truncated.
-                val raw = fresh("raw")
-                CodeBlock.builder()
-                    .addStatement("val %L = %L", raw, base(domain, expr))
-                    .beginControlFlow("if (%L !in %LL..%LL)", raw, range.first, range.last)
-                    .addStatement(
-                        "throw %T.Contract(%T(%S, %T.Range))",
-                        PB_ENCODE_ERROR, PB_VIOLATION, (domain as Domain.EnumOf).declared, PB_RULE,
-                    )
-                    .endControlFlow()
-                    .addStatement("w.put%L(%L, %L)", prim.field, at, narrowed(prim, raw))
-                    .build()
-            }
-        }
-        PodbufForm.KindCase.INLINE_HEAD -> if (headSize(form.inlineHead) == 0) {
-            // A head with no field writes nothing.
-            CodeBlock.of("")
-        } else {
-            CodeBlock.of("%M(%L, w, %L)\n", headFunctions(type).let { MemberName(it.pkg, it.encode) }, expr, at)
-        }
-        PodbufForm.KindCase.INLINE_ARRAY -> inlineArrayWrite(form, type, expr, at, owner)
-        PodbufForm.KindCase.TAIL_DESCRIPTOR -> refuse(TAIL_FORMS)
-        else -> refuse("a podbuf field carries no form")
-    }
-
-    /**
-     * An exact-length array, each element at its stride; or exact-length
-     * bytes, whose length is checked before they are copied in, as Rust
-     * checks its `Vec<u8>`'s.
-     */
-    private fun inlineArrayWrite(form: PodbufForm, type: Type, expr: String, at: String, owner: String): CodeBlock {
-        val array = form.inlineArray
-        if (!array.hasElement()) refuse("an inline array carries no element form")
-        if (type.kindCase == Type.KindCase.ARRAY) {
-            if (!type.array.hasElement()) refuse("an array carries no element type")
-            val i = fresh("i")
-            val e = fresh("e")
-            val write = writeForm(array.element, type.array.element, e, "$at + ${scaled(i, formSize(array.element))}", owner)
-            if (write.isEmpty()) return write
-            return CodeBlock.builder().beginControlFlow("%L.forEachIndexed { %L, %L ->", expr, i, e).add(write).endControlFlow().build()
-        }
-        val domain = domainOf(type)
-        val checked = if (domain is Domain.Named) domain.declared else owner
-        val bytes = fresh("bytes")
-        return CodeBlock.builder()
-            .addStatement("val %L = %L", bytes, base(domain, expr))
-            .beginControlFlow("if (%L.size != %L)", bytes, array.count)
-            .addStatement("throw %T.Contract(%T(%S, %T.Length))", PB_ENCODE_ERROR, PB_VIOLATION, checked, PB_RULE)
-            .endControlFlow()
-            .addStatement("w.putBytes(%L, %L)", at, bytes)
-            .build()
-    }
-
-    /**
-     * The values an open enum's field of [form]'s width holds, or `null` when
-     * the write needs no check: a strict enum, whose values fit by
-     * construction; a 64-bit field, which holds every `Long` (a `u64` as its
-     * bit pattern); an enum set, whose `wireBits` checks its own.
-     */
-    private fun openRange(domain: Domain, form: PodbufForm): LongRange? {
-        if (domain !is Domain.EnumOf || !domain.open || form.kindCase != PodbufForm.KindCase.ENUM) return null
-        return when (form.enum.width) {
-            IntWidth.INT_WIDTH_U8 -> 0L..0xFFL
-            IntWidth.INT_WIDTH_I8 -> Byte.MIN_VALUE.toLong()..Byte.MAX_VALUE.toLong()
-            IntWidth.INT_WIDTH_U16 -> 0L..0xFFFFL
-            IntWidth.INT_WIDTH_I16 -> Short.MIN_VALUE.toLong()..Short.MAX_VALUE.toLong()
-            IntWidth.INT_WIDTH_U32 -> 0L..0xFFFF_FFFFL
-            IntWidth.INT_WIDTH_I32 -> Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()
-            else -> null
-        }
-    }
-
-    /** [base], a `Long` or `Double`, as the argument of `Writer.put<prim>`: Rust's `as`, which truncates. */
-    private fun narrowed(prim: Prim, base: String): String = when (prim) {
-        Prim.U8, Prim.U16, Prim.I32 -> "$base.toInt()"
-        Prim.I8 -> "$base.toByte()"
-        Prim.I16 -> "$base.toShort()"
-        Prim.F32 -> "$base.toFloat()"
-        Prim.Bool, Prim.U32, Prim.U64, Prim.I64, Prim.F64 -> base
-    }
-
-    // -- verifying ----------------------------------------------------------------------
-
-    /**
-     * The checks of a value of [form] at offset [off] of the head's `region`,
-     * in the Rust codec's order: a boolean above 1 is `Range`; a strict
-     * enum's undeclared value or enum set's undeclared bit is `Variant`, an
-     * open one is unchecked; a typl constraint is checked as the value
-     * object checks it; a nested head by its own helper.
-     */
-    private fun verifyForm(form: PodbufForm, type: Type, off: String, owner: String): CodeBlock = when (form.kindCase) {
-        PodbufForm.KindCase.BOOLEAN -> CodeBlock.builder()
-            .beginControlFlow("if (region.u8At(%L) > 1)", off)
-            .addStatement("throw %T.Contract(%T(%S, %T.Range))", PB_VERIFY_ERROR, PB_VIOLATION, owner, PB_RULE)
-            .endControlFlow().build()
-        PodbufForm.KindCase.INT, PodbufForm.KindCase.FLOAT, PodbufForm.KindCase.ENUM, PodbufForm.KindCase.ENUM_SET -> {
-            val raw = fresh("raw")
-            val check = checkDomain(domainOf(type), raw, owner, ::pattern)
-            if (check.isEmpty()) check else CodeBlock.builder().addStatement("val %L = %L", raw, load(form, off)).add(check).build()
-        }
-        PodbufForm.KindCase.INLINE_HEAD -> if (headSize(form.inlineHead) == 0) {
-            CodeBlock.of("")
-        } else {
-            val (at, size) = inlinePlace(off)
-            CodeBlock.of("%M(buffer, %L, %L, tail)\n", headFunctions(type).let { MemberName(it.pkg, it.verify) }, at, size)
-        }
-        PodbufForm.KindCase.INLINE_ARRAY -> {
-            val array = form.inlineArray
-            // Exact-length bytes have nothing to check: their length is the type's.
-            if (type.kindCase != Type.KindCase.ARRAY) {
-                CodeBlock.of("")
-            } else {
-                val i = fresh("i")
-                val o = fresh("o")
-                val inner = verifyForm(array.element, type.array.element, o, owner)
-                if (inner.isEmpty()) {
-                    inner
-                } else {
-                    CodeBlock.builder().beginControlFlow("for (%L in 0 until %L)", i, array.count)
-                        .addStatement("val %L = %L", o, indexed(off, i, formSize(array.element)))
-                        .add(inner)
-                        .endControlFlow().build()
-                }
-            }
-        }
-        PodbufForm.KindCase.TAIL_DESCRIPTOR -> refuse(TAIL_FORMS)
-        else -> refuse("a podbuf field carries no form")
-    }
-
-    /** Registers an inline string scalar's pattern and names its compiled `Regex`. */
-    private fun pattern(scalar: ridl.codegen.v1.ModelOuterClass.Scalar): String {
-        patterns += javaPattern(scalar.constraint.pattern)
-        return "PODBUF_PATTERN_${patterns.size - 1}"
-    }
-
-    /** The load of the scalar [form] at [off] of `region`, widened to the domain's `Long`, `Double` or `Boolean`. */
-    private fun load(form: PodbufForm, off: String): String {
-        val prim = scalarPrim(form)
-        if (prim == Prim.Bool) return "(region.u8At($off) != 0)"
-        return prim.widen("region.${prim.read}At($off)")
-    }
-
-    /**
-     * The `at` and `size` of a head inline at [off] of this one: the bytes
-     * past the producer's size are the parent's, so its size is what is left.
-     */
-    private fun inlinePlace(off: String): Pair<String, String> =
-        if (off == "0") "at" to "size" else "at + $off" to "maxOf(size - $off, 0)"
-
-    // -- decoding -------------------------------------------------------------------------
-
-    /** The value of [form] at offset [off] of the head's `region`, which `verify` passed. */
-    private fun decodeForm(form: PodbufForm, type: Type, off: String): CodeBlock = when (form.kindCase) {
-        PodbufForm.KindCase.BOOLEAN, PodbufForm.KindCase.INT, PodbufForm.KindCase.FLOAT,
-        PodbufForm.KindCase.ENUM, PodbufForm.KindCase.ENUM_SET,
-        -> construct(domainOf(type), CodeBlock.of("%L", load(form, off)))
-        PodbufForm.KindCase.INLINE_HEAD -> {
-            val (at, size) = inlinePlace(off)
-            CodeBlock.of("%M(buffer, %L, %L)", headFunctions(type).let { MemberName(it.pkg, it.decode) }, at, size)
-        }
-        PodbufForm.KindCase.INLINE_ARRAY -> {
-            val array = form.inlineArray
-            if (type.kindCase == Type.KindCase.ARRAY) {
-                val i = fresh("i")
-                val o = fresh("o")
-                CodeBlock.of(
-                    "%M(%L) { %L ->\nval %L = %L\n%L\n}",
-                    LIST_OF_SIZE, array.count, i, o, indexed(off, i, formSize(array.element)),
-                    decodeForm(array.element, type.array.element, o),
-                )
-            } else {
-                construct(domainOf(type), CodeBlock.of("region.bytesAt(%L, %L)", off, array.count))
-            }
-        }
-        PodbufForm.KindCase.TAIL_DESCRIPTOR -> refuse(TAIL_FORMS)
-        else -> refuse("a podbuf field carries no form")
+        if (emitted) codec(name, declaration.visibility, "declaration `$owner`", head.size, bound)
     }
 }
-
-/** `base + off`, or `base` alone at offset 0. */
-private fun position(base: String, off: Long): String = if (off == 0L) base else "$base + $off"
-
-/** `i * stride`, or `i` alone for a stride of 1. */
-private fun scaled(i: String, stride: Long): String = if (stride == 1L) i else "$i * $stride"
-
-/** The offset of element [i] of an inline array at [off]: `off + i * stride`. */
-private fun indexed(off: String, i: String, stride: Long): String = if (off == "0") scaled(i, stride) else "$off + ${scaled(i, stride)}"
 
 /** The three podbuf helpers of a head, in the package that declares it. */
 internal data class PodbufFunctions(val pkg: String, val suffix: String) {
