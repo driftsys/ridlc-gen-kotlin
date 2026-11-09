@@ -121,14 +121,43 @@ class StreamsTest {
     }
 
     @Test
-    fun `an interface with a stream has no blocking serve, and one with none keeps it`() {
-        val streamed = faces("streamed", "  query history(level: Level): <Sample> @[..50ms]")
+    fun `an interface with a stream member on its face has no blocking serve, and one with none keeps it`() {
+        // Beside a plain command, so the boundary is "with a stream member", not "of stream members alone".
+        val streamed = faces(
+            "streamed",
+            """
+              command ping(level: Level) @[..50ms]
+              query history(level: Level): <Sample> @[..50ms]
+            """.trimIndent(),
+        )
         assertFalse("fun <H> serve(" in streamed, streamed)
         assertTrue("suspend fun <H> serveAsync(" in streamed, streamed)
         assertTrue("P : StreamCaller" in streamed && "H : StreamHandler" in streamed, streamed)
         val plain = faces("plain", "  query latest(level: Level): Sample @[..50ms]")
         assertTrue("fun <H> serve(" in plain, plain)
         assertFalse("StreamCaller" in plain || "StreamHandler" in plain, plain)
+        // A member with two stream parameters is not on the face, so it takes no `serve` away.
+        val off = faces(
+            "off",
+            """
+              query latest(level: Level): Sample @[..50ms]
+              command splice(left: <Sample>, right: <Sample>) @[..50ms]
+            """.trimIndent(),
+        )
+        assertTrue("fun <H> serve(" in off, off)
+        assertFalse("StreamCaller" in off || "StreamHandler" in off, off)
+    }
+
+    @Test
+    fun `dispatch says how it counts a query, streamed or not`() {
+        val text = faces("counts", "  query history(level: Level): <Sample> @[..50ms]")
+        val kdoc = text.substring(text.lastIndexOf("/**", text.indexOf("fun <H> dispatch(")), text.indexOf("fun <H> dispatch("))
+        assertTrue("a streamed query counting once its coroutine is started, before it settles." in kdoc, kdoc)
+        assertTrue(
+            "A reply refused as too large is settled again with `Transport.Corrupt`, and a query that is not streamed counts by " +
+                "that second settlement." in kdoc,
+            kdoc,
+        )
     }
 
     @Test
@@ -197,8 +226,19 @@ class StreamsTest {
     fun `an interface of stream members alone has an async client and a provider`() {
         val text = faces("only", "  command replay(samples: <Sample>) @[..50ms]")
         assertTrue("Kind.Command, \"replay\"" in text, text)
-        assertFalse("class UpClient" in text, text)
+        assertFalse("class UpClient" in text || "class UpPollClient" in text, text)
         assertTrue("class UpAsyncClient" in text, text)
         assertTrue("interface UpProvider" in text, text)
+    }
+
+    @Test
+    fun `a stream member beside a signal alone, or an event alone, keeps the poll and blocking clients`() {
+        val beside = mapOf("signal" to "signal levelNow : Level @1s", "event" to "event tripped : Level @[100ms..1s]")
+        for ((name, member) in beside) {
+            val text = faces("beside$name", "  $member\n  command replay(samples: <Sample>) @[..50ms]")
+            assertTrue("class UpPollClient" in text, "$name: no poll client\n$text")
+            assertTrue("class UpClient" in text, "$name: no blocking client\n$text")
+            assertTrue("class UpAsyncClient" in text, "$name: no async client\n$text")
+        }
     }
 }

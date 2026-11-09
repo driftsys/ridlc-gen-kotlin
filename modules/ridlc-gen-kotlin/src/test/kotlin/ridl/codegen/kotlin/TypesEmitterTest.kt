@@ -50,9 +50,10 @@ class TypesEmitterTest {
         val stream = Type.newBuilder().setStream(StreamType.getDefaultInstance()).build()
         val emitted = TypesEmitter(model(struct("Feed", "items" to stream)).build(), options).emit()
         assertNull(emitted.text)
-        assertEquals(1, emitted.errors.size)
-        assertTrue("kt.demo.Feed" in emitted.errors[0] && "O-K5" in emitted.errors[0], emitted.errors[0])
-        assertTrue("a stream is only a member's parameter or reply" in emitted.errors[0], emitted.errors[0])
+        assertEquals(
+            listOf("$PLUGIN: `kt.demo.Feed` cannot be generated: a stream is only a member's parameter or reply (O-K5, driftsys/ridl#336)"),
+            emitted.errors,
+        )
     }
 
     @Test
