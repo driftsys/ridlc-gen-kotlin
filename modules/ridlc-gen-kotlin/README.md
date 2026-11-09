@@ -38,7 +38,7 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.16.1` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.17.0` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
