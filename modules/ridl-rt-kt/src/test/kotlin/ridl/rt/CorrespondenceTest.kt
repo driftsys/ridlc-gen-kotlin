@@ -89,7 +89,7 @@ import kotlin.reflect.full.isSubclassOf
  * variants, fields and methods under their Kotlin spellings.
  *
  * The rows are transcribed from `crates/ridl-rt/src` of the pinned release,
- * ridl 0.16.1. Two Rust items have no row: `payload::Ref` and
+ * ridl 0.17.0. Two Rust items have no row: `payload::Ref` and
  * `payload::Encoded`, the borrow-checked proof that a value is decoded only
  * from checked bytes, whose guarantee [Payload] gives by taking the view
  * `verify` returned. Nor have the fixed-size buffer types, `Payload::Buffer`
