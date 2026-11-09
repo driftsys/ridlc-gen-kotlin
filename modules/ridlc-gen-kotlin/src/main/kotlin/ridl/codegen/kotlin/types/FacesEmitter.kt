@@ -18,6 +18,7 @@ import com.squareup.kotlinpoet.NOTHING
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.STAR
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
@@ -26,6 +27,7 @@ import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.joinToCode
 import ridl.codegen.kotlin.Options
 import ridl.codegen.kotlin.PLUGIN
+import ridl.codegen.kotlin.WireEncoding
 import ridl.codegen.v1.ModelOuterClass.Clause
 import ridl.codegen.v1.ModelOuterClass.ComparisonOp
 import ridl.codegen.v1.ModelOuterClass.ContractKind
@@ -34,7 +36,9 @@ import ridl.codegen.v1.ModelOuterClass.Interface
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.Param
 import ridl.codegen.v1.ModelOuterClass.Payload
+import ridl.codegen.v1.ModelOuterClass.PayloadSizes
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import ridl.codegen.v1.ModelOuterClass.SizeState
 import ridl.codegen.v1.ModelOuterClass.StreamForm
 import ridl.codegen.v1.ModelOuterClass.StreamShape
 import ridl.codegen.v1.ModelOuterClass.Timing
@@ -94,6 +98,18 @@ private val SETTLE_UPLOAD = MemberName("$RT.coroutines", "settleUpload")
 private val FLOW = ClassName("kotlinx.coroutines.flow", "Flow")
 private val COROUTINE_SCOPE_OF = MemberName("kotlinx.coroutines", "coroutineScope")
 private val LAUNCH = MemberName("kotlinx.coroutines", "launch")
+
+/** What a codec object's name adds to its type's: `Codec.kt` and `PodbufCodec.kt` name them so (docs/design.md §4). */
+private fun codecSuffix(encoding: WireEncoding): String = when (encoding) {
+    WireEncoding.FlatBuffers -> "Codec"
+    WireEncoding.Podbuf -> "PodbufCodec"
+}
+
+/** How the face's prose names [encoding]: `FlatBuffers`, as the Rust tables' docs do, and `podbuf`. */
+private fun prose(encoding: WireEncoding): String = when (encoding) {
+    WireEncoding.FlatBuffers -> "FlatBuffers"
+    WireEncoding.Podbuf -> "podbuf"
+}
 
 /** The chunk bound of a byte or text stream whose member has no limit of its own: `CALL_CEILING`. */
 private const val CALL_STREAM_LIMIT = 16_128
@@ -177,6 +193,20 @@ class FacesEmitter internal constructor(
     private val wires = Wires(model, pkg)
     private val inits = Inits(model, pkg, wires)
     private val warnings = mutableListOf<String>()
+
+    /**
+     * The encodings the package carries a codec for, FlatBuffers first as the
+     * Rust backend orders its size tables, whatever the manifest's order.
+     */
+    private val carried = WireEncoding.entries.filter { it in options.encodings }
+
+    /**
+     * Whether the package carries one encoding: the face then names that
+     * encoding's codec objects directly, the shape of a FlatBuffers-only face
+     * since before podbuf. With several, each use picks the codec of its
+     * port's encoding (docs/design.md §5).
+     */
+    private val single = carried.size == 1
 
     /** Whether any interface has a face, not its descriptors alone: the file then needs the shared helpers. */
     private var faces = false
@@ -535,7 +565,6 @@ class FacesEmitter internal constructor(
         val method: String get() = camel.replaceFirstChar(Char::lowercaseChar)
     }
 
-    /** A named payload: its Kotlin type, its codec object, and its FlatBuffers size bound. */
     /**
      * A payload the face sends or receives: a declared named type, or a
      * struct the lowering induced for a call's parameter list or a query's
@@ -543,20 +572,36 @@ class FacesEmitter internal constructor(
      * `null` for an induced struct; [typeName] is what the member's
      * `PayloadInfo` names, the reference as written or the induced name.
      */
-    private inner class Named(val type: ClassName, val codec: ClassName, val typeName: String, val ref: TypeRef?)
+    private class Named(val type: ClassName, val typeName: String, val ref: TypeRef?) {
+        /** Its codec object in [encoding], in the package that declares it: `<Type>Codec` or `<Type>PodbufCodec`. */
+        fun codec(encoding: WireEncoding): ClassName = ClassName(type.packageName, type.simpleName + codecSuffix(encoding))
+    }
 
     private fun declared(ref: TypeRef): Named {
         val (owner, declaration) = wires.declarationOf(ref)
-        return Named(ClassName(owner, declaration.name.camel), ClassName(owner, declaration.name.camel + "Codec"), ref.reference, ref)
+        return Named(ClassName(owner, declaration.name.camel), ref.reference, ref)
     }
 
-    /** The struct induced at `Model.tuples[index]`, which `Codec.kt` gives a codec when its root is bounded. */
-    private fun induced(index: Int): Named {
+    /**
+     * The struct induced at `Model.tuples[index]`, whose payload states are
+     * [sizes]. Each carried encoding's codec gives it a codec only when it is
+     * bounded there, so an interface that sends it unbounded in one is
+     * skipped, in the words of Rust's `induced_name`.
+     */
+    private fun induced(index: Int, sizes: PayloadSizes): Named {
         val name = model.getTuples(index).name.rust
         if (name.isEmpty()) refuse("an induced call struct has no name")
-        val bounded = model.flatbuffers.rootsList.any { it.hasTuple() && it.tuple == index && it.hasMaxSize() }
-        if (!bounded) refuse("`${model.name.dotted}.$name` has no finite FlatBuffers bound")
-        return Named(ClassName(pkg, name), ClassName(pkg, name + "Codec"), name, null)
+        if (WireEncoding.FlatBuffers in carried) {
+            val bounded = model.flatbuffers.rootsList.any { it.hasTuple() && it.tuple == index && it.hasMaxSize() }
+            if (!bounded) refuse("`${model.name.dotted}.$name` has no finite FlatBuffers bound")
+        }
+        if (WireEncoding.Podbuf in carried && !(sizes.hasPodbuf() && sizes.podbuf.stateCase == SizeState.StateCase.BOUNDED)) {
+            refuse(
+                "`${model.name.dotted}.$name` has no finite podbuf bound: its largest buffer does not fit a u32 offset, " +
+                    "or an array or map of it passes a descriptor limit",
+            )
+        }
+        return Named(ClassName(pkg, name), name, null)
     }
 
     /**
@@ -593,9 +638,52 @@ class FacesEmitter internal constructor(
         private val commands = faced.filter { it.interaction.hasCommand() }
         private val queries = faced.filter { it.interaction.hasQuery() }
 
+        /**
+         * What `sizes`, `codec` and `replyCodec` throw for an encoding the
+         * package carries no codec for, which [encoding] reads, as a `%P`
+         * template.
+         */
+        private fun noCodec(encoding: String = "encoding"): String =
+            "interface `${iface.declared.declared}` has no \${$encoding.encodingName} codec: its package carries " +
+                if (single) "${carried.single().key} only" else carried.joinToString(" and ") { it.key }
+
+        /**
+         * [payload]'s codec on a port whose encoding [encoding] reads: the one
+         * codec object when the package carries one encoding; with several,
+         * [descriptor]'s [function] picks it, or, for a stream's element, which
+         * no descriptor holds, a `when` over the carried encodings.
+         */
+        private fun codecOn(payload: Named, encoding: String, descriptor: ClassName?, function: String = "codec"): CodeBlock {
+            if (single) return CodeBlock.of("%T", payload.codec(carried.single()))
+            if (descriptor != null) return CodeBlock.of("%T.%N(%L)", descriptor, function, encoding)
+            val choice = CodeBlock.builder().add("when (%L) {\n", encoding).indent()
+            for (e in carried) choice.add("%T.%L -> %T\n", ENCODING, e.name, payload.codec(e))
+            return choice.add("else -> throw IllegalArgumentException(%P)\n", noCodec(encoding)).unindent().add("}").build()
+        }
+
+        /** The descriptor's private size table in [encoding]: `FLATBUFFERS_SIZES`, `PODBUF_SIZES`. */
+        private fun sizesName(encoding: WireEncoding): String = "${encoding.name.uppercase()}_SIZES"
+
+        /**
+         * The body of a function that returns, for the encoding [subject]
+         * names, the one of [values] at that encoding's place in [carried],
+         * and throws `IllegalArgumentException` for any other.
+         */
+        private fun pick(subject: String, values: List<CodeBlock>): CodeBlock {
+            val code = CodeBlock.builder().beginControlFlow("return when (%L)", subject)
+            carried.zip(values).forEach { (encoding, value) -> code.addStatement("%T.%L -> %L", ENCODING, encoding.name, value) }
+            return code.addStatement("else -> throw IllegalArgumentException(%P)", noCodec(subject)).endControlFlow().build()
+        }
+
         private fun named(payload: Payload?, what: String): Named {
             if (payload == null || !payload.hasType()) refuse("$what must be a single named type")
-            if (!payload.hasFlatbuffersMaxSize()) refuse("$what `${payload.type.reference}` has no FlatBuffers bound")
+            if (WireEncoding.FlatBuffers in carried && !payload.hasFlatbuffersMaxSize()) {
+                refuse("$what `${payload.type.reference}` has no FlatBuffers bound")
+            }
+            val podbuf = payload.sizes.podbuf
+            if (WireEncoding.Podbuf in carried && !(payload.sizes.hasPodbuf() && podbuf.stateCase == SizeState.StateCase.BOUNDED)) {
+                refuse("$what `${payload.type.reference}` has no podbuf bound")
+            }
             return declared(payload.type)
         }
 
@@ -639,7 +727,11 @@ class FacesEmitter internal constructor(
             }
             if (if (isCommand) command.hasRequestTuple() else query.hasRequestTuple()) {
                 val name = if (params.any { it.type.hasStream() && it.name.property == "args" }) "request" else "args"
-                return Argument(name, null, induced(if (isCommand) command.requestTuple.index else query.requestTuple.index))
+                return Argument(
+                    name,
+                    null,
+                    if (isCommand) induced(command.requestTuple.index, command.requestSizes) else induced(query.requestTuple.index, query.requestSizes),
+                )
             }
             if (params.any { !it.hasType() }) refuse("interaction `${m.declared}` declares a parameter with no type")
             refuse("interaction `${m.declared}` declares a stream parameter, which has no payload type")
@@ -653,7 +745,7 @@ class FacesEmitter internal constructor(
         private fun reply(m: Member): Named {
             val query = m.interaction.query
             if (query.hasReplyPayload()) return named(query.replyPayload, "query `${m.declared}`'s reply")
-            if (query.hasReplyTuple()) return induced(query.replyTuple.index)
+            if (query.hasReplyTuple()) return induced(query.replyTuple.index, query.replySizes)
             if (query.reply.hasValue()) refuse("query `${m.declared}`'s reply must be a named type or a tuple")
             refuse("query `${m.declared}`'s reply is a fallible `T | E`, which the face does not carry")
         }
@@ -672,11 +764,15 @@ class FacesEmitter internal constructor(
             else -> declared(stream.element).type
         }
 
-        /** The `StreamChunks` of [stream] on [m]: a byte or text stream's chunk is bounded by the member's limit. */
-        private fun chunks(m: Member, stream: StreamShape): CodeBlock {
+        /**
+         * The `StreamChunks` of [stream] on [m], over a port whose encoding
+         * [encoding] reads: a byte or text stream's chunk is bounded by the
+         * member's limit.
+         */
+        private fun chunks(m: Member, stream: StreamShape, encoding: String): CodeBlock {
             val limit = if (m.interaction.hasLimit()) m.interaction.limit else CALL_STREAM_LIMIT
             return when (stream.form) {
-                StreamForm.STREAM_FORM_ELEMENTS -> CodeBlock.of("%M(%T)", ELEMENT_CHUNKS, declared(stream.element).codec)
+                StreamForm.STREAM_FORM_ELEMENTS -> CodeBlock.of("%M(%L)", ELEMENT_CHUNKS, codecOn(declared(stream.element), encoding, null))
                 else -> {
                     if (limit < SHORTEST_RAW_LIMIT) refuse("byte or text stream member `${m.declared}` has limit $limit, below $SHORTEST_RAW_LIMIT")
                     CodeBlock.of("%M(%L)", if (stream.form == StreamForm.STREAM_FORM_BYTES) BYTE_CHUNKS else TEXT_CHUNKS, limit)
@@ -745,9 +841,6 @@ class FacesEmitter internal constructor(
             // unit can hold several source packages, so `Model.name` is not the catalog's name.
             val catalogName = model.catalog.`package`
             val calls = members.filter { it.interaction.hasCommand() } + members.filter { it.interaction.hasQuery() }
-            val callCodecs = calls.flatMap { callPayloads(it) }
-                .map { it.codec }.distinct()
-            val eventCodecs = events.map { eventPayload(it).codec }.distinct()
             val rows = members.map { row(it) }.joinToCode(",\n")
             val builder = TypeSpec.objectBuilder(self).visibility()
                 .doc(links.kdoc(DocParts.of(iface), "The descriptor of interface `${iface.declared.declared}`."))
@@ -766,23 +859,31 @@ class FacesEmitter internal constructor(
                     PropertySpec.builder("members", LIST.parameterizedBy(MEMBER), KModifier.OVERRIDE)
                         .initializer("listOf(\n%L,\n)", rows).build(),
                 )
-                .addProperty(
-                    PropertySpec.builder("FLATBUFFERS_SIZES", SIZES, KModifier.PRIVATE)
-                        .addKdoc("The size table in FlatBuffers, the one encoding the package carries a codec for, from each codec's `maxSize`.")
+            // One size table per encoding the package carries, FlatBuffers first, as the Rust backend's `Sizes<E>`.
+            for (encoding in carried) {
+                val callCodecs = calls.flatMap { callPayloads(it) }.map { it.codec(encoding) }.distinct()
+                val eventCodecs = events.map { eventPayload(it).codec(encoding) }.distinct()
+                builder.addProperty(
+                    PropertySpec.builder(sizesName(encoding), SIZES, KModifier.PRIVATE)
+                        .addKdoc(
+                            "The size table in %L, %L the package carries a codec for, from each codec's `maxSize`.",
+                            prose(encoding), if (single) "the one encoding" else "one of the encodings",
+                        )
                         .initializer(
-                            "%T(\n%T.FlatBuffers,\nlistOf(%L),\n%L,\n%L,\n)", SIZES, ENCODING,
-                            members.map { reservationRow(it) }.joinToCode(", "), largest(callCodecs), largest(eventCodecs),
+                            "%T(\n%T.%L,\nlistOf(%L),\n%L,\n%L,\n)", SIZES, ENCODING, encoding.name,
+                            members.map { reservationRow(it, encoding) }.joinToCode(", "), largest(callCodecs), largest(eventCodecs),
                         ).build(),
                 )
-                .addFunction(
-                    FunSpec.builder("sizes").addModifiers(KModifier.OVERRIDE).addParameter("encoding", ENCODING).returns(SIZES)
-                        .addStatement(
-                            "require(encoding == %T.FlatBuffers) { %P }", ENCODING,
-                            "interface `${iface.declared.declared}` has no \${encoding.encodingName} codec: its package carries flatbuffers only",
-                        )
-                        .addStatement("return FLATBUFFERS_SIZES")
-                        .build(),
-                )
+            }
+            val sizes = FunSpec.builder("sizes").addModifiers(KModifier.OVERRIDE).addParameter("encoding", ENCODING).returns(SIZES)
+            if (single) {
+                val encoding = carried.single()
+                sizes.addStatement("require(encoding == %T.%L) { %P }", ENCODING, encoding.name, noCodec())
+                    .addStatement("return %L", sizesName(encoding))
+            } else {
+                sizes.addCode(pick("encoding", carried.map { CodeBlock.of("%L", sizesName(it)) }))
+            }
+            builder.addFunction(sizes.build())
             // What only the face uses: an internal interface has none.
             if (internal) return builder.build()
             builder.addFunction(checkCatalog()).addFunction(checkEncoding())
@@ -883,14 +984,14 @@ class FacesEmitter internal constructor(
             val parameter = if (streamShape(m) == StreamShapeKind.Reply) {
                 null
             } else {
-                CodeBlock.of("%M(handler, claim.id, %L)", CLAIM_STREAM, chunks(m, parameterStream(m)))
+                CodeBlock.of("%M(handler, claim.id, %L)", CLAIM_STREAM, chunks(m, parameterStream(m), "handler.encoding"))
             }
             val args = listOfNotNull(CodeBlock.of("%L", value), parameter).joinToCode(", ")
             when {
                 streamShape(m) != StreamShapeKind.Upload -> {
                     code.addStatement(
                         "scope.%M { %M(handler, claim.id, %L, provider.%N(%L)) }",
-                        LAUNCH, DRIVE_REPLY, chunks(m, replyStream(m)), m.method, args,
+                        LAUNCH, DRIVE_REPLY, chunks(m, replyStream(m), "handler.encoding"), m.method, args,
                     )
                     code.addStatement("true")
                 }
@@ -900,7 +1001,7 @@ class FacesEmitter internal constructor(
                         .beginControlFlow("%M(handler, claim.id)", SETTLE_UPLOAD)
                         .addStatement("val reply = provider.%N(%L)", m.method, args)
                         .addStatement("if (!%T.ensure(%L, reply)) throw %T.ContractBroken", m.descriptor, value, CONTRACT)
-                        .addStatement("encoded(%T, reply)", reply.codec)
+                        .addStatement("encoded(%L, reply)", codecOn(reply, "handler.encoding", m.descriptor, "replyCodec"))
                         .endControlFlow()
                         .endControlFlow()
                         .addStatement("true")
@@ -1008,12 +1109,12 @@ class FacesEmitter internal constructor(
         }
 
         /**
-         * The member's row of the size table, from the `maxSize` of its
-         * payloads' codecs: the request and then the reply of a query, the
+         * The member's row of the size table in [encoding], from the
+         * `maxSize` of its payloads' codecs in that encoding: the request and then the reply of a query, the
          * request alone of a streamed reply, the one payload of a signal, an event or a command, and `0` for a
          * `fixed`, which is never in flight (driftsys/ridl#904).
          */
-        private fun reservationRow(m: Member): CodeBlock {
+        private fun reservationRow(m: Member, encoding: WireEncoding): CodeBlock {
             val i = m.interaction
             val payloads = when {
                 i.hasSignal() -> listOf(signalPayload(m))
@@ -1021,7 +1122,7 @@ class FacesEmitter internal constructor(
                 i.hasCommand() || i.hasQuery() -> callPayloads(m)
                 else -> return CodeBlock.of("0uL")
             }
-            return payloads.map { CodeBlock.of("%T.maxSize.toULong()", it.codec) }.joinToCode(" + ")
+            return payloads.map { CodeBlock.of("%T.maxSize.toULong()", it.codec(encoding)) }.joinToCode(" + ")
         }
 
         /** The largest `maxSize` of [codecs], or `0` with none. */
@@ -1056,18 +1157,18 @@ class FacesEmitter internal constructor(
                     val payload = signalPayload(m)
                     builder.addKdoc("Signal `%L` of `%L`.", m.declared, iface.declared.declared)
                         .addSuperinterface(SIGNAL.parameterizedBy(payload.type))
-                        .addProperty(codecProperty(payload))
+                        .codecs(payload)
                         .addFunction(FunSpec.builder("init").addModifiers(KModifier.OVERRIDE).returns(payload.type).addStatement("return %L", channelInit(m, payload)).build())
                 }
                 i.hasEvent() -> {
                     val payload = eventPayload(m)
                     builder.addKdoc("Event `%L` of `%L`.", m.declared, iface.declared.declared)
-                        .addSuperinterface(EVENT.parameterizedBy(payload.type)).addProperty(codecProperty(payload))
+                        .addSuperinterface(EVENT.parameterizedBy(payload.type)).codecs(payload)
                 }
                 i.hasCommand() -> {
                     val arg = argument(m).payload
                     builder.addKdoc("Command `%L` of `%L`.", m.declared, iface.declared.declared)
-                        .addSuperinterface(COMMAND.parameterizedBy(arg.type)).addProperty(codecProperty(arg))
+                        .addSuperinterface(COMMAND.parameterizedBy(arg.type)).codecs(arg)
                         .addFunction(clauseFun("require", ContractKind.CONTRACT_KIND_REQUIRE, m, arg, null))
                 }
                 i.hasQuery() && streamShape(m).let { it == StreamShapeKind.Reply || it == StreamShapeKind.Duplex } -> {
@@ -1075,7 +1176,7 @@ class FacesEmitter internal constructor(
                     // A streamed reply has no one value an `ensure` clause reads, as in the Rust face.
                     builder.addKdoc("Query `%L` of `%L`, whose reply is a stream.", m.declared, iface.declared.declared)
                         .addSuperinterface(QUERY.parameterizedBy(arg.type, streamValue(replyStream(m))))
-                        .addProperty(codecProperty(arg))
+                        .codecs(arg)
                         .addFunction(clauseFun("require", ContractKind.CONTRACT_KIND_REQUIRE, m, arg, null))
                         .addFunction(
                             FunSpec.builder("ensure").addModifiers(KModifier.OVERRIDE)
@@ -1088,22 +1189,53 @@ class FacesEmitter internal constructor(
                     val reply = reply(m)
                     builder.addKdoc("Query `%L` of `%L`.", m.declared, iface.declared.declared)
                         .addSuperinterface(QUERY.parameterizedBy(arg.type, reply.type))
-                        .addProperty(codecProperty(arg))
-                        .addProperty(PropertySpec.builder("replyCodec", reply.codec).initializer("%T", reply.codec).build())
+                        .codecs(arg)
+                        .codecs(reply, reply = true)
                         .addFunction(clauseFun("require", ContractKind.CONTRACT_KIND_REQUIRE, m, arg, null))
                         .addFunction(clauseFun("ensure", ContractKind.CONTRACT_KIND_ENSURE, m, arg, reply))
                 }
                 i.hasFixed() -> {
                     val payload = named(i.fixed.named.takeIf { i.fixed.hasNamed() }, "fixed `${m.declared}`'s payload")
                     builder.addKdoc("Fixed `%L` of `%L`.", m.declared, iface.declared.declared)
-                        .addSuperinterface(FIXED.parameterizedBy(payload.type)).addProperty(codecProperty(payload))
+                        .addSuperinterface(FIXED.parameterizedBy(payload.type)).codecs(payload)
                 }
             }
             return builder.build()
         }
 
-        private fun codecProperty(payload: Named): PropertySpec =
-            PropertySpec.builder("codec", payload.codec).addKdoc("The payload's FlatBuffers codec.").initializer("%T", payload.codec).build()
+        /**
+         * The codecs of an interaction's [payload], or of a query's reply when
+         * [reply]: `codec` or `replyCodec`, the one codec object, when the
+         * package carries one encoding; with several, one property per
+         * encoding, `flatBuffersCodec` and `podbufCodec`, and `codec(encoding)`,
+         * which picks one (docs/design.md §5).
+         */
+        private fun TypeSpec.Builder.codecs(payload: Named, reply: Boolean = false): TypeSpec.Builder = apply {
+            val base = if (reply) "replyCodec" else "codec"
+            if (single) {
+                val codec = payload.codec(carried.single())
+                val property = PropertySpec.builder(base, codec).initializer("%T", codec)
+                // The reply's has never had a KDoc: a FlatBuffers-only face stays as it was.
+                if (!reply) property.addKdoc("The payload's %L codec.", prose(carried.single()))
+                addProperty(property.build())
+                return@apply
+            }
+            val what = if (reply) "reply" else "payload"
+            val names = carried.map { encoding ->
+                val name = encoding.name.replaceFirstChar(Char::lowercaseChar) + base.replaceFirstChar(Char::uppercaseChar)
+                val codec = payload.codec(encoding)
+                addProperty(PropertySpec.builder(name, codec).addKdoc("The %L's %L codec.", what, prose(encoding)).initializer("%T", codec).build())
+                CodeBlock.of("%N", name)
+            }
+            addFunction(
+                FunSpec.builder(base).addParameter("encoding", ENCODING).returns(PAYLOAD.parameterizedBy(payload.type, STAR))
+                    .addKdoc(
+                        "The %L's codec in [encoding]. Throws `IllegalArgumentException` for an encoding the package carries no codec for.",
+                        what,
+                    )
+                    .addCode(pick("encoding", names)).build(),
+            )
+        }
 
         /**
          * The channel's init (ridl §4.4): the signal's own `= value` when it
@@ -1191,11 +1323,12 @@ class FacesEmitter internal constructor(
             val read = FunSpec.builder("read").addModifiers(KModifier.OVERRIDE).addParameter("c", CORRELATION).returns(result.copy(nullable = true))
             if (query) {
                 val reply = reply(m)
-                read.addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, reply.codec)
+                val codec = codecOn(reply, "port.encoding", m.descriptor, "replyCodec")
+                read.addStatement("val buf = %T.allocate(%L.maxSize)", BYTE_BUFFER, codec)
                     .addStatement("val outcome = try { port.reply(c, buf) } catch (e: %T) { throw %T.Read(e) } ?: return null", READ_ERROR, CLIENT_ERROR)
                     .addStatement("outcome.onFailure { throw %T.Call(it as %T) }", CLIENT_ERROR, CALL_ERROR)
                     .addStatement("buf.flip()")
-                    .addStatement("return callOutcome(%T, buf).getOrElse { throw %T.Call(it as %T) }", reply.codec, CLIENT_ERROR, CALL_ERROR)
+                    .addStatement("return callOutcome(%L, buf).getOrElse { throw %T.Call(it as %T) }", codec, CLIENT_ERROR, CALL_ERROR)
             } else {
                 read.addStatement("return port.ack(c)?.getOrElse { throw %T.Call(it as %T) }", CLIENT_ERROR, CALL_ERROR)
             }
@@ -1208,7 +1341,7 @@ class FacesEmitter internal constructor(
                 .addSuperclassConstructorParameter("%L", number())
                 .addSuperclassConstructorParameter("%L", ordinal(m))
                 .addSuperclassConstructorParameter("%L", query)
-                .addSuperclassConstructorParameter("request(%T.require(%L), %T, %L)", m.descriptor, value, arg.codec, value)
+                .addSuperclassConstructorParameter("request(%T.require(%L), %L, %L)", m.descriptor, value, codecOn(arg, "port.encoding", m.descriptor), value)
                 .addSuperclassConstructorParameter("%T.member.callDeadline()", m.descriptor)
                 .addFunction(read.build())
                 .build()
@@ -1256,8 +1389,11 @@ class FacesEmitter internal constructor(
                                     "value, or the init value when there is none (`SignalReader.checkWith`)."
                                 ).let { if (pollFace) it else memberDoc(m, it) },
                         )
-                        .addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, payload.codec)
-                        .addStatement("return sampled(%T, %T, port.read(%L, %L, buf), buf)", payload.codec, m.descriptor, number(), ordinal(m))
+                        .addStatement("val buf = %T.allocate(%L.maxSize)", BYTE_BUFFER, codecOn(payload, "port.encoding", m.descriptor))
+                        .addStatement(
+                            "return sampled(%L, %T, port.read(%L, %L, buf), buf)",
+                            codecOn(payload, "port.encoding", m.descriptor), m.descriptor, number(), ordinal(m),
+                        )
                         .build(),
                 )
             }
@@ -1292,10 +1428,13 @@ class FacesEmitter internal constructor(
                                 "that fails its check is a failure: `Contract.InvalidValue` or `Transport.Corrupt`.",
                             m.declared,
                         )
-                        .addStatement("val buf = %T.allocate(%T.maxSize)", BYTE_BUFFER, reply.codec)
+                        .addStatement("val buf = %T.allocate(%L.maxSize)", BYTE_BUFFER, codecOn(reply, "port.encoding", m.descriptor, "replyCodec"))
                         .addStatement("val outcome = port.reply(correlation.correlation, buf) ?: return null")
                         .addStatement("buf.flip()")
-                        .addStatement("return outcome.fold({ callOutcome(%T, buf) }, { %T.failure(it) })", reply.codec, RESULT)
+                        .addStatement(
+                            "return outcome.fold({ callOutcome(%L, buf) }, { %T.failure(it) })",
+                            codecOn(reply, "port.encoding", m.descriptor, "replyCodec"), RESULT,
+                        )
                         .build(),
                 )
             }
@@ -1376,9 +1515,14 @@ class FacesEmitter internal constructor(
                 iface.declared.declared,
             )
             .addParameter("port", SIGNAL_READER)
+            // A `SignalReader` states no encoding: with several, the client passes its port's.
+            .apply { if (!single) addParameter("encoding", ENCODING) }
             .apply {
                 for (m in signals) {
-                    addStatement("port.checkWith(%L, %L, %T { %M(%T, it) })", number(), ordinal(m), CHECK, PAYLOAD_CHECK, signalPayload(m).codec)
+                    addStatement(
+                        "port.checkWith(%L, %L, %T { %M(%L, it) })",
+                        number(), ordinal(m), CHECK, PAYLOAD_CHECK, codecOn(signalPayload(m), "encoding", m.descriptor),
+                    )
                 }
             }
             .build()
@@ -1386,7 +1530,7 @@ class FacesEmitter internal constructor(
         /** What a client's constructor runs: the two comparisons, then the signals' checks when it reads any. */
         private fun binding(): CodeBlock = CodeBlock.builder()
             .add("%T.checkCatalog(port.catalog)\n%T.checkEncoding(port.encoding)\n", self, self)
-            .apply { if (signals.isNotEmpty()) add("%T.bindChecks(port)\n", self) }
+            .apply { if (signals.isNotEmpty()) add(if (single) "%T.bindChecks(port)\n" else "%T.bindChecks(port, port.encoding)\n", self) }
             .build()
 
         private fun signalConstructor(p: TypeVariableName): FunSpec = FunSpec.constructorBuilder().addParameter("port", p)
@@ -1430,8 +1574,8 @@ class FacesEmitter internal constructor(
                     .getter(
                         FunSpec.getterBuilder()
                             .addStatement(
-                                "return _signalStates.of(%T, null, %T.maxSize) { raw, buf -> sampled(%T, %T, raw, buf) }",
-                                m.descriptor, payload.codec, payload.codec, m.descriptor,
+                                "return _signalStates.of(%T, null, %L.maxSize) { raw, buf -> sampled(%L, %T, raw, buf) }",
+                                m.descriptor, codecOn(payload, "_port.encoding", m.descriptor), codecOn(payload, "_port.encoding", m.descriptor), m.descriptor,
                             )
                             .build(),
                     )
@@ -1641,20 +1785,23 @@ class FacesEmitter internal constructor(
             val value = argument.name
             val query = m.interaction.hasQuery()
             val call = CodeBlock.of(
-                "%T(this._port, this._calls, %L, %L, %L, %T.member.callDeadline()) { request(%T.require(%N), %T, %N) }",
-                STREAM_CALL, number(), ordinal(m), query, m.descriptor, m.descriptor, value, argument.payload.codec, value,
+                "%T(this._port, this._calls, %L, %L, %L, %T.member.callDeadline()) { request(%T.require(%N), %L, %N) }",
+                STREAM_CALL, number(), ordinal(m), query, m.descriptor, m.descriptor, value, codecOn(argument.payload, "_port.encoding", m.descriptor), value,
             )
             val f = FunSpec.builder(m.method).addParameter(value, argument.payload.type)
             return when (streamShape(m)!!) {
                 StreamShapeKind.Reply -> f.returns(FLOW.parameterizedBy(streamValue(replyStream(m))))
                     .doc(memberDoc(m, "Calls query `${m.declared}` when it is collected, and emits its reply stream. A failed call throws `ClientError`; a collector that stops early interrupts the stream.", argument))
-                    .addStatement("return %L.reply(%L)", call, chunks(m, replyStream(m)))
+                    .addStatement("return %L.reply(%L)", call, chunks(m, replyStream(m), "_port.encoding"))
                 StreamShapeKind.Duplex -> {
                     val data = streamParameter(m)
                     f.addParameter(data, FLOW.parameterizedBy(streamValue(parameterStream(m))))
                         .returns(FLOW.parameterizedBy(streamValue(replyStream(m))))
                         .doc(memberDoc(m, "Calls query `${m.declared}` when it is collected, uploads [$data] while it emits the reply stream. A failed call throws `ClientError`.", argument))
-                        .addStatement("return %L.duplex(%L, %N, %L)", call, chunks(m, parameterStream(m)), data, chunks(m, replyStream(m)))
+                        .addStatement(
+                            "return %L.duplex(%L, %N, %L)",
+                            call, chunks(m, parameterStream(m), "_port.encoding"), data, chunks(m, replyStream(m), "_port.encoding"),
+                        )
                 }
                 StreamShapeKind.Upload -> {
                     val data = streamParameter(m)
@@ -1664,12 +1811,13 @@ class FacesEmitter internal constructor(
                         f.returns(reply.type)
                             .doc(memberDoc(m, "Calls query `${m.declared}`, uploads [$data], and suspends until its reply. A failed call throws `ClientError`.", argument))
                             .addStatement(
-                                "return %L.uploadQuery(%L, %N, %T.maxSize) { callOutcome(%T, it).getOrThrow() }",
-                                call, chunks(m, parameterStream(m)), data, reply.codec, reply.codec,
+                                "return %L.uploadQuery(%L, %N, %L.maxSize) { callOutcome(%L, it).getOrThrow() }",
+                                call, chunks(m, parameterStream(m), "_port.encoding"), data,
+                                codecOn(reply, "_port.encoding", m.descriptor, "replyCodec"), codecOn(reply, "_port.encoding", m.descriptor, "replyCodec"),
                             )
                     } else {
                         f.doc(memberDoc(m, "Calls command `${m.declared}`, uploads [$data], and suspends until its acknowledgment. A failed call throws `ClientError`.", argument))
-                            .addStatement("%L.upload(%L, %N)", call, chunks(m, parameterStream(m)), data)
+                            .addStatement("%L.upload(%L, %N)", call, chunks(m, parameterStream(m), "_port.encoding"), data)
                     }
                     f
                 }
@@ -1707,8 +1855,8 @@ class FacesEmitter internal constructor(
                 .beginControlFlow("return when (occurrence.ord)")
             for (m in events) {
                 code.addStatement(
-                    "%L -> %T(%T(checked(%T, buf), occurrence.envelope))",
-                    ordinal(m), event.nestedClass(m.camel), OCCURRENCE, eventPayload(m).codec,
+                    "%L -> %T(%T(checked(%L, buf), occurrence.envelope))",
+                    ordinal(m), event.nestedClass(m.camel), OCCURRENCE, codecOn(eventPayload(m), "port.encoding", m.descriptor),
                 )
             }
             code.addStatement("else -> throw %T.Contract(%T.UnknownInteraction)", READ_ERROR, CONTRACT).endControlFlow()
@@ -1739,8 +1887,8 @@ class FacesEmitter internal constructor(
                 .addStatement("throw %T.Contract(%T.PreconditionFailed)", SEND_ERROR, CONTRACT)
                 .endControlFlow()
                 .addStatement(
-                    "return %T(this.port.%L(%L, %L, encoded(%T, %N), null))",
-                    correlation(m), kind, number(), ordinal(m), arg.codec, argName,
+                    "return %T(this.port.%L(%L, %L, encoded(%L, %N), null))",
+                    correlation(m), kind, number(), ordinal(m), codecOn(arg, "this.port.encoding", m.descriptor), argName,
                 )
                 .build()
         }
@@ -1771,7 +1919,7 @@ class FacesEmitter internal constructor(
                 builder.addFunction(
                     FunSpec.builder(m.method).addParameter("value", payload.type)
                         .doc(memberDoc(m, "Stages a new value for signal `${m.declared}`, published by `commit`."))
-                        .addStatement("port.set(%L, %L, encoded(%T, value))", number(), ordinal(m), payload.codec).build(),
+                        .addStatement("port.set(%L, %L, encoded(%L, value))", number(), ordinal(m), codecOn(payload, "port.encoding", m.descriptor)).build(),
                 )
                 extensions.functions += receiver.extension("invalidate${m.camel}")
                     .addKdoc("Stages the invalid state for signal `%L`, with `Cause.Declared`, published by `commit`.", m.declared)
@@ -1784,7 +1932,10 @@ class FacesEmitter internal constructor(
                 builder.addFunction(
                     FunSpec.builder(m.method).addParameter("value", eventPayload(m).type)
                         .doc(memberDoc(m, "Raises one occurrence of event `${m.declared}`."))
-                        .addStatement("port.raise(%L, %L, encoded(%T, value), null)", number(), ordinal(m), eventPayload(m).codec).build(),
+                        .addStatement(
+                            "port.raise(%L, %L, encoded(%L, value), null)",
+                            number(), ordinal(m), codecOn(eventPayload(m), "port.encoding", m.descriptor),
+                        ).build(),
                 )
             }
             if (signals.isNotEmpty()) {
@@ -1904,7 +2055,7 @@ class FacesEmitter internal constructor(
             for (m in commands) {
                 val arg = argument(m).payload
                 code.beginControlFlow("%L ->", ordinal(m))
-                    .addStatement("callOutcome(%T, args).fold(", arg.codec)
+                    .addStatement("callOutcome(%L, args).fold(", codecOn(arg, "handler.encoding", m.descriptor))
                     .indent()
                     .beginControlFlow("{ %L ->", value)
                     .beginControlFlow("if (!%T.require(%L))", m.descriptor, value)
@@ -1924,7 +2075,7 @@ class FacesEmitter internal constructor(
                 val arg = argument(m).payload
                 val reply = reply(m)
                 code.beginControlFlow("%L ->", ordinal(m))
-                    .addStatement("callOutcome(%T, args).fold(", arg.codec)
+                    .addStatement("callOutcome(%L, args).fold(", codecOn(arg, "handler.encoding", m.descriptor))
                     .indent()
                     .beginControlFlow("{ %L ->", value)
                     .beginControlFlow("if (!%T.require(%L))", m.descriptor, value)
@@ -1935,7 +2086,7 @@ class FacesEmitter internal constructor(
                     .addStatement("settle(handler, claim.id, %T.failure(%T.ContractBroken))", RESULT, CONTRACT)
                     .nextControlFlow("else")
                     .addStatement("buffer.clear()")
-                    .addStatement("%T.encode(reply, buffer)", reply.codec)
+                    .addStatement("%L.encode(reply, buffer)", codecOn(reply, "handler.encoding", m.descriptor, "replyCodec"))
                     .addStatement("buffer.flip()")
                     .addStatement("settleReply(handler, claim.id, buffer)")
                     .endControlFlow()
@@ -1949,7 +2100,7 @@ class FacesEmitter internal constructor(
             for (m in streamed) {
                 val arg = argument(m).payload
                 code.beginControlFlow("%L ->", ordinal(m))
-                    .addStatement("callOutcome(%T, args).fold(", arg.codec)
+                    .addStatement("callOutcome(%L, args).fold(", codecOn(arg, "handler.encoding", m.descriptor))
                     .indent()
                     .beginControlFlow("{ %L ->", value)
                     .beginControlFlow("if (!%T.require(%L))", m.descriptor, value)
