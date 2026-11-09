@@ -1,0 +1,15 @@
+package kt.podbuf.parts
+
+// Declared here and laid out inline by kt.podbuf, so their heads reach
+// kt.podbuf's projection as foreign heads, written by this package's helpers.
+type Small : integer [0..100]
+
+struct Corner {
+  x : Small
+  y : Small
+}
+
+union Pick {
+  small  : Small
+  corner : Corner
+}

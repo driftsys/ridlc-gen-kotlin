@@ -74,9 +74,11 @@ class SelectionTest {
     fun `flatbuffers-only output names no podbuf`(): List<DynamicTest> =
         Harness.packages().map { name ->
             DynamicTest.dynamicTest(name) {
+                // The corpus package `kt-podbuf` is named so: its own name is not a podbuf item.
+                val own = Harness.manifestName(name)
                 for ((pkg, files) in flatBuffersOutputs(name)) {
                     for ((path, text) in files) {
-                        assertFalse(text.contains("podbuf", ignoreCase = true), "$pkg $path names podbuf")
+                        assertFalse(text.replace(own, "").contains("podbuf", ignoreCase = true), "$pkg $path names podbuf")
                     }
                 }
             }

@@ -15,11 +15,14 @@ import kotlin.io.path.writeText
  * package selecting `flatbuffers` and `podbuf`, compiled with warnings as
  * errors, drives a signal, an event, a command and a query whose arguments
  * are an induced struct over a FlatBuffers loopback and over a podbuf one,
- * and checks the bytes on each port are that encoding's. A port of an
- * encoding the package does not carry is refused when the face is bound. The
- * same package selecting `podbuf` alone is driven over a podbuf port. A
- * streamed member is compiled, not driven: its element codec is the one use
- * of the face no descriptor holds.
+ * and checks the bytes on each port are that encoding's. A query whose reply
+ * is a stream is served by `serveAsync`, whose `drive` writes each element,
+ * and collected by the async client, which reads each one: the element codec
+ * is the one use of the face no descriptor holds, chosen inline from the
+ * port's encoding on each side. A port of an encoding the package does not
+ * carry is refused when the face is bound. The same package selecting
+ * `podbuf` alone is driven over a podbuf port. The corpus package `cabin`,
+ * which carries both encodings, is driven the same way over each.
  */
 class EncodingsFaceTest {
     @TempDir
@@ -61,6 +64,7 @@ class EncodingsFaceTest {
         import probe.both.LevelPodbufCodec
         import probe.both.Reading
         import probe.both.Tank
+        import probe.both.TankAsyncClient
         import probe.both.TankPollClient
         import probe.both.TankProvider
         import probe.both.TankPublisher
@@ -70,8 +74,13 @@ class EncodingsFaceTest {
         ${if (both) "import probe.both.LevelCodec" else ""}
         import kotlinx.coroutines.CoroutineScope
         import kotlinx.coroutines.Dispatchers
+        import kotlinx.coroutines.cancelAndJoin
         import kotlinx.coroutines.flow.Flow
-        import kotlinx.coroutines.flow.emptyFlow
+        import kotlinx.coroutines.flow.flow
+        import kotlinx.coroutines.flow.toList
+        import kotlinx.coroutines.launch
+        import kotlinx.coroutines.runBlocking
+        import kotlinx.coroutines.withTimeout
         import ridl.rt.contract.Ordinal
         import ridl.rt.encoding.Encoding
         import ridl.rt.loopback.Loopback
@@ -88,7 +97,9 @@ class EncodingsFaceTest {
             override fun mix(args: probe.both.TankMixParams): Reading =
                 Reading(level = Level.of((args.a.value + args.b.value) / 2), note = "mixed")
 
-            override fun history(level: Level): Flow<Reading> = emptyFlow()
+            override fun history(level: Level): Flow<Reading> = flow {
+                for (i in 1..level.value) emit(Reading(level = Level.of(i), note = "r${'$'}i"))
+            }
         }
 
         private fun <T, V> bytes(codec: Payload<T, V>, value: T): ByteArray {
@@ -139,6 +150,18 @@ class EncodingsFaceTest {
                 val mix = client.mix(probe.both.TankMixParams(a = Level.of(20), b = Level.of(40)))
                 expectEqual("${'$'}encoding: dispatch settles the query", 1, Tank.dispatch(rt, provider, buffer, scope))
                 expectEqual("${'$'}encoding: the reply", Result.success(Reading(level = Level.of(30), note = "mixed")), client.mixReply(mix))
+
+                // A reply stream: `serveAsync`'s `drive` encodes each element, the async client decodes it.
+                val streamed = Loopback(Tank.catalog, encoding)
+                val readings = runBlocking(Dispatchers.Default) {
+                    withTimeout(30_000) {
+                        val server = launch { Tank.serveAsync(streamed.handler(), provider) }
+                        val received = TankAsyncClient(streamed).history(Level.of(3)).toList()
+                        server.cancelAndJoin()
+                        received
+                    }
+                }
+                expectEqual("${'$'}encoding: the reply stream", (1L..3L).map { Reading(level = Level.of(it), note = "r${'$'}it") }, readings)
             }
             val refused = ${if (both) "listOf(Encoding.Proto3)" else "listOf(Encoding.Proto3, Encoding.FlatBuffers)"}
             for (encoding in refused) {
@@ -187,5 +210,108 @@ class EncodingsFaceTest {
     @Test
     fun `a podbuf-only face serves a podbuf port and refuses a FlatBuffers one`() {
         run("podbuf", "\"podbuf\"", both = false)
+    }
+
+    private val cabinProbe = """
+        @file:JvmName("CabinEncodingsProbe")
+
+        package probe.cabin.check
+
+        import ridl.rt.contract.Ordinal
+        import ridl.rt.encoding.Encoding
+        import ridl.rt.loopback.Loopback
+        import ridl.rt.payload.Payload
+        import veh.cabin.Average
+        import veh.cabin.Cabin
+        import veh.cabin.CabinPollClient
+        import veh.cabin.CabinProvider
+        import veh.cabin.CabinPublisher
+        import veh.cabin.Health
+        import veh.cabin.HornClient
+        import veh.cabin.HornPublisher
+        import veh.cabin.Level
+        import veh.cabin.Temperature
+        import veh.cabin.TemperatureCodec
+        import veh.cabin.TemperaturePodbufCodec
+        import veh.cabin.Warning
+        import veh.cabin.Window
+        import veh.cabin.commit
+        import veh.cabin.nextEvent
+        import veh.cabin.subscribeWarning
+        import java.nio.ByteBuffer
+
+        private class Recorder : CabinProvider {
+            val levels = mutableListOf<Level>()
+
+            override fun setLevel(level: Level) {
+                levels += level
+            }
+
+            override fun average(window: Window): Average = Average.of(window.value / 100)
+        }
+
+        private fun <T, V> bytes(codec: Payload<T, V>, value: T): List<Byte> {
+            val out = ByteBuffer.allocate(codec.maxSize)
+            val n = codec.encode(value, out)
+            return out.array().copyOf(n).toList()
+        }
+
+        fun probe(): List<String> {
+            val failures = mutableListOf<String>()
+            fun <T> expectEqual(label: String, expected: T, actual: T) {
+                if (expected != actual) failures += "${'$'}label: expected ${'$'}expected, got ${'$'}actual"
+            }
+            for ((encoding, codec) in listOf(Encoding.FlatBuffers to TemperatureCodec, Encoding.Podbuf to TemperaturePodbufCodec)) {
+                val rt = Loopback(Cabin.catalog, encoding)
+                val client = CabinPollClient(rt)
+                val publisher = CabinPublisher(rt)
+                val provider = Recorder()
+                val buffer = ByteBuffer.allocate(Cabin.sizes(rt.encoding).maxBufferSize)
+
+                publisher.temperature(Temperature.of(-12))
+                publisher.commit()
+                expectEqual("${'$'}encoding: the signal", Temperature.of(-12), client.temperature().value)
+                val raw = ByteBuffer.allocate(codec.maxSize)
+                val sample = rt.read(Cabin.number, Ordinal(1u), raw)
+                expectEqual("${'$'}encoding: the signal's bytes", bytes(codec, Temperature.of(-12)), raw.array().copyOf(sample.len).toList())
+
+                client.subscribeWarning()
+                val warning = Warning(code = Level.of(7), health = Health.FAIL)
+                publisher.warning(warning)
+                when (val event = client.nextEvent()) {
+                    is Cabin.Event.Warning -> expectEqual("${'$'}encoding: the event", Result.success(warning), event.occurrence.payload)
+                    null -> failures += "${'$'}encoding: the event is received"
+                }
+
+                val set = client.setLevel(Level.of(42))
+                expectEqual("${'$'}encoding: dispatch settles the command", 1, Cabin.dispatch(rt, provider, buffer))
+                expectEqual("${'$'}encoding: the command is acknowledged", Result.success(Unit), client.setLevelAck(set))
+                expectEqual("${'$'}encoding: the provider has the level", listOf(Level.of(42)), provider.levels)
+
+                val average = client.average(Window.of(5000))
+                expectEqual("${'$'}encoding: dispatch settles the query", 1, Cabin.dispatch(rt, provider, buffer))
+                expectEqual("${'$'}encoding: the reply", Result.success(Average.of(50)), client.averageReply(average))
+
+                HornPublisher(rt).let { it.active(Health.WARN); it.commit() }
+                expectEqual("${'$'}encoding: a second interface's signal", Health.WARN, HornClient(rt).active().value)
+            }
+            return failures
+        }
+    """.trimIndent()
+
+    @Test
+    fun `cabin, which carries both encodings, serves a FlatBuffers port and a podbuf port`() {
+        val requests = Harness.capturedRequests("cabin", work.resolve("requests-cabin")).values
+        val sources = requests.flatMap { request ->
+            val response = Generator.generate(Wire.readRequest(request))
+            assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+            response.filesList.map { it.path to it.text }
+        }.toMap()
+        assertTrue("veh/cabin/PodbufCodec.kt" in sources && "veh/cabin/Codec.kt" in sources, sources.keys.toString())
+        val compiled = Compiler.compile(sources + ("probe/cabin/check/Probe.kt" to cabinProbe), work.resolve("compile-cabin"))
+        assertTrue(compiled.ok, compiled.messages)
+        @Suppress("UNCHECKED_CAST")
+        val failures = compiled.classLoader!!.loadClass("probe.cabin.check.CabinEncodingsProbe").getMethod("probe").invoke(null) as List<String>
+        assertEquals(emptyList<String>(), failures)
     }
 }

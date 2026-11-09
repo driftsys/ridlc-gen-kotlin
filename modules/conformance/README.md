@@ -47,11 +47,12 @@ every codec verdict file below from the pinned release and fails when one
 differs from the committed file, and the `rust-verdicts` workflow runs it (#39);
 [`docs/k1b-flatbuffers-spike.md`](../../docs/k1b-flatbuffers-spike.md) says how.
 
-The test of stage K2c, `CodecTest`: for every corpus package, the generated
-`Codec.kt` encodes sample values of every public root, written from the model
-(`RoundTrip`), and a corpus of those buffers and their mutants — 15,780 in all —
-goes through `verify`, `decode` and `encode` again in Kotlin and, once, in the
-Rust codec of the pinned release, whose verdicts are checked in as
+The test of stage K2c, `CodecTest`: for every corpus package that selects
+FlatBuffers, the generated `Codec.kt` encodes sample values of every public
+root, written from the model (`RoundTrip`), and a corpus of those buffers and
+their mutants — 15,780 in all — goes through `verify`, `decode` and `encode`
+again in Kotlin and, once, in the Rust codec of the pinned release, whose
+verdicts are checked in as
 `resources/flatbuffers/<package>-codec-rust-verdicts.txt`. Every sample
 re-encodes to the same bytes in Rust, no buffer meets an exception other than
 `VerifyError`, and every verdict is Rust's except where Kotlin alone refuses a
@@ -59,6 +60,26 @@ string off its pattern, which the Rust verifier checks only under its
 `validate-pattern` feature; no buffer of the corpus reaches one. A wrong table
 layout, a missing count check, a wrong union error or a float step check that
 never fails each turns it red.
+
+The test of #134, `PodbufCodecTest`, holds the podbuf codec to the Rust podbuf
+codec of the pinned release in the same way, for every corpus package that
+selects podbuf: `kt-podbuf`, which selects it alone and reaches every form of
+the layout law, and `cabin` and `kt-values`, which select both encodings. The
+generated `PodbufCodec.kt` encodes the samples `RoundTrip` writes from the
+model, in its podbuf mode; the corpus is `CodecTest`'s, plus 200 random mutants
+of every sample from seed 134, 23,773 buffers in all, and each goes through
+`verify`, `decode` and `encode` in Kotlin at position 0 and at position 8 of a
+larger buffer, which must agree, and once in Rust, whose verdicts are checked in
+as `resources/podbuf/<package>-codec-rust-verdicts.txt`. The Rust program copies
+each input into an 8-aligned `Aligned` buffer before `verify`. Every verdict is
+Rust's, with no exception. A test walks the podbuf projection of each of those
+models and fails on a form, an integer or float width, a descriptor kind or an
+interaction kind the corpus does not reach. A field read one byte off its
+offset, a string length read before its bound is checked, or map entries written
+unsorted each turns it red. `EncodingsFaceTest` drives `cabin`'s face over a
+FlatBuffers and a podbuf loopback, and a package of its own over both with a
+reply stream served by `serveAsync` and read by the async client, whose element
+codec is chosen from the port's encoding on each side.
 
 Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
 `ridl.toml`, and every catalog hash changed. `UnitTest` builds the corpus

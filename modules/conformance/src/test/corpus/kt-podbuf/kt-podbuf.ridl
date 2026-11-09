@@ -1,0 +1,169 @@
+// The Kotlin plugin's podbuf corpus package (#134): every form of the podbuf
+// layout law, in a package that selects podbuf alone, so its codec is held
+// to the Rust podbuf codec of the pinned release by PodbufCodecTest.
+package kt.podbuf
+
+import kt.podbuf.parts.Corner
+import kt.podbuf.parts.Pick
+
+/// An i8.
+type Tiny : integer [-100..100]
+/// A u8.
+type Octet : integer [0..200]
+/// An i16.
+type Half : integer [-1000..1000]
+/// A u16.
+type Grade : integer [0..60000]
+/// An i32.
+type Delta : integer [-100000..100000]
+/// A u32.
+type Count : integer [0..4000000000]
+/// A u64: a range from 0 past u32.
+type Serial : integer [0..9223372036854775807]
+
+/// An f32: a step, at most 2^24 values, and both bounds binary32 (typl §4.3).
+type Ratio : float [0.0..1.0 step 0.125]
+/// An f32 from a negative minimum.
+type Trim : float [-8.0..8.0 step 0.25]
+/// An f64: a range with no step.
+type Gain : float [-2.0..2.0]
+
+/// A string, at least one scalar value.
+type Name : string [1..8]
+/// Bytes whose bounds differ: a tail descriptor.
+type Blob : bytes [0..6]
+/// Exact-length bytes: an inline u8[4].
+type Tag : bytes [4]
+
+/// A strict u8 enum.
+enum Gear {
+  PARK    = 0
+  DRIVE   = 1
+  REVERSE = 2
+}
+
+/// A strict i64 enum.
+enum Phase {
+  BEFORE = -3000000000
+  AFTER  = 1
+}
+
+/// An open i8 enum.
+open enum Mood {
+  LOW  = -1
+  HIGH = 1
+}
+
+/// An open u64 enum.
+open enum Status {
+  OK  = 0
+  FAR = 5000000000
+}
+
+/// A strict u8 enum set.
+enumset Lights {
+  HEAD = 0
+  TAIL = 1
+}
+
+/// A strict u64 enum set.
+enumset Banks {
+  LOW  = 0
+  HIGH = 40
+}
+
+/// An open u16 enum set.
+open enumset Faults {
+  A = 0
+  B = 9
+}
+
+/// An open u64 enum set.
+open enumset Alarms {
+  A = 0
+  B = 33
+}
+
+/// A struct laid out inline.
+struct Point {
+  x : Half
+  y : Half
+}
+
+/// A struct with no field: an arm head of size 0.
+struct Empty {}
+
+/// Every fixed form: each integer width, both float widths, strict and open
+/// enums and enum sets of a narrow and a 64-bit width, an inline struct, a
+/// tuple, a foreign struct and union, an inline array, exact-length bytes,
+/// and optionals with their flag bits.
+struct Fixed {
+  flag   : boolean
+  tiny   : Tiny
+  octet  : Octet
+  half   : Half
+  grade  : Grade
+  delta  : Delta
+  count  : Count
+  serial : Serial
+  total  : integer [-9223372036854775808..9223372036854775807]
+  ratio  : Ratio
+  trim   : Trim
+  narrow : float [0.0..2.0 step 0.5]
+  gain   : Gain
+  gear   : Gear
+  phase  : Phase
+  mood   : Mood
+  status : Status
+  lights : Lights
+  banks  : Banks
+  faults : Faults
+  alarms : Alarms
+  point  : Point
+  pair   : (left: Tiny, right: Octet)
+  corner : Corner
+  pick   : Pick
+  triple : [Tiny; 3]
+  tag    : Tag
+  maybe  : Ratio?
+  spot   : Point?
+  odd    : Gain?
+}
+
+/// A union with an arm of no field, a struct arm, a string arm and an enum arm.
+union Shape {
+  none  : Empty
+  dot   : Point
+  label : Name
+  gear  : Gear
+}
+
+/// Every tail form: strings, bytes, arrays of scalars, of heads and of
+/// strings, maps keyed by a string, an f64 and an f32, and a union.
+///
+/// The float keys are sampled on distinct values that are binary32 values
+/// too: two f64 keys that round to one f32, like an open u64 enum or enum
+/// set key of 2^63 or more, make both encoders write a buffer their own
+/// verify refuses (driftsys/ridl#1280).
+struct Tails {
+  name    : Name
+  label   : string [0..6]
+  blob    : Blob
+  data    : bytes [0..4]
+  grades  : [Grade; 0..3]
+  points  : [Point; 0..2]
+  words   : [Name; 0..2]
+  byName  : [Name : Half; 0..2]
+  byGain  : [float : Octet; 0..2]
+  byRatio : [float [0.0..4.0 step 0.5] : boolean; 0..2]
+  shape   : Shape
+  note    : Name?
+}
+
+/// One member of each kind: a call of two parameters sends an induced struct.
+interface Meter {
+  signal  level   : Ratio @10ms
+  event   tripped : Fixed @[100ms..1s]
+  command set(grade: Grade, name: Name) @[..50ms]
+  query   read(serial: Serial): Tails @[..200ms]
+}

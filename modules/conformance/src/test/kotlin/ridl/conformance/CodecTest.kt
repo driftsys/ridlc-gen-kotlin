@@ -15,7 +15,8 @@ import java.security.MessageDigest
 
 /**
  * docs/design.md §7, "The codec round-trips and the verifier refuses", held to
- * the Rust codec the pinned release generates, for every corpus package.
+ * the Rust codec the pinned release generates, for every corpus package that
+ * selects FlatBuffers; [PodbufCodecTest] holds the podbuf codec.
  *
  * The generated `Codec.kt` encodes sample values of every public root
  * ([RoundTrip]); a corpus of those buffers and their mutants — every
@@ -61,7 +62,7 @@ class CodecTest {
     }
 
     @TestFactory
-    fun `the codec agrees with the Rust codec`(): List<DynamicTest> = Harness.packages().map { name ->
+    fun `the codec agrees with the Rust codec`(): List<DynamicTest> = Harness.packages().filter { "flatbuffers" in Harness.encodings(it) }.map { name ->
         DynamicTest.dynamicTest(name) {
             val requests = Harness.capturedRequests(name, work.resolve("capture-$name")).values.map(Wire::readRequest)
             val sources = requests.flatMap { r -> Generator.generate(r).filesList.map { it.path to it.text } }.toMap()
