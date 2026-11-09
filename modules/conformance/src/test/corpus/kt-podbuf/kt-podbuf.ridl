@@ -30,6 +30,9 @@ type Gain : float [-2.0..2.0]
 
 /// A string, at least one scalar value.
 type Name : string [1..8]
+/// A map key sampled with U+FFFD and U+1F600, whose order as UTF-8 is not
+/// their order as UTF-16.
+type Glyph : string [1..2]
 /// Bytes whose bounds differ: a tail descriptor.
 type Blob : bytes [0..6]
 /// Exact-length bytes: an inline u8[4].
@@ -139,7 +142,8 @@ union Shape {
 }
 
 /// Every tail form: strings, bytes, arrays of scalars, of heads and of
-/// strings, maps keyed by a string, an f64 and an f32, and a union.
+/// strings, maps keyed by a string, an f64, an f32, an i8 and a u64, and a
+/// union. An enum is no map key (TYPL-209).
 ///
 /// The float keys are sampled on distinct values that are binary32 values
 /// too: two f64 keys that round to one f32, like an open u64 enum or enum
@@ -156,6 +160,9 @@ struct Tails {
   byName  : [Name : Half; 0..2]
   byGain  : [float : Octet; 0..2]
   byRatio : [float [0.0..4.0 step 0.5] : boolean; 0..2]
+  byGlyph : [Glyph : boolean; 0..2]
+  byTiny  : [integer [-100..100] : Octet; 0..2]
+  byBig   : [integer [0..9223372036854775807] : boolean; 0..2]
   shape   : Shape
   note    : Name?
 }

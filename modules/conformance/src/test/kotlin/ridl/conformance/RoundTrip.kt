@@ -30,6 +30,13 @@ object RoundTrip {
     const val SAMPLE_FULL = 1
 
     /**
+     * The `i`th sample of a named string, by type, where the default's
+     * letters would not do: `kt.podbuf.Glyph` keys a map with U+FFFD and
+     * U+1F600, whose UTF-8 order differs from their UTF-16 order.
+     */
+    private val TEXT_SAMPLES: Map<String, List<String>> = mapOf("kt.podbuf.Glyph" to listOf("\uFFFD", "\uD83D\uDE00"))
+
+    /**
      * The round trip over [models]' FlatBuffers codecs, `<Type>Codec`, or,
      * with [podbuf], over their podbuf codecs, `<Type>PodbufCodec`.
      */
@@ -257,7 +264,7 @@ object RoundTrip {
                 ScalarClass.SCALAR_CLASS_BOOLEAN -> if (i % 2 == 0) "true" else "false"
                 ScalarClass.SCALAR_CLASS_STRING -> {
                     val key = if (declaration != null) "$pkg.${declaration.name.camel}" else null
-                    val sample = key?.let { Probe.SAMPLES[it] }
+                    val sample = key?.let { TEXT_SAMPLES[it]?.let { values -> values[i % values.size] } ?: Probe.SAMPLES[it] }
                     val text = when {
                         sample != null -> sample
                         c.hasPattern() -> Probe.PATTERN_SAMPLES[c.pattern] ?: error("no sample for the patterned $key")

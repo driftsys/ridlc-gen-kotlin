@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir
 import ridl.codegen.kotlin.Generator
 import ridl.codegen.kotlin.Wire
 import ridl.codegen.v1.ModelOuterClass.Declaration
+import ridl.codegen.v1.ModelOuterClass.FloatWidth
 import ridl.codegen.v1.ModelOuterClass.IntWidth
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.PodbufDescriptor
@@ -66,7 +67,7 @@ class PodbufCodecTest {
     private fun podbufModels(requests: List<Plugin.CodegenRequest>): List<Model> =
         requests.filter { request -> request.optionsList.any { it.key == "encodings" && "podbuf" in it.value } }.map { it.model }
 
-    private fun corpus(samples: List<String>): List<String> {
+    private fun corpus(samples: List<String>, models: List<Model>): List<String> {
         val random = Random(SEED)
         return samples.flatMap { line ->
             val (type, label, hex) = line.split(' ')
@@ -80,9 +81,66 @@ class PodbufCodecTest {
                     }
                 }
             }
+            if (label == "full") {
+                for ((name, mutated) in keyMutants(models, type, bytes)) lines += "$type $label/$name ${mutated.joinToString("")}"
+            }
             for (k in 0 until RANDOM) lines += "$type $label/random$k ${mutant(random, bytes).joinToString("")}"
             lines
         }
+    }
+
+    /**
+     * The mutants of a struct sample's maps that reach the verifier's key
+     * checks, which a random byte seldom does: for each map field of the
+     * root head with two entries or more, the first two entries swapped
+     * (`KeyOrder`), the second key made the first's (`KeyOrder`, two equal
+     * keys), and for a float key a NaN first key (`Range`) and the keys -0.0
+     * then 0.0 (`KeyOrder`, one key under IEEE order). Each map is found
+     * through its descriptor, `{ off: u32, len: u16, elem_size: u16 }` at the
+     * field's offset in the head, which starts after the 8-byte preamble.
+     */
+    private fun keyMutants(models: List<Model>, type: String, bytes: List<String>): List<Pair<String, List<String>>> {
+        val model = models.firstOrNull { it.name.dotted == type.substringBeforeLast('.') } ?: return emptyList()
+        val index = model.declarationsList.indexOfFirst { it.name.camel == type.substringAfterLast('.') && it.hasStruct() }
+        val head = model.podbuf.headsList.firstOrNull { it.sourceCase == PodbufHead.SourceCase.DECLARATION && it.declaration == index }
+            ?: return emptyList()
+        fun u(at: Int, n: Int) = (0 until n).fold(0L) { v, b -> v or (bytes[at + b].toLong(16) shl (8 * b)) }
+        fun put(out: MutableList<String>, at: Int, value: Long, n: Int) {
+            for (b in 0 until n) out[at + b] = "%02x".format((value shr (8 * b)) and 0xFF)
+        }
+        val mutants = mutableListOf<Pair<String, List<String>>>()
+        for (field in head.fieldsList.filter { it.form.hasTailDescriptor() && it.form.tailDescriptor.hasMap() }) {
+            val at = PREAMBLE + field.offset
+            val off = u(at, 4).toInt()
+            val len = u(at + 4, 2).toInt()
+            val size = u(at + 6, 2).toInt()
+            if (len < 2) continue
+            val name = field.source.field.name
+            val key = model.podbuf.getHeads(field.form.tailDescriptor.map.entryHead).fieldsList.first { it.source.kindCase == PodbufSource.KindCase.KEY }
+            val first = off + key.offset
+            val second = off + size + key.offset
+            mutants += "swap-$name" to bytes.toMutableList().also { out ->
+                for (b in 0 until size) {
+                    out[off + b] = bytes[off + size + b]
+                    out[off + size + b] = bytes[off + b]
+                }
+            }
+            mutants += "same-$name" to bytes.toMutableList().also { out ->
+                for (b in 0 until key.size) out[second + b] = bytes[first + b]
+            }
+            if (key.form.hasFloat()) {
+                val f32 = key.form.float == FloatWidth.FLOAT_WIDTH_F32
+                val n = if (f32) 4 else 8
+                val nan = if (f32) java.lang.Float.floatToRawIntBits(Float.NaN).toLong() else java.lang.Double.doubleToRawLongBits(Double.NaN)
+                val minusZero = if (f32) java.lang.Float.floatToRawIntBits(-0.0f).toLong() else java.lang.Double.doubleToRawLongBits(-0.0)
+                mutants += "nan-$name" to bytes.toMutableList().also { put(it, first, nan, n) }
+                mutants += "zeros-$name" to bytes.toMutableList().also {
+                    put(it, first, minusZero, n)
+                    put(it, second, 0L, n)
+                }
+            }
+        }
+        return mutants
     }
 
     /**
@@ -123,7 +181,7 @@ class PodbufCodecTest {
             val samples = facade.getMethod("samples").invoke(null) as List<String>
             val verdict = facade.getMethod("verdictAt", String::class.java, String::class.java, Int::class.javaPrimitiveType)
 
-            val corpus = corpus(samples)
+            val corpus = corpus(samples, models)
             val out = Path.of(System.getProperty("spike.dir", work.toString())).resolve("$name-podbuf-corpus.txt")
             Files.createDirectories(out.parent)
             Files.writeString(out, corpus.joinToString("\n", postfix = "\n"))
@@ -252,6 +310,7 @@ class PodbufCodecTest {
                     when {
                         key.hasTailDescriptor() && key.tailDescriptor.hasText() -> reached += "map with a string key"
                         key.hasFloat() -> reached += "map with a float key ${key.float.name.removePrefix("FLOAT_WIDTH_")}"
+                        key.hasInt() -> reached += "map with an integer key"
                         else -> reached += "map with a ${key.kindCase} key"
                     }
                     entry.fieldsList.forEach { form(it.form) }
@@ -274,6 +333,7 @@ class PodbufCodecTest {
 
     private companion object {
         const val SEED = 134L
+        const val PREAMBLE = 8
         const val RANDOM = 200
 
         /** Every form of the podbuf layout law, each integer and float width apart, and every interaction kind. */
@@ -287,7 +347,7 @@ class PodbufCodecTest {
             "inline struct", "inline tuple", "inline foreign head",
             "inline array", "inline u8 array",
             "string", "bytes", "array", "map",
-            "map with a string key", "map with a float key F32", "map with a float key F64",
+            "map with a string key", "map with a float key F32", "map with a float key F64", "map with an integer key",
             "union", "union arm with no field", "union struct arm",
             "tuple head", "box",
             "command with an induced request", "signal", "event", "query",
