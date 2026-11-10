@@ -8,7 +8,9 @@ import ridl.rt.contract.CatalogHash
 import ridl.rt.contract.CatalogRef
 import ridl.rt.contract.Command
 import ridl.rt.contract.Event
+import ridl.rt.contract.DebugIdentity
 import ridl.rt.contract.Fixed
+import ridl.rt.contract.InstanceNo
 import ridl.rt.contract.Interaction
 import ridl.rt.contract.Interface
 import ridl.rt.contract.InterfaceNo
@@ -80,6 +82,7 @@ import ridl.rt.trace.AlreadySet
 import ridl.rt.trace.Propagation
 import ridl.rt.trace.TraceContext
 import kotlin.reflect.KClass
+import kotlin.reflect.full.companionObject
 import kotlin.reflect.full.isSubclassOf
 
 /**
@@ -115,6 +118,11 @@ class CorrespondenceTest {
         // contract
         Row("ridl_rt::contract::Ordinal", Ordinal::class),
         Row("ridl_rt::contract::InterfaceNo", InterfaceNo::class),
+        // The `debug` feature's items, `LISTENER`, `twin`, `is_twin` and `is_listener`, are behind `@DebugIdentity`.
+        Row(
+            "ridl_rt::contract::InstanceNo", InstanceNo::class,
+            members = listOf("new", "get", "LISTENER", "twin", "is_twin", "is_listener"),
+        ),
         Row("ridl_rt::contract::CatalogHash", CatalogHash::class),
         Row("ridl_rt::contract::CatalogRef", CatalogRef::class, members = listOf("name", "hash")),
         Row("ridl_rt::contract::Kind", Kind::class, variants = listOf("Signal", "Event", "Command", "Query", "Fixed")),
@@ -306,7 +314,8 @@ class CorrespondenceTest {
                 assertEquals(expected.toSet(), variantsOf(row.kotlin), "the variants are the Rust variants")
             }
 
-            val declared = row.kotlin.members.map { it.name }.toSet()
+            // A Rust associated function or constant is a member of the Kotlin companion.
+            val declared = (row.kotlin.members + row.kotlin.companionObject?.members.orEmpty()).map { it.name }.toSet()
             for (member in row.members) {
                 val kotlinName = camel(member)
                 assertTrue(kotlinName in declared, "`$member` is spelled `$kotlinName` on ${row.kotlin.simpleName}")
@@ -324,6 +333,8 @@ class CorrespondenceTest {
         val nested = rows.flatMap { it.kotlin.sealedSubclasses }.toSet()
         val extras = setOf(
             RidlError::class,
+            // The opt-in that spells the `debug` feature.
+            DebugIdentity::class,
             ridl.rt.payload.ConstraintViolation::class,
             ridl.rt.payload.Steps::class,
             ridl.rt.task.Waker::class,
