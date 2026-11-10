@@ -95,16 +95,16 @@ carry it, under the delivery contract the port interfaces state. `TraceTest` is
 `ProcessHookTagTest` fails on a test file that calls `setPropagation` without
 the `process-hook` tag (#65).
 
-`InstanceNo`, an instance number (rsdl §7), is in ridl-rt since the release that
-numbered instances (driftsys/ridl#1176), and here since #138. Its constructor is
-private, and `InstanceNo.new` takes only a positive number. The debug instance
-identities of `ridl-rt`'s `debug` feature, the listener `InstanceNo.LISTENER`
-and a twin from `twin()`, with `isTwin()` and `isListener()`, are in the same
-class behind `@DebugIdentity`, a `@RequiresOptIn` at error level: code that
-names one without `@OptIn(DebugIdentity::class)` does not compile, as Rust code
-that names one without the feature does not, and a consumer that never opts in
-takes no other dependency. `InstanceNoTest` is `instance_no.rs`, case for case,
-and compiles each of the Rust `compile_fail` examples without the opt-in.
+`InstanceNo`, an instance number (rsdl §7), is in `ridl_rt::contract` at ridl
+0.17.0, and here since #138. Its constructor is private, and `InstanceNo.new`
+takes only a positive number. The debug instance identities of `ridl-rt`'s
+`debug` feature, the listener `InstanceNo.LISTENER` and a twin from `twin()`,
+with `isTwin()` and `isListener()`, are in the same class behind
+`@DebugIdentity`, a `@RequiresOptIn` at error level: code that names one without
+`@OptIn(DebugIdentity::class)` does not compile, as Rust code that names one
+without the feature does not, and a consumer that never opts in takes no other
+dependency. `InstanceNoTest` is `instance_no.rs`, case for case, and compiles
+each of the Rust `compile_fail` examples without the opt-in.
 
 ## Compiling against Android
 
