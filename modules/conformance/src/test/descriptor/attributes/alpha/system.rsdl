@@ -1,0 +1,20 @@
+package alpha
+
+/// The first local instance.
+component First [ linux.nice = 5 ] { offers alpha.face
+                  requires mapped.Face }
+/// The second local instance.
+component Second { offers beta.face
+                   requires alpha.Face }
+/// The remote instance, outside the system.
+component Foreign [ external ] { offers mapped.face
+                    offers remote.face }
+/// The fixture system.
+system Test [ linux.owner = fleet ] { First, Second, Foreign }
+/// The fixture placement.
+deployment Bench for Test [ linux.layers = (a, (b, (c, (d, (e, (f, (g, (h, (i, (j, (k, (l, (m, (n, (o, p))))))))))))))) ] {
+  /// The machine under test.
+  machine Local [ labels = (ASIL_B), linux.cpus = (2, 3) ] { First, Second [ linux.cpuset = (2, 3), dds.reliable ] }
+  /// The remote machine.
+  machine Other [ external ] { Foreign }
+}

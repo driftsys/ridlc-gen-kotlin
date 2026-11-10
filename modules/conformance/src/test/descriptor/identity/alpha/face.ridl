@@ -1,0 +1,17 @@
+package alpha
+
+/// A byte-sized test value.
+type Value: integer [0..255]
+/// The test interface.
+interface Face {
+  /// The current value.
+  signal value: Value @100ms
+  /// A value occurrence.
+  event changed: Value @[10ms..100ms]
+  /// Accepts a value.
+  command put(value: Value) @[..100ms]
+  /// Returns a value.
+  query get(): Value @[..100ms]
+}
+/// Provides the test interface.
+service alpha.face : Face
