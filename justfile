@@ -73,20 +73,20 @@ dist:
     ./gradlew :ridlc-gen-kotlin:shadowDistZip :ridlc-gen-kotlin:shadowDistTar :ridlc-gen-kotlin:installShadowDist
     @echo "modules/ridlc-gen-kotlin/build/install/ridlc-gen-kotlin/bin/ridlc-gen-kotlin"
 
-# The four JVM libraries into the local Maven repository, for a consumer
+# The five JVM libraries into the local Maven repository, for a consumer
 # outside this repository — the Binder runtime depends on ridl-rt-kt (§6), and
 # runs ridl-rt-kt-conformance's suite over itself.
 publish-local:
     ./gradlew publishToMavenLocal
 
-# The four JVM libraries to GitHub Packages, at the version gradle.properties
+# The five JVM libraries to GitHub Packages, at the version gradle.properties
 # names. Needs the Gradle properties GitHubPackagesUsername and
 # GitHubPackagesPassword, a token with write:packages; the ci workflow's snapshot
 # job and the release workflow set them.
 publish:
     ./gradlew publishAllPublicationsToGitHubPackagesRepository
 
-# The four JVM libraries, signed, as one deployment to the Maven Central Portal,
+# The five JVM libraries, signed, as one deployment to the Maven Central Portal,
 # at the version gradle.properties names. Needs the Gradle properties
 # signingKey (ASCII-armored PGP private key) and signingPassword, and the
 # Portal user token as mavenCentralUsername and mavenCentralPassword (or the
@@ -104,14 +104,15 @@ compliance:
     ./gradlew :conformance:test :ridl-rt-kt-conformance:test :ridl-rt-kt-loopback:test
     python3 scripts/compliance-report.py
 
-# The Rust codec verdicts of the conformance module, regenerated from the
-# pinned ridl release and compared with the committed files (#39); needs cargo,
+# The Rust codec and descriptor verdicts of the conformance module, regenerated
+# from the pinned ridl release and compared with the committed files (#39,
+# #142); needs cargo,
 # git and python3. `just rust-verdicts --write` writes them instead. The test
 # run writes the corpus the Rust programs read; its own verdict is the jvm job's.
 rust-verdicts *args:
     rm -f modules/conformance/build/spike/*.txt
     ./gradlew -q :conformance:installRidl
-    -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.SpikeTest
+    -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.SpikeTest --tests ridl.conformance.DescriptorTest
     python3 scripts/rust-verdicts.py {{args}}
 
 # Serve the book (docs/book) locally, rebuilding on each change.

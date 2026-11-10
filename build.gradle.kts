@@ -31,12 +31,12 @@ subprojects {
     }
 }
 
-// The four JVM libraries are consumed outside this repository: the Binder
+// The five JVM libraries are consumed outside this repository: the Binder
 // runtime's own repository depends on `ridl-rt-kt` (docs/design.md §6), and a
 // runtime there runs `ridl-rt-kt-conformance`'s port contract suite from its
 // own tests. Each publishes a Maven artifact with its sources and a javadoc
 // jar, under the root MIT license, to GitHub Packages and to Maven Central.
-// `java-library` selects exactly those four — the generator ships as the
+// `java-library` selects exactly those five — the generator ships as the
 // `application` distribution instead (§2), and the conformance tests and the
 // sample ship not at all.
 subprojects {
@@ -106,12 +106,12 @@ subprojects {
     }
 }
 
-// One deployment to the Central Portal holding the four libraries, uploaded by
+// One deployment to the Central Portal holding the five libraries, uploaded by
 // `just publish-central`. The Portal validates it and waits for a manual
 // release (USER_MANAGED); a release is immutable, so that click is the check.
 nmcpAggregation {
     // The root project and the generator module share a name; neither is
-    // aggregated, and the four libraries' names are unique.
+    // aggregated, and the five libraries' names are unique.
     allowDuplicateProjectNames.set(true)
     centralPortal {
         username = providers.gradleProperty("mavenCentralUsername")
@@ -127,4 +127,5 @@ dependencies {
     nmcpAggregation(project(":ridl-rt-kt-loopback"))
     nmcpAggregation(project(":ridl-rt-kt-coroutines"))
     nmcpAggregation(project(":ridl-rt-kt-conformance"))
+    nmcpAggregation(project(":ridl-descriptor-kt"))
 }
