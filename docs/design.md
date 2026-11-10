@@ -279,6 +279,17 @@ same model, under ADR-0019 and ADR-0017; the consumer's Gradle build runs
 per schema, and the plugin's codec is written against the classes that emitter's
 tool produces (D-K5).
 
+**The instance constants, `Instances.kt`.** For a request that carries a
+deployment section, the plugin also writes `object Instances_` in the
+`kotlin-package`: one `const val` per numbered instance of the system (rsdl
+reference §7), at the path the Rust backend's `instances` module gives it, one
+nested object per snake-case segment of the component's qualified name and the
+instance name in screaming snake case (#137). A deployment places every instance
+of its system (RSDL-701), so the section carries every number the Rust module
+does. The Rust module is written from the system itself; a plugin request
+carries only the section, which is absent when the build selects no deployment,
+and the plugin then writes no file.
+
 ## 5. The face
 
 **One Kotlin file per package, `Faces.kt`, mirroring ADR-0023 and

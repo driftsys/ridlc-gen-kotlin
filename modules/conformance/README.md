@@ -13,6 +13,9 @@ The repository is licensed under the root [MIT License](../../LICENSE).
   checkout.
 - `src/test/corpus/` holds one directory per corpus package; its README says
   where each comes from and what it exercises.
+- `src/test/systems/` holds workspaces that declare an rsdl system, which the
+  corpus tests do not run over: `instance-numbers` is
+  `crates/ridlc/tests/corpus/instance-numbers` at the pinned tag, unchanged.
 - `src/test/resources/probes/` holds hand-written probes, compiled with a
   package's generated code, for what the model-driven probe does not reach.
 - `checkSchema`, run by `check`, fails when the schema vendored under
@@ -59,6 +62,13 @@ string off its pattern, which the Rust verifier checks only under its
 `validate-pattern` feature; no buffer of the corpus reaches one. A wrong table
 layout, a missing count check, a wrong union error or a float step check that
 never fails each turns it red.
+
+`InstancesTest` (#137) builds the `instance-numbers` system with `--emit rust`:
+the `Instances.kt` of each of its two packages compiles, and its constants are
+those of the Rust `__ridl_instances.rs` of the same build, under the system's
+deployment and under a second one selected with `--deployment`. With two
+deployments and none selected, ridl sends no deployment section and the plugin
+writes no file, and a corpus package with no system gets none.
 
 Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
 `ridl.toml`, and every catalog hash changed. `UnitTest` builds the corpus

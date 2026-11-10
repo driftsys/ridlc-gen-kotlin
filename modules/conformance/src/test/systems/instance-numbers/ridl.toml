@@ -1,0 +1,2 @@
+[workspace]
+members = ["adas", "ego"]

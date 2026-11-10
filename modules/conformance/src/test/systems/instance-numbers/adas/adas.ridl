@@ -1,0 +1,5 @@
+package veh.adas
+
+service veh.adas.cruise {
+  signal engaged: Engaged @[100ms..1s]
+}
