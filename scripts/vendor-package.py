@@ -2,8 +2,9 @@
 """Builds build/vendor/ridl-rt-kt-<version>-android.tar.gz.
 
 The runtime sources as an Android tree vendors them (packaging/android/README.md):
-the committed sources of ridl-rt-kt, ridl-rt-kt-coroutines and
-ridl-rt-kt-loopback, read with `git archive`, with the Android.bp, METADATA and
+the committed sources of ridl-rt-kt, ridl-rt-kt-coroutines,
+ridl-rt-kt-loopback and ridl-descriptor-kt, which the loopback's `Node` reads
+descriptors with, read with `git archive`, with the Android.bp, METADATA and
 README of packaging/android filled in, LICENSE, and an empty MODULE_LICENSE_MIT.
 Every entry carries the commit's time and no owner, and the gzip header no
 time, so one commit always gives the same bytes.
@@ -20,7 +21,7 @@ import tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "build" / "vendor"
-MODULES = ["ridl-rt-kt", "ridl-rt-kt-coroutines", "ridl-rt-kt-loopback"]
+MODULES = ["ridl-rt-kt", "ridl-rt-kt-coroutines", "ridl-rt-kt-loopback", "ridl-descriptor-kt"]
 TEMPLATES = ["Android.bp", "METADATA", "README.md"]
 
 
@@ -66,7 +67,7 @@ def main():
                 sys.exit(f"{template}: {placeholder} was left unfilled")
         entries[template] = (text.encode(), 0o644)
 
-    # Every source of the three modules is in the package, and nothing else.
+    # Every source of the modules is in the package, and nothing else.
     expected = len(git("ls-files", "--", *sources).split())
     actual = sum(1 for path in entries if "/src/main/" in path)
     if expected != actual:
