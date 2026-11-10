@@ -2,7 +2,7 @@
 # commit (CONTRIBUTING.md, "Releasing"), runs the whole gate and the Rust codec
 # verdicts on the tagged commit, then publishes:
 #
-# - the four JVM libraries, `ridl-rt-kt-conformance` among them, to GitHub
+# - the five JVM libraries, `ridl-rt-kt-conformance` among them, to GitHub
 #   Packages (`just publish`);
 # - the plugin distribution, `.zip` and `.tar` (`just dist`, docs/design.md §2),
 #   and `install.sh`, which installs it;

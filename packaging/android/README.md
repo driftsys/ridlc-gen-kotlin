@@ -6,14 +6,15 @@ The files that turn the runtime sources into a directory an Android source tree
 builds with Soong: `Android.bp`, `METADATA`, and this README. Each release
 attaches `ridl-rt-kt-<version>-android.tar.gz`, which `just vendor-package`
 builds from these files, the `src/main` sources of `ridl-rt-kt`,
-`ridl-rt-kt-coroutines` and `ridl-rt-kt-loopback`, the root `LICENSE`, and an
-empty `MODULE_LICENSE_MIT`. The version and the date in `Android.bp` and
-`METADATA` are filled in from `gradle.properties` and the commit.
+`ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback` and `ridl-descriptor-kt`, the
+root `LICENSE`, and an empty `MODULE_LICENSE_MIT`. The version and the date in
+`Android.bp` and `METADATA` are filled in from `gradle.properties` and the
+commit.
 
 The package unpacks to one directory, `ridl-rt-kt-<version>/`. Put its contents
 at a path of the tree such as `external/ridl-rt-kt`, and depend on the libraries
-by name: `ridl-rt-kt`, `ridl-rt-kt-coroutines`, and `ridl-rt-kt-loopback` for
-tests.
+by name: `ridl-rt-kt`, `ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback` for tests,
+and `ridl-descriptor-kt`, which the loopback depends on.
 
 Two things are left to the tree:
 

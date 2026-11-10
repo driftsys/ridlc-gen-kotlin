@@ -6,8 +6,8 @@ This module is the in-process reference runtime every test runs over: every port
 of [`ridl-rt-kt`](../ridl-rt-kt/README.md) over one in-memory store, a map and a
 queue, no IO; the Kotlin spelling of `crates/ridl-loopback` (docs/design.md §3,
 §6). It is a JVM library in the package `ridl.rt.loopback`, depending on
-`ridl-rt-kt` alone. The repository is licensed under the root
-[MIT License](../../LICENSE).
+`ridl-rt-kt`, and on [`ridl-descriptor-kt`](../ridl-descriptor-kt/README.md) for
+`Node`. The repository is licensed under the root [MIT License](../../LICENSE).
 
 `Loopback` is the aggregate handle a generated face is built over: it implements
 all fourteen port interfaces by delegating to six role handles, `ReaderHandle`,
@@ -88,6 +88,24 @@ a reused slot's correlation does not give. `WakeableTest` is the "Waking" and
 runtime can express, under the same names and in the same order; the 15 that
 story E11.20 moved into the suite run from `ConformanceTest`.
 
+`Node` (#139) is `ridl-loopback`'s `node` module: the catalog stores and the
+attachment grants of one machine, read from a deployment descriptor.
+`Node.fromDescriptor(bytes, machine)` verifies the descriptor, finds the
+machine, and makes one store for each catalog an instance placed on it offers
+into or maps. `attach(who, catalog)` gives an instance an `Attachment` to one of
+its catalogs: the ports of a loopback aggregate on that store, with the identity
+reserved until the attachment is closed. A debug twin shares its instance's
+grant and excludes it, and the listener attaches to any catalog and can read,
+subscribe and call but not publish, raise, serve or take a claim. The refusals
+are `NodeError` and `AttachError`, as in Rust. The conformance module's
+`NodeTest` is `crates/ridl-loopback/tests/node.rs`, case for case, over the
+identity fixture's descriptor, which the pinned `ridl` builds byte for byte as
+the Rust tests read it. `NodeInternalTest`, here, holds the tests of `node.rs`
+itself and `missing_embedded_catalog_is_refused`, whose descriptor no
+`ridl build` writes, over the value `verify` returns.
+`fixture_catalog_constants_match_descriptor` has no Kotlin case:
+`ridl-rt-kt-conformance` has no identity constants.
+
 ## Where the code departs from the Rust loopback
 
 - **Threading.** The Rust handles are `Send`, and the reader is also `Sync`,
@@ -95,6 +113,22 @@ story E11.20 moved into the suite run from `ConformanceTest`.
   reader handle is safe from any thread; the other five hold unsynchronized
   state of their own and are driven by one thread at a time, which is a rule of
   use, not something the compiler checks.
+- **The `debug` feature of `Node` is a factory.** Rust's `ridl-loopback` has its
+  own `debug` feature, apart from `ridl-rt`'s, so that a program that can name a
+  twin does not make every node accept one. Here a node from
+  `Node.fromDescriptor` refuses a twin and the listener with `UnknownInstance`,
+  as a Rust node without the feature does, and `Node.debugFromDescriptor`, which
+  needs the `@DebugIdentity` opt-in, makes a node that takes them. A Boolean
+  would not need the opt-in.
+- **`Attachment` is `AutoCloseable`.** `close()` is the Rust drop: it closes the
+  attachment's handles, which returns its handler's claims and wakes another
+  serving handler, then releases the identity, so a waker woken by that close
+  still sees it reserved. A second `close()` does nothing.
+- **`NodeError` and `AttachError` extend `RuntimeException`**, not `RidlError`,
+  whose constructor is internal to `ridl-rt-kt`. Like `RidlError`, they capture
+  no stack trace.
+- **`Node.fromDescriptor` takes a `ByteArray`**, not `&'static [u8]`: the node
+  copies what it keeps, so the bytes need not outlive it.
 - **`SourceHandle`, `CallerHandle` and `HandlerHandle` are `AutoCloseable`.**
   The Rust handles remove their state from the store on drop — a source its
   queue and waiter, a caller its `Slot` waiter and the calls it did not forget,

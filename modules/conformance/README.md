@@ -13,6 +13,11 @@ The repository is licensed under the root [MIT License](../../LICENSE).
   checkout.
 - `src/test/corpus/` holds one directory per corpus package; its README says
   where each comes from and what it exercises.
+- `src/test/descriptor/` holds the workspaces `DescriptorTest` builds into
+  deployment descriptors: `identity` is
+  `crates/ridl-rt-conformance/fixtures/identity` at the pinned tag, without its
+  committed descriptor, which the pinned `ridl` rebuilds byte for byte;
+  `attributes` is that fixture with attributes and an external component.
 - `src/test/resources/probes/` holds hand-written probes, compiled with a
   package's generated code, for what the model-driven probe does not reach.
 - `checkSchema`, run by `check`, fails when the schema vendored under
@@ -59,6 +64,13 @@ string off its pattern, which the Rust verifier checks only under its
 `validate-pattern` feature; no buffer of the corpus reaches one. A wrong table
 layout, a missing count check, a wrong union error or a float step check that
 never fails each turns it red.
+
+`DescriptorTest` (#142) checks `ridl-descriptor-kt` against the Rust
+`ridl-descriptor` of the pinned release: both fixtures of `src/test/descriptor`
+read as built, and 55,824 truncations and one-byte changes of their deployment
+descriptors and of a catalog descriptor are refused or read as the Rust `verify`
+refuses or reads them, down to planus's error kind. `just rust-verdicts`
+regenerates `resources/descriptor/descriptor-rust-verdicts.txt`.
 
 Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
 `ridl.toml`, and every catalog hash changed. `UnitTest` builds the corpus

@@ -1,0 +1,20 @@
+package alpha
+
+/// The first local instance.
+component First { offers alpha.face
+                  requires mapped.Face }
+/// The second local instance.
+component Second { offers beta.face
+                   requires alpha.Face }
+/// The remote instance.
+component Foreign { offers mapped.face
+                    offers remote.face }
+/// The fixture system.
+system Test { First, Second, Foreign }
+/// The fixture placement.
+deployment Bench for Test {
+  /// The machine under test.
+  machine Local { First, Second }
+  /// The remote machine.
+  machine Other { Foreign }
+}
