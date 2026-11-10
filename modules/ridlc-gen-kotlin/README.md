@@ -16,9 +16,11 @@ Stages K2a to K3a: the reader, the launcher, the schema refusal, the option
 parsing, and three files per package in its `kotlin-package`, emitted with
 KotlinPoet from the request's model: `Types.kt`, the value objects of §4;
 `Codec.kt`, their FlatBuffers codec; and `Faces.kt`, the interaction face of §5
-for every declared interface, with its clients and `serve`. No AIDL is
-generated; the last section below says why. `just dist` builds the distribution,
-and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
+for every declared interface, with its clients and `serve`. With a deployment
+section in the request, a fourth file, `Instances.kt`, holds the system's
+instance numbers (#137). No AIDL is generated; the last section below says why.
+`just dist` builds the distribution, and
+`ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
@@ -84,6 +86,13 @@ why, and how the rule was last checked; CI does not check it.
   was read from `TypeRef.package`, because the lowering left `foreign` false on
   a reference inside a foreign declaration; the `kt-foreign` corpus entry keeps
   `foreign` honest.
+- **The instance numbers come from the deployment section** (#137). The Rust
+  backend writes its `instances` module from the system, which a plugin request
+  does not carry; the section carries the same numbers, since a deployment
+  places every instance of its system (RSDL-701), but it is absent when the
+  build selects no deployment: a system that declares none, or several with no
+  `--deployment`. There is then no `Instances.kt`, where the Rust module is
+  still written. ridl sending the system's numbers to a plugin closes the gap.
 
 ### `Types.kt`
 
@@ -389,6 +398,31 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   between passes, and is cancellable. `serve(timeout)` still takes no claim past
   its timeout.
 
+### `Instances.kt`
+
+The Rust backend's `instances` module
+(`crates/ridl-backend-rust/src/instances.rs` at the pinned release) spelled in
+Kotlin: `object Instances_` holds one nested object per segment of each
+component's qualified name, in `snake_case`, and in it one
+`const val <INSTANCE>: Int` per instance, its name in screaming snake case,
+documented with its `instances.lock` key and, when the lock has no entry for it
+yet, as provisional. Objects and constants are sorted by name, as the Rust
+modules are. `Instances_.veh.adas.cruise.PRIMARY` is Rust's
+`instances::veh::adas::cruise::PRIMARY`.
+
+- **Every package of the build gets it**, in its own `kotlin-package`: each
+  request carries the same section, and a package compiled on its own still has
+  the constants.
+- **An instance the section numbers 0**, which the system IR leaves unnumbered,
+  has no constant, as in the Rust module.
+- **Two instances mapping to one constant**, such as `veh.adas.LaneKeep/Unit`
+  and `veh.adas.lane_keep/Unit`, refuse the package with one message naming both
+  lock keys, as the Rust backend refuses the build.
+
+`InstancesTest` in the conformance module builds driftsys/ridl's
+`instance-numbers` system with the pinned `ridl` and checks that the Kotlin
+constants compile and equal the Rust module's, under either deployment.
+
 ### The names the plugin chooses
 
 A name the plugin chose never refuses a package (#16, driftsys/ridl's
@@ -399,9 +433,9 @@ of its reach. A ridl identifier is `[A-Za-z][A-Za-z0-9_]*`, and `camel_case`,
 which spells every package-level class, removes each `_`, so a package-level
 name that ends in `_` is one no declaration, interface or member can take:
 
-- **`object Constants_`** and **`InteractionCall_`**, where a declaration named
-  `Constants` was refused and one named `InteractionCall` skipped every face
-  with a call.
+- **`object Constants_`**, **`InteractionCall_`** and **`object Instances_`**,
+  where a declaration named `Constants` was refused and one named
+  `InteractionCall` skipped every face with a call.
 - **The files' JVM classes are `TypesKt_`, `CodecKt_` and `FacesKt_`**
   (`@file:JvmName`). By default `Faces.kt` compiles to `FacesKt`, and a
   declaration named `FacesKt` then failed the consumer's build with a duplicate

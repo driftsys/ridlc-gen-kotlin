@@ -1,0 +1,5 @@
+package veh.ego
+
+service veh.ego.status {
+  signal moving: Moving @[100ms..1s]
+}

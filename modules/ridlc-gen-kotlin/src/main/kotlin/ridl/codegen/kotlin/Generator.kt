@@ -4,6 +4,7 @@ import ridl.codegen.v1.Plugin.CodegenRequest
 import ridl.codegen.v1.Plugin.CodegenResponse
 import ridl.codegen.kotlin.types.CodecEmitter
 import ridl.codegen.kotlin.types.FacesEmitter
+import ridl.codegen.kotlin.types.InstancesEmitter
 import ridl.codegen.kotlin.types.Links
 import ridl.codegen.kotlin.types.TypesEmitter
 import ridl.codegen.kotlin.types.collisions
@@ -37,13 +38,18 @@ object Generator {
         // with a warning, and the rest of the package is still generated.
         // With no encoding named, the package is its types alone (#83): the
         // codec and the face, which calls it, are generated per encoding.
+        // The instance constants of the system, whatever the encodings (#137).
+        val instances = InstancesEmitter(if (request.hasDeployment()) request.deployment else null, options.kotlinPackage).emit()
         if (options.encodings.isEmpty()) {
             val types = TypesEmitter(request.model, options, Links(request.model, options.kotlinPackage, emptySet())).emit()
-            if (types.errors.isNotEmpty()) return failure(types.errors)
+            val errors = types.errors + instances.errors
+            if (errors.isNotEmpty()) return failure(errors)
             val clashes = collisions(request.model.name.dotted, types.claims)
             if (clashes.isNotEmpty()) return failure(clashes)
-            val file = types.text?.let { file(types.path, preamble(request.generatedMarker, request.header) + it) }
-            return CodegenResponse.newBuilder().addAllFiles(listOfNotNull(file)).build()
+            val preamble = preamble(request.generatedMarker, request.header)
+            val files = listOf(types.path to types.text, instances.path to instances.text)
+                .mapNotNull { (path, text) -> text?.let { file(path, preamble + it) } }
+            return CodegenResponse.newBuilder().addAllFiles(files).build()
         }
         // Doc links point at an interface only when it has a face, which a
         // first pass of the face emitter finds (ADR-0028 decision 6).
@@ -51,7 +57,7 @@ object Generator {
         val types = TypesEmitter(request.model, options, links).emit()
         val codec = CodecEmitter(request.model, options).emit()
         val faces = FacesEmitter(request.model, options, links).emit()
-        val errors = types.errors + codec.errors + faces.errors
+        val errors = types.errors + codec.errors + faces.errors + instances.errors
         if (errors.isNotEmpty()) return failure(errors)
         // Two generated types of one name: every file's names are one
         // package's, so they are checked together.
@@ -60,7 +66,12 @@ object Generator {
         // Every file starts with the host's marker and the project's header
         // (driftsys/ridl#746), as every in-tree backend's file does.
         val preamble = preamble(request.generatedMarker, request.header)
-        val files = listOf(types.path to types.text, codec.path to codec.text, faces.path to faces.text)
+        val files = listOf(
+            types.path to types.text,
+            codec.path to codec.text,
+            faces.path to faces.text,
+            instances.path to instances.text,
+        )
             .mapNotNull { (path, text) -> text?.let { file(path, preamble + it) } }
         return CodegenResponse.newBuilder()
             .addAllFiles(files)

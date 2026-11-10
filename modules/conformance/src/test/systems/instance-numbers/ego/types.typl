@@ -1,0 +1,3 @@
+package veh.ego
+
+type Moving: boolean
