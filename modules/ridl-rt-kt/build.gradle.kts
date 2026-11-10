@@ -14,6 +14,8 @@ dependencies {
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotlin.reflect)
+    // `InstanceNoTest`: the Rust `compile_fail` examples, compiled without the debug opt-in.
+    testImplementation(libs.kotlin.compile.testing)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
