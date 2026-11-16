@@ -315,7 +315,7 @@ ok:bda567e0ff8a466a
 ok:bda567e0ff8a466a
 ok:bda567e0ff8a466a
 ok:d85f89e55d000bd1
-ok:152829cd84241839
+ok:3e867dcfb95a7d77
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -349,37 +349,29 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:3e867dcfb95a7d77
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:152829cd84241839
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:51595ee9789e1c56
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:3e867dcfb95a7d77
+ok:af6f710ab56cacdb
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -393,15 +385,7 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:152829cd84241839
-ok:51595ee9789e1c56
+ok:af6f710ab56cacdb
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
@@ -410,16 +394,8 @@ err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-ok:42ff94fe662ca9bd
-ok:8aaed8cf4e44e63d
+ok:3e3f5d9d14124337
+ok:a7bd951ef02529a6
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -455,36 +431,20 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
+ok:a7bd951ef02529a6
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+err:Structure(OutOfBounds)
+ok:a7bd951ef02529a6
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:8aaed8cf4e44e63d
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-err:Structure(OutOfBounds)
-ok:8aaed8cf4e44e63d
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:7038b7a0382c6c21
+ok:4fe90d00e6011c91
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -499,14 +459,14 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Contract(Violation { type_name: Some("Level"), rule: Range })
-ok:d9291306122a3448
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:8aaed8cf4e44e63d
-ok:7038b7a0382c6c21
+ok:050bd57fad4a2069
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:a7bd951ef02529a6
+ok:4fe90d00e6011c91
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
@@ -515,15 +475,7 @@ err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-ok:4f4193eccb556e77
+ok:4b8d67bf88c0ae5b
 ok:5decf26db9765413
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -603,7 +555,7 @@ ok:5decf26db9765413
 ok:5decf26db9765413
 ok:5decf26db9765413
 ok:6eeed741eef9b5c3
-ok:28e4b9186d8c40fe
+ok:0e8848cd5b534a94
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -633,17 +585,9 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -653,31 +597,31 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-ok:28e4b9186d8c40fe
+ok:0e8848cd5b534a94
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
 err:Structure(OutOfBounds)
-ok:28e4b9186d8c40fe
-err:Structure(OutOfBounds)
-err:Structure(OutOfBounds)
-ok:5a4480fa134c58b6
-err:Structure(OutOfBounds)
-ok:5a4480fa134c58b6
+ok:0e8848cd5b534a94
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
-ok:28e4b9186d8c40fe
+ok:96d111d3a3a49dd8
+err:Structure(OutOfBounds)
+ok:96d111d3a3a49dd8
+err:Structure(OutOfBounds)
+err:Structure(OutOfBounds)
+ok:0e8848cd5b534a94
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
@@ -692,22 +636,14 @@ err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)
 err:Contract(Violation { type_name: Some("Subsystems"), rule: Variant })
-ok:71906e00777df5d7
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:5a4480fa134c58b6
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
-err:Contract(Violation { type_name: Some("Health"), rule: Variant })
+ok:e7559130bd79745a
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:96d111d3a3a49dd8
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
@@ -717,22 +653,14 @@ err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Health"), rule: Variant })
 err:Contract(Violation { type_name: Some("Level"), rule: Range })
-ok:471a054278e62ff7
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:28e4b9186d8c40fe
-ok:0c0df84735600037
+ok:bc638074c1132376
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:0e8848cd5b534a94
+ok:c0093a4eb7e6cfc3
 ok:eb4b6981212e03de
 err:Structure(OutOfBounds)
 err:Structure(OutOfBounds)

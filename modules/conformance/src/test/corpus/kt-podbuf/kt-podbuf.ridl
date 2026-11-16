@@ -45,9 +45,9 @@ enum Gear {
   REVERSE = 2
 }
 
-/// A strict i64 enum.
+/// A strict i32 enum at the negative int32 boundary.
 enum Phase {
-  BEFORE = -3000000000
+  BEFORE = -2147483648
   AFTER  = 1
 }
 
@@ -57,10 +57,10 @@ open enum Mood {
   HIGH = 1
 }
 
-/// An open u64 enum.
+/// An open enum at the positive int32 boundary.
 open enum Status {
   OK  = 0
-  FAR = 5000000000
+  FAR = 2147483647
 }
 
 /// A strict u8 enum set.

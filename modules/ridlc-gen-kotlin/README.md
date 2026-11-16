@@ -42,7 +42,7 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.17.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.20.0` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
@@ -132,7 +132,10 @@ why, and how the rule was last checked; CI does not check it.
 - **Every integer is a `Long` and every float a `Double`**, as every Rust
   backing is `i64` or `f64`; the declared widths are the codec's.
 - **An enum's discriminant is a `Long`**, not the `Int` of §4, because the
-  model's is an `int64`.
+  model's is an `int64`, as the Rust backend's is an `i64`. Since ridl 0.18.0
+  every declared value fits int32 (TYPL-225) and the FlatBuffers field is a
+  32-bit `int` (driftsys/ridl#1353). The FlatBuffers `encode` refuses an open
+  enum's value outside int32 with the rule `Range`, as the Rust `encode` does.
 - **An enum set has a private constructor** and `of`. A closed set's `of`
   refuses a bit no member declares with the rule `Variant`, as the Rust
   `TryFrom` does; an open set's keeps every bit, below.
@@ -206,21 +209,21 @@ to that over 19,023 buffers (`CodecTest`).
 
 ### `PodbufCodec.kt`
 
-`PodbufCodec.kt` is the Rust podbuf codec of the pinned release
-(`codec_podbuf.rs` of `editor-v0.17.0`) spelled in Kotlin, over `ridl-rt-kt`'s
-`ridl.rt.podbuf`: one `<Type>PodbufCodec` object implementing `Payload` per
-struct and union of the package, per box the projection lists (a named scalar,
-an enum or an enum set carried as a payload root) and per tuple a call sends on
-its own, and `internal` encode, verify and decode helpers per head. Its view is
-`<Type>PodbufView`, which only `verify` builds, so `decode` reads only checked
-bytes. The codec computes no layout: every offset, size, pad, flag bit,
-descriptor and tail order is read from the model's `PodbufProjection`, and it
-writes the tail in placement order, depth first, and verifies in Rust's order,
-so it writes the same bytes and reaches the same verdict. The conformance module
-holds it to that over 24,331 buffers (`PodbufCodecTest`). The name is
-`<Type>PodbufCodec` in a podbuf-only package too, so a name never changes
-meaning when a package adds an encoding, and `Codec.kt`'s `<Type>Codec` keeps
-its own.
+`PodbufCodec.kt` is the Rust podbuf codec (`codec_podbuf.rs` of
+`editor-v0.17.0`; the float key check of `editor-v0.20.0` is #150) spelled in
+Kotlin, over `ridl-rt-kt`'s `ridl.rt.podbuf`: one `<Type>PodbufCodec` object
+implementing `Payload` per struct and union of the package, per box the
+projection lists (a named scalar, an enum or an enum set carried as a payload
+root) and per tuple a call sends on its own, and `internal` encode, verify and
+decode helpers per head. Its view is `<Type>PodbufView`, which only `verify`
+builds, so `decode` reads only checked bytes. The codec computes no layout:
+every offset, size, pad, flag bit, descriptor and tail order is read from the
+model's `PodbufProjection`, and it writes the tail in placement order, depth
+first, and verifies in Rust's order, so it writes the same bytes and reaches the
+same verdict. The conformance module holds it to that over 24,331 buffers
+(`PodbufCodecTest`). The name is `<Type>PodbufCodec` in a podbuf-only package
+too, so a name never changes meaning when a package adds an encoding, and
+`Codec.kt`'s `<Type>Codec` keeps its own.
 
 A package is refused, with no file written, as the Rust codec refuses it: a
 model with no podbuf projection ("the model carries no podbuf projection"), a

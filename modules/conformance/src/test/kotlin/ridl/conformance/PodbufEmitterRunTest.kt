@@ -36,17 +36,17 @@ class PodbufEmitterRunTest {
         /// A named scalar, carried as a root by its box.
         type Percent : integer [0..100]
 
-        /// An open enum with a value above u32::MAX and none below 0: a `u64`,
-        /// whose values of 2^63 and more are negative Longs.
+        /// An open enum at the positive int32 boundary and none below 0: a
+        /// `u32`, which holds every value up to u32::MAX.
         open enum Huge {
           ZERO = 0
-          BIG  = 4294967296
+          BIG  = 2147483647
         }
 
-        /// A strict enum with a value above u32::MAX and none below 0: a `u64`.
+        /// A strict enum at the positive int32 boundary and none below 0: a `u32`.
         enum Far {
           NEAR = 0
-          AWAY = 4294967296
+          AWAY = 2147483647
         }
 
         /// A strict enum, one byte wide.
@@ -111,7 +111,7 @@ class PodbufEmitterRunTest {
           spot : Point?
         }
 
-        /// A struct whose one field is a u64 enum.
+        /// A struct whose one field is a u32 enum.
         struct HugeOnly {
           huge : Huge
         }
@@ -174,9 +174,9 @@ class PodbufEmitterRunTest {
             "THREW ${'$'}e"
         }
 
-        private fun le64(b: ByteArray, at: Int): Long {
+        private fun le32(b: ByteArray, at: Int): Long {
             var v = 0L
-            for (i in 7 downTo 0) v = (v shl 8) or (b[at + i].toLong() and 0xFF)
+            for (i in 3 downTo 0) v = (v shl 8) or (b[at + i].toLong() and 0xFF)
             return v
         }
 
@@ -193,7 +193,7 @@ class PodbufEmitterRunTest {
             trim = Trim.fromValue(-100),
             warn = Warn.HOT,
             bits = Bits.of(0x80),
-            huge = Huge.fromValue(-1),
+            huge = Huge.fromValue(4000000000),
             far = Far.AWAY,
             pct = Percent.of(42),
             at = Point(x = -3, y = 7),
@@ -206,12 +206,12 @@ class PodbufEmitterRunTest {
         )
 
         fun probe(): List<String> {
-            // A u64 enum value at 2^63 is its bit pattern in the Long, on the wire and back.
-            val top = Huge.fromValue(Long.MIN_VALUE)
+            // An open u32 enum value at u32::MAX, above int32, is its four bytes on the wire and back.
+            val top = Huge.fromValue(0xFFFF_FFFFL)
             val huge = roundTrip("HugeOnly", HugeOnlyPodbufCodec, HugeOnly(top))
-            expect("the u64 at 2^63 is written as its bits", le64(huge, 8) == Long.MIN_VALUE)
+            expect("the u32 at u32::MAX is written as its bytes", le32(huge, 8) == 0xFFFF_FFFFL)
             val back = HugeOnlyPodbufCodec.decode(HugeOnlyPodbufCodec.verify(ByteBuffer.wrap(huge))).huge
-            expect("the u64 at 2^63 reads back as the same bits, got ${'$'}back", back.value == Long.MIN_VALUE)
+            expect("the u32 at u32::MAX reads back as the same value, got ${'$'}back", back.value == 0xFFFF_FFFFL)
 
             val fixed = roundTrip("Fixed", FixedPodbufCodec, sample)
             roundTrip("Fixed, the other optionals", FixedPodbufCodec, Fixed(

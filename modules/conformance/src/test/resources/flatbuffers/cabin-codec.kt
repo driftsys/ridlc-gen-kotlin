@@ -107,36 +107,36 @@ private object AverageCodec : FbCodec<Average>() {
 }
 
 private object HealthCodec : FbCodec<Health>() {
-    override val maxSize = 50
+    override val maxSize = 46
     override fun write(value: Health, builder: Builder) =
-        builder.pushTable(16, 8, 1, listOf(TableField(0, 8, Field.I64(value.value))))
+        builder.pushTable(8, 4, 1, listOf(TableField(0, 4, Field.I32(value.value.toInt()))))
     override fun check(reader: Reader, table: Int) {
-        val at = reader.field(table, 0, 8) ?: return
-        if (Health.fromValue(reader.i64(at)) == null) contract("Health", Rule.Variant)
+        val at = reader.field(table, 0, 4) ?: return
+        if (Health.fromValue(reader.i32(at).toLong()) == null) contract("Health", Rule.Variant)
     }
     override fun decode(view: FbView) =
-        view.reader.field(view.table, 0, 8)?.let { Health.fromValue(view.reader.i64(it)) } ?: Health.OK
+        view.reader.field(view.table, 0, 4)?.let { Health.fromValue(view.reader.i32(it).toLong()) } ?: Health.OK
 }
 
 // A struct is its own table, each field at the slot the projection gave it.
 
 private object WarningCodec : FbCodec<Warning>() {
-    override val maxSize = 60
+    override val maxSize = 56
     override fun write(value: Warning, builder: Builder) = builder.pushTable(
-        16, 8, 2,
-        listOf(TableField(0, 4, Field.U8(value.code.value.toInt())), TableField(1, 8, Field.I64(value.health.value))),
+        12, 4, 2,
+        listOf(TableField(0, 4, Field.U8(value.code.value.toInt())), TableField(1, 8, Field.I32(value.health.value.toInt()))),
     )
     override fun check(reader: Reader, table: Int) {
         reader.field(table, 0, 1)?.let { code -> contract("Level", Level.violation(reader.u8(code).toLong())) }
-        reader.field(table, 1, 8)?.let { health ->
-            if (Health.fromValue(reader.i64(health)) == null) contract("Health", Rule.Variant)
+        reader.field(table, 1, 4)?.let { health ->
+            if (Health.fromValue(reader.i32(health).toLong()) == null) contract("Health", Rule.Variant)
         }
     }
     override fun decode(view: FbView): Warning {
         val r = view.reader
         return Warning(
             code = Level.unchecked(r.field(view.table, 0, 1)?.let { r.u8(it).toLong() } ?: 0L),
-            health = r.field(view.table, 1, 8)?.let { Health.fromValue(r.i64(it)) } ?: Health.OK,
+            health = r.field(view.table, 1, 4)?.let { Health.fromValue(r.i32(it).toLong()) } ?: Health.OK,
         )
     }
 }
