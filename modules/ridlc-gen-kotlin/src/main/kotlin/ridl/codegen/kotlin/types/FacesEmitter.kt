@@ -1260,7 +1260,8 @@ class FacesEmitter internal constructor(
          * One `require` or `ensure` method: the narrow translator of ADR-0023
          * decision 1, over the lowering's accepted comparisons. The subject is
          * the single parameter or `result`, a same-package named scalar over
-         * an integer or a float; any other clause refuses the interface.
+         * an integer or a float; any other clause refuses the interface. A
+         * float literal is the directed binary64 bound of [FloatClauses].
          */
         private fun clauseFun(method: String, kind: ContractKind, m: Member, arg: Named, reply: Named?): FunSpec {
             val clauses = (if (m.interaction.hasCommand()) m.interaction.command.clausesList else m.interaction.query.clausesList)
@@ -1300,7 +1301,18 @@ class FacesEmitter internal constructor(
                     }
                     Literals.long(comparison.literal)
                 }
-                ScalarClass.SCALAR_CLASS_FLOAT -> Literals.double(comparison.literal)
+                ScalarClass.SCALAR_CLASS_FLOAT -> {
+                    val direction = when (comparison.op) {
+                        ComparisonOp.COMPARISON_OP_LE, ComparisonOp.COMPARISON_OP_GT -> FloatClauses.Direction.DOWN
+                        ComparisonOp.COMPARISON_OP_GE, ComparisonOp.COMPARISON_OP_LT -> FloatClauses.Direction.UP
+                        ComparisonOp.COMPARISON_OP_EQ, ComparisonOp.COMPARISON_OP_NE -> FloatClauses.Direction.EXACT
+                        else -> refuseClause("no accepted comparison")
+                    }
+                    when (val bound = FloatClauses.bound(comparison.literal, direction)) {
+                        is FloatClauses.Bound.Literal -> bound.text
+                        is FloatClauses.Bound.Refused -> refuseClause(bound.reason)
+                    }
+                }
                 else -> refuseClause("the subject is not a named integer or float scalar")
             }
             val op = when (comparison.op) {

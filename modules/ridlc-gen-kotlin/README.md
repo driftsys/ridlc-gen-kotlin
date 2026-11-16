@@ -390,6 +390,16 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   `@param args`, as the Rust face's `# Parameters` section does. The rest of the
   package is generated, as the Rust pipeline skips such an interface with a
   `__RIDL_NO_FACE_*` note (E11.14 decision 2).
+- **A float clause literal is the binary64 bound that keeps the exact
+  comparison**, as in the Rust face since ridl 0.20.0 (driftsys/ridl#1301,
+  driftsys/ridl#1358 and driftsys/ridl#1370; `types/FloatClauses.kt`): `<=` and
+  `>` take the largest binary64 value at or below the literal, `>=` and `<` the
+  smallest at or above it, and an exact literal is printed as `Double.toString`
+  spells it. `==` and `!=` over a literal with no exact binary64 value, a
+  literal outside the finite binary64 range, and a literal that is not an exact
+  decimal skip the interface with a warning, in the Rust face's words. A float
+  subject is a `Double` for every wire width, as it is an `f64` in the Rust
+  face.
 - **A stream is a `Flow`, on the async client and the provider alone** (O-K5). A
   reply stream makes the method return `Flow<T>`, sent when it is collected; a
   stream parameter makes it take one, after the call's `args`. `T` is the
