@@ -147,11 +147,18 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
   `ByteBuffer` has no address to read, so `Preamble.read` and
   `Writer.reserveHead` check `position() % 8` of the buffer they are given, and
   `Aligned` has no Kotlin spelling. A `ByteBuffer.allocate` array starts at
-  position 0, so it is aligned for the codec's purposes; a buffer that begins
-  inside a larger array is aligned only when that position is. `Writer.finish`
-  returns the length and advances the output's position where Rust returns the
-  written slice, and the debug-build panic at a store outside the written bytes
-  has no JVM spelling: `finish` reports it.
+  position 0, so it is aligned for the codec's purposes; a buffer positioned
+  inside a larger array is aligned only when that position is. The check keeps
+  every offset aligned from the buffer's start, which is all a `ByteBuffer` load
+  or store needs, and says nothing of the address of the bytes:
+  `ByteBuffer.wrap(array, 4, n).slice()` counts its positions from 0 and passes,
+  although its data is at offset 4 of the array, and so does a direct buffer at
+  an unaligned address. The codec still reads and writes the right bytes, since
+  every access goes through the buffer; a caller that hands them to native code
+  that maps them in place aligns them itself. `Writer.finish` returns the length
+  and advances the output's position where Rust returns the written slice, and
+  the debug-build panic at a store outside the written bytes has no JVM
+  spelling: `finish` reports it.
 - **Errors are exceptions.** §3 spells the error types as `sealed interface`s
   that are thrown, and `Caller.ack` as a Kotlin `Result` carrying a `CallError`.
   Kotlin throws and carries in a `Result` only a `Throwable`, so every error

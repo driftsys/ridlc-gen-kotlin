@@ -47,6 +47,17 @@ class PodbufTest {
     }
 
     @Test
+    fun `a slice at offset 4 of its array passes the alignment check, which reads only its position`() {
+        val a = ByteArray(36)
+        a[4] = 8
+        val b = ByteBuffer.wrap(a, 4, 32).slice()
+        assertEquals(4, b.arrayOffset())
+        assertEquals(0, b.position())
+        assertEquals(Preamble(8), Preamble.read(Buffer(b)))
+        assertEquals(PREAMBLE_SIZE, Writer(b).reserveHead(8))
+    }
+
+    @Test
     fun `a buffer at position 4 is Unaligned`() {
         val b = ByteBuffer.wrap(ByteArray(32))
         b.position(4)

@@ -24,7 +24,8 @@ import java.nio.ByteOrder
  *
  * Whatever the caller's byte order, every store is little-endian, and the
  * caller's buffer keeps its order. Nothing is written to the caller's buffer
- * position: [finish] advances it.
+ * position: [finish] advances it. The output's alignment is its position, as
+ * for [Buffer], not the address of its bytes.
  */
 public class Writer(private val out: ByteBuffer) {
     private val aligned: Boolean = out.position() % BUFFER_ALIGN == 0

@@ -31,7 +31,12 @@ private fun malformed(kind: Malformed): Nothing = throw VerifyError.Structure(ki
  * The source's position and byte order are left as they were.
  *
  * Rust checks the address of the slice for 8-byte alignment; a JVM buffer has
- * no address to check, so the alignment is `position % 8` of the source.
+ * no address to check, so the alignment is `position % 8` of the source. That
+ * keeps every offset aligned from the buffer's start, which is all a load
+ * through a `ByteBuffer` needs, and says nothing of where the bytes sit in
+ * memory: `ByteBuffer.wrap(array, 4, n).slice()` passes although its data is
+ * at offset 4 of the array. The loads are still correct; a caller that hands
+ * the bytes to native code that maps them in place aligns them itself.
  */
 public class Buffer(source: ByteBuffer) {
     internal val bytes: ByteBuffer = source.slice().order(ByteOrder.LITTLE_ENDIAN)
