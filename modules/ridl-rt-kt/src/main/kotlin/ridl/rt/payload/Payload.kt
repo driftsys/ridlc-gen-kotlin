@@ -197,7 +197,11 @@ public enum class Rule {
     /** A map holds more than one entry with the same key. */
     Unique,
 
-    /** A text chunk of a `<string>` stream is not valid UTF-8 (ADR-0032 decision 12). */
+    /**
+     * A text chunk of a `<string>` stream is not valid UTF-8 (ADR-0032
+     * decision 12), or a Kotlin string holds an unpaired surrogate, which
+     * UTF-8 cannot carry (`isWellFormedString`).
+     */
     Utf8,
 }
 
