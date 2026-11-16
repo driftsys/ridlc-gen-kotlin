@@ -112,6 +112,24 @@ class InstancesEmitterTest {
     }
 
     @Test
+    fun `one instance placed twice with one number is one constant`() {
+        val text = generated(listOf(Placed("veh.adas.Cruise", "primary", 1), Placed("veh.adas.Cruise", "primary", 1)))
+            .getValue("veh/adas/Instances.kt")
+        assertEquals(1, Regex("const val PRIMARY: Int = 1").findAll(text).count(), text)
+    }
+
+    @Test
+    fun `one instance placed twice with two numbers is refused, naming both`() {
+        val response = Generator.generate(
+            request(listOf(Placed("veh.adas.Cruise", "primary", 1), Placed("veh.adas.Cruise", "primary", 2))),
+        )
+        assertEquals(emptyList<Plugin.GeneratedFile>(), response.filesList)
+        val message = response.diagnosticsList.single().message
+        assertTrue("veh.adas.Cruise/primary" in message, message)
+        assertTrue("1" in message && "2" in message, message)
+    }
+
+    @Test
     fun `a name Kotlin cannot write bare is escaped`() {
         val text = generated(listOf(Placed("object.in.Is", "2nd", 1))).getValue("veh/adas/Instances.kt")
         assertTrue("object `object`" in text, text)

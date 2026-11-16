@@ -14,6 +14,7 @@ import kotlin.io.path.copyTo
 import kotlin.io.path.createDirectories
 import kotlin.io.path.readText
 import kotlin.io.path.relativeTo
+import kotlin.io.path.writeText
 
 /**
  * #137: the instance constants of a system. The pinned `ridl` builds the
@@ -108,6 +109,23 @@ class InstancesTest {
         root.resolve("adas/car.rsdl").appendText(SECOND_DEPLOYMENT)
         val sources = generated(root, "--deployment", "Split")
         val rust = rustConstants(work.resolve("capture-out-instances").resolve("__ridl_instances.rs").readText())
+        val compiled = Compiler.compile(sources, work.resolve("compile"))
+        assertTrue(compiled.ok, compiled.messages)
+        assertEquals(rust, kotlinConstants(compiled.classLoader!!.loadClass("veh.adas.Instances_")).toSortedMap())
+    }
+
+    @Test
+    fun `a component named like its parent compiles and is the Rust module's`() {
+        val root = fixture()
+        // `veh.adas.Adas` nests `object adas` in `object adas`; its instance is not in the lock, so it is provisional.
+        val car = root.resolve("adas/car.rsdl")
+        car.writeText(
+            car.readText().replace("{ Cruise, veh.ego.status }", "{ Adas, Cruise, veh.ego.status }") +
+                "\ncomponent Adas {}\n",
+        )
+        val sources = generated(root)
+        val rust = rustConstants(work.resolve("capture-out-instances").resolve("__ridl_instances.rs").readText())
+        assertEquals(4, rust["veh.adas.adas.UNIT"], rust.toString())
         val compiled = Compiler.compile(sources, work.resolve("compile"))
         assertTrue(compiled.ok, compiled.messages)
         assertEquals(rust, kotlinConstants(compiled.classLoader!!.loadClass("veh.adas.Instances_")).toSortedMap())
