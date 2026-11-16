@@ -5,6 +5,7 @@ import ridl.codegen.v1.Plugin.CodegenResponse
 import ridl.codegen.kotlin.types.CodecEmitter
 import ridl.codegen.kotlin.types.FacesEmitter
 import ridl.codegen.kotlin.types.Links
+import ridl.codegen.kotlin.types.PodbufCodecEmitter
 import ridl.codegen.kotlin.types.TypesEmitter
 import ridl.codegen.kotlin.types.collisions
 import ridl.codegen.v1.Plugin.Diagnostic
@@ -46,21 +47,26 @@ object Generator {
             return CodegenResponse.newBuilder().addAllFiles(listOfNotNull(file)).build()
         }
         // Doc links point at an interface only when it has a face, which a
-        // first pass of the face emitter finds (ADR-0028 decision 6).
+        // first pass of the face emitter finds (ADR-0028 decision 6). The
+        // face serves every encoding the package names (docs/design.md §5).
         val links = Links(request.model, options.kotlinPackage, FacesEmitter(request.model, options).faced())
         val types = TypesEmitter(request.model, options, links).emit()
-        val codec = CodecEmitter(request.model, options).emit()
+        // One codec per encoding the package names (docs/design.md §4).
+        val codecs = listOfNotNull(
+            if (WireEncoding.FlatBuffers in options.encodings) CodecEmitter(request.model, options).emit() else null,
+            if (WireEncoding.Podbuf in options.encodings) PodbufCodecEmitter(request.model, options).emit() else null,
+        )
         val faces = FacesEmitter(request.model, options, links).emit()
-        val errors = types.errors + codec.errors + faces.errors
+        val errors = types.errors + codecs.flatMap { it.errors } + faces.errors
         if (errors.isNotEmpty()) return failure(errors)
         // Two generated types of one name: every file's names are one
         // package's, so they are checked together.
-        val clashes = collisions(request.model.name.dotted, types.claims + codec.claims + faces.claims)
+        val clashes = collisions(request.model.name.dotted, types.claims + codecs.flatMap { it.claims } + faces.claims)
         if (clashes.isNotEmpty()) return failure(clashes)
         // Every file starts with the host's marker and the project's header
         // (driftsys/ridl#746), as every in-tree backend's file does.
         val preamble = preamble(request.generatedMarker, request.header)
-        val files = listOf(types.path to types.text, codec.path to codec.text, faces.path to faces.text)
+        val files = (listOf(types.path to types.text) + codecs.map { it.path to it.text } + listOf(faces.path to faces.text))
             .mapNotNull { (path, text) -> text?.let { file(path, preamble + it) } }
         return CodegenResponse.newBuilder()
             .addAllFiles(files)

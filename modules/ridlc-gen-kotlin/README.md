@@ -12,11 +12,13 @@ licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Stages K2a to K3a: the reader, the launcher, the schema refusal, the option
-parsing, and three files per package in its `kotlin-package`, emitted with
-KotlinPoet from the request's model: `Types.kt`, the value objects of §4;
-`Codec.kt`, their FlatBuffers codec; and `Faces.kt`, the interaction face of §5
-for every declared interface, with its clients and `serve`. No AIDL is
+Stages K2a to K3a and K6: the reader, the launcher, the schema refusal, the
+option parsing, and up to four files per package in its `kotlin-package`,
+emitted with KotlinPoet from the request's model: `Types.kt`, the value objects
+of §4; `Codec.kt`, their FlatBuffers codec, and `PodbufCodec.kt`, their podbuf
+codec (#134), each when the package's `encodings` names its encoding; and
+`Faces.kt`, the interaction face of §5 for every declared interface, with its
+clients and `serve`, over every encoding the package carries. No AIDL is
 generated; the last section below says why. `just dist` builds the distribution,
 and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 
@@ -42,12 +44,14 @@ Tested against ridl `editor-v0.17.0` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
-one deployment, and this one lays out none. The model's size states
-(`Payload.sizes`, `request_sizes`, `reply_sizes`, `reservation` and
-`table_budget`) are not read either: a descriptor's size table is built from its
-codecs' `maxSize`, each `Payload.flatbuffers_max_size`, which ridl keeps
-writing, equal to the bounded FlatBuffers state, as the Rust backend builds
-`Sizes<E>` from each codec's `MAX_SIZE`.
+one deployment, and this one lays out none. The model's `reservation` and
+`table_budget` are not read either: a descriptor's size table is built from its
+codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
+`MAX_SIZE`. A FlatBuffers codec's is `Payload.flatbuffers_max_size`, which ridl
+keeps writing, equal to the bounded FlatBuffers state; a podbuf codec's is the
+podbuf size state of its declaration or its call. The podbuf states of
+`Payload.sizes`, `request_sizes` and `reply_sizes` are read only to skip an
+interface whose payload has no finite podbuf bound, below.
 
 ## Generated code on Android
 
@@ -71,11 +75,14 @@ why, and how the rule was last checked; CI does not check it.
 - **`-classpath`, not `-jar`.** The Shadow start script runs the main class with
   the fat jar as the class path rather than `java -jar`; the effect is the same,
   and the script still ends in `exec "$JAVACMD" "$@"`.
-- **`encodings`** accepts `flatbuffers` alone: O-K1 is disposed on FlatBuffers
-  with a verifier (#65), and no other codec is emitted. With no `encodings`
-  option the package is `Types.kt` alone, with no codec and no face, as every
-  backend of the family generates it since ridl 0.9 (#83); the corpus and the
-  cabin sample name `flatbuffers` in `[backend.kotlin]`. ridl 0.9 sends
+- **`encodings`** accepts `flatbuffers` and `podbuf`, alone or together, in
+  either order: O-K1 is disposed on FlatBuffers with a verifier (#65), and
+  podbuf joins it (#134). `proto3` is refused, naming it, until ridl projects
+  proto3 into `ridl.codegen.v1`. The plugin generates a codec for exactly the
+  encodings named, and the face serves exactly those (docs/design.md §4, §5).
+  With no `encodings` option the package is `Types.kt` alone, with no codec and
+  no face, as every backend of the family generates it since ridl 0.9 (#83); the
+  cabin sample names `flatbuffers` in `[backend.kotlin]`. ridl 0.9 sends
   `encodings` and never `wire-encoding`, which the plugin no longer reads.
 - **Every reference goes through `Model.declarationOf`** (`Refs.kt`), which
   refuses a reference whose `TypeRef.foreign` disagrees with its package, or
@@ -144,7 +151,7 @@ encode, verify and decode helpers per table-shaped type. It lays a table out as
 the Rust codec does — declaration order, each field at its own alignment — and
 pushes children in the same order, so it writes the same bytes, and verifies in
 the same order, so it reaches the same verdict. The conformance module holds it
-to that over 15,780 buffers (`CodecTest`).
+to that over 19,023 buffers (`CodecTest`).
 
 - **O-K1 is taken as option A**, pending its disposition
   ([`docs/k1b-flatbuffers-spike.md`](../../docs/k1b-flatbuffers-spike.md)), and
@@ -188,17 +195,64 @@ to that over 15,780 buffers (`CodecTest`).
   it cannot judge — gets no codec, and the file's header names it, as the Rust
   codec writes a `__RIDL_FB_NO_CODEC_*` note.
 
+### `PodbufCodec.kt`
+
+`PodbufCodec.kt` is the Rust podbuf codec of the pinned release
+(`codec_podbuf.rs` of `editor-v0.17.0`) spelled in Kotlin, over `ridl-rt-kt`'s
+`ridl.rt.podbuf`: one `<Type>PodbufCodec` object implementing `Payload` per
+struct and union of the package, per box the projection lists (a named scalar,
+an enum or an enum set carried as a payload root) and per tuple a call sends on
+its own, and `internal` encode, verify and decode helpers per head. Its view is
+`<Type>PodbufView`, which only `verify` builds, so `decode` reads only checked
+bytes. The codec computes no layout: every offset, size, pad, flag bit,
+descriptor and tail order is read from the model's `PodbufProjection`, and it
+writes the tail in placement order, depth first, and verifies in Rust's order,
+so it writes the same bytes and reaches the same verdict. The conformance module
+holds it to that over 24,331 buffers (`PodbufCodecTest`). The name is
+`<Type>PodbufCodec` in a podbuf-only package too, so a name never changes
+meaning when a package adds an encoding, and `Codec.kt`'s `<Type>Codec` keeps
+its own.
+
+A package is refused, with no file written, as the Rust codec refuses it: a
+model with no podbuf projection ("the model carries no podbuf projection"), a
+head the projection refuses ("`<pkg>.<Name>` cannot be laid out as a podbuf
+head, so the package gets no podbuf codec: <cause>", "the tuple `<Name>`" for a
+tuple), and a root with no finite podbuf bound.
+
+- **A podbuf bound of 2^31 bytes or more refuses the package**, where Rust
+  generates the codec: "`<pkg>.<Name>` has a podbuf bound of <n> bytes, above
+  the largest a Kotlin `Payload.maxSize` holds". The model carries a podbuf
+  bound as a `uint32`, Rust's `MAX_SIZE` is a `usize`, and `Payload.maxSize` is
+  an `Int`, which is not widened. As in Rust, every struct and union of the
+  package gets a codec, so a type no interface sends can refuse its package.
+- **podbuf alignment is the buffer's position**, not its address:
+  [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-docsdesignmd)
+  says how. A buffer the face allocates starts at position 0.
+- **A type from another package is written by that package's helpers**, as in
+  `Codec.kt`, and the face names that package's `<Type>PodbufCodec`. A package
+  that carries podbuf and reaches a type of a package that does not carry it
+  generates, and then fails to compile, rather than skip the interface or the
+  type. The Rust backend has the same constraint: the other crate has no
+  `Payload<Podbuf>` implementation.
+- **The encoder's map check is Rust's, gap included** (driftsys/ridl#1280). It
+  sorts and compares a key carried as f32 as the double it holds, then writes
+  the f32, so two doubles one f32 rounds to pass `Unique`, and `verify` refuses
+  the buffer `encode` wrote with `KeyOrder`. A Kotlin value never reaches it: a
+  struct's constructor compares such keys as f32 and refuses the map with
+  `Unique` (#38). A Rust value does. #1280's other case, a u64 enum key of 2^63
+  or more, cannot be written: TYPL-209 gives a map no enum or enum set key.
+
 ### `Faces.kt`
 
 Per declared interface, the Rust face of the pinned release spelled in Kotlin
 (ADR-0023): the descriptor `object <Iface> : Interface`, with its `MEMBERS`
-rows, its FlatBuffers size table through `sizes(encoding)`, one correlation
-value class per call, the `Event` sealed interface, `dispatch`, and `serve` and
-`serveAsync`; one descriptor object per interaction, `<Iface><Member>`, with its
-codec, its row and its `require`, `ensure` or `init`; the clients, bound to
-exactly the ports their kinds need (RA-19) and to `Encoded`;
-`<Iface>Publisher<W>`; and `<Iface>Provider`. `dispatch` settles as the Rust one
-does, a command before its provider method runs and a query after.
+rows, a size table per encoding its package carries through `sizes(encoding)`,
+one correlation value class per call, the `Event` sealed interface, `dispatch`,
+and `serve` and `serveAsync`; one descriptor object per interaction,
+`<Iface><Member>`, with its codec, its row and its `require`, `ensure` or
+`init`; the clients, bound to exactly the ports their kinds need (RA-19) and to
+`Encoded`; `<Iface>Publisher<W>`; and `<Iface>Provider`. `dispatch` settles as
+the Rust one does, a command before its provider method runs and a query after.
 
 Since ridl 0.10 (driftsys/ridl#887) a face reads its encoding from its port:
 each binding checks the port's `encoding` beside its catalog, and the claim and
@@ -207,6 +261,18 @@ an encoding with no codec at compile time; this face throws
 `IllegalArgumentException` when it is built, `serve` and `serveAsync` before
 they register, and `dispatch`, which no binding precedes, when it sizes its
 buffer.
+
+Since #134 a face serves every encoding its package carries (docs/design.md §5).
+With one encoding, each use names that encoding's codec object, and a
+FlatBuffers-only face is the text it was before podbuf. With several, each
+interaction's descriptor holds `flatBuffersCodec` and `podbufCodec`, a query's
+also `flatBuffersReplyCodec` and `podbufReplyCodec`, and `codec(encoding)` and
+`replyCodec(encoding)` pick one; every use reads its own port's encoding, and a
+stream's element, which no descriptor holds, is a `when` over the carried
+encodings. The tables are `FLATBUFFERS_SIZES` and `PODBUF_SIZES`, in that order
+whatever the manifest's, as Rust orders its `Sizes<E>` implementations. A
+`SignalReader` states no encoding, so with several encodings `bindChecks` takes
+the client's port's as a second argument.
 
 Since ridl 0.6.0 (driftsys/ridl#752) every `command`, `query` and `raise` the
 face sends passes `null` as its trace context, as the Rust face passes `None`;
@@ -302,12 +368,16 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
 - **An interface the face cannot carry is skipped with a warning**, not refused
   with the error §5 names: a clause outside the narrow translator's one form, a
   parameter with no type, a fallible `T | E` reply, a call struct the lowering
-  induced with no finite FlatBuffers bound. Since ridl 0.10 (driftsys/ridl#713)
-  a call of any other parameter list sends its induced `<Iface><Call>Params`,
-  and a tuple reply its `<Iface><Call>Reply`; a call method's KDoc lists the
-  parameters under `@param args`, as the Rust face's `# Parameters` section
-  does. The rest of the package is generated, as the Rust pipeline skips such an
-  interface with a `__RIDL_NO_FACE_*` note (E11.14 decision 2).
+  induced with no finite bound in an encoding the package carries, in the Rust
+  backend's words. A declared payload with no podbuf bound is skipped too, which
+  the Rust backend does not check: for a type of the package itself the podbuf
+  codec has already refused the package, so only a payload from another package
+  meets it. Since ridl 0.10 (driftsys/ridl#713) a call of any other parameter
+  list sends its induced `<Iface><Call>Params`, and a tuple reply its
+  `<Iface><Call>Reply`; a call method's KDoc lists the parameters under
+  `@param args`, as the Rust face's `# Parameters` section does. The rest of the
+  package is generated, as the Rust pipeline skips such an interface with a
+  `__RIDL_NO_FACE_*` note (E11.14 decision 2).
 - **A stream is a `Flow`, on the async client and the provider alone** (O-K5). A
   reply stream makes the method return `Flow<T>`, sent when it is collected; a
   stream parameter makes it take one, after the call's `args`. `T` is the
@@ -402,10 +472,10 @@ name that ends in `_` is one no declaration, interface or member can take:
 - **`object Constants_`** and **`InteractionCall_`**, where a declaration named
   `Constants` was refused and one named `InteractionCall` skipped every face
   with a call.
-- **The files' JVM classes are `TypesKt_`, `CodecKt_` and `FacesKt_`**
-  (`@file:JvmName`). By default `Faces.kt` compiles to `FacesKt`, and a
-  declaration named `FacesKt` then failed the consumer's build with a duplicate
-  JVM class. A Java caller of the face's extensions names `FacesKt_`.
+- **The files' JVM classes are `TypesKt_`, `CodecKt_`, `PodbufCodecKt_` and
+  `FacesKt_`** (`@file:JvmName`). By default `Faces.kt` compiles to `FacesKt`,
+  and a declaration named `FacesKt` then failed the consumer's build with a
+  duplicate JVM class. A Java caller of the face's extensions names `FacesKt_`.
 - **A Kotlin class the generated code names in an expression goes through
   KotlinPoet**, which imports or qualifies it: a declaration named `Long`, `Int`
   or `List` took a bare `Long.MAX_VALUE`, `Int.MAX_VALUE` or `List(n) { … }`.
@@ -436,15 +506,16 @@ naming both sources, then "rename one of them" (#18, step 2.2 of the design's
 rule). `ridl check` refuses none of these: each is met by the Kotlin output
 alone. Two namespaces are checked:
 
-- **The package's classes and objects**, across `Types.kt`, `Codec.kt` and
-  `Faces.kt`: a declaration, an induced tuple, a codec `<Type>Codec`, and a
-  faced interface's descriptor, member descriptors `<Iface><Member>`, calls
-  `<Iface><Member>Call`, clients, publisher and provider. Each emitter reports
-  what it emits, and `Generator` checks them together, so an interface whose
-  face is skipped claims nothing, as in the Rust backend (X-8b). The design's
-  cases X-8 (members `XY` and `x_y`), X-9, X-11, X-12, X-13 and X-14b are
-  refused here, as are two declarations `Level` and `level`, a declaration named
-  like another's codec, and a member named like the provider.
+- **The package's classes and objects**, across `Types.kt`, `Codec.kt`,
+  `PodbufCodec.kt` and `Faces.kt`: a declaration, an induced tuple, a codec
+  `<Type>Codec`, a podbuf codec `<Type>PodbufCodec` and its `<Type>PodbufView`,
+  and a faced interface's descriptor, member descriptors `<Iface><Member>`,
+  calls `<Iface><Member>Call`, clients, publisher and provider. Each emitter
+  reports what it emits, and `Generator` checks them together, so an interface
+  whose face is skipped claims nothing, as in the Rust backend (X-8b). The
+  design's cases X-8 (members `XY` and `x_y`), X-9, X-11, X-12, X-13 and X-14b
+  are refused here, as are two declarations `Level` and `level`, a declaration
+  named like another's codec, and a member named like the provider.
 - **One struct's or tuple's properties**: two fields whose `camel_case` agrees
   (`XY` and `x_y`) are one property. RIDL-149 refuses a pair that also agrees
   under `snake_case`, such as X-6a's `minSpeed` and `min_speed`, before the
