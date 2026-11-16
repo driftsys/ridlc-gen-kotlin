@@ -62,8 +62,10 @@ settles with `Transport.Interrupted`. `consumeUpload` cancels its block on
 `Forgotten` and refuses the stream; on `AfterEnd`, the normal end of a command,
 the block goes on to the end of the stream. So a provider suspended outside its
 stream parameter no longer keeps a forgotten call's slot
-(driftsys/ridlc-gen-kotlin#126) on a runtime that reports a forget. A runtime
-with the provided defaults reports none, and keeps the behavior above.
+(driftsys/ridlc-gen-kotlin#126) on a runtime that reports a forget, except a
+command whose stream ended (`AfterEnd`): its slot is kept until the provider
+reads the stream to its end, as in Rust. A runtime with the provided defaults
+reports none, and keeps the behavior above.
 
 `SignalState<T>` is a signal as a shared `StateFlow` of its samples (#76), what
 a generated `<signal>` property of an async client returns; a client keeps its
