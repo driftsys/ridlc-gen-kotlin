@@ -5,6 +5,7 @@ import ridl.codegen.v1.Plugin.CodegenRequest
 /** The encodings a codec can be generated for (docs/design.md §4, O-K1). */
 enum class WireEncoding(val key: String) {
     FlatBuffers("flatbuffers"),
+    Podbuf("podbuf"),
 }
 
 /**
@@ -76,7 +77,7 @@ data class Options(
                     encoding in encodings -> messages +=
                         "$PLUGIN: `$ENCODINGS` names `$name` twice; each encoding is named once"
                     encoding != null -> encodings += encoding
-                    name == "proto3" || name == "podbuf" -> messages += "$PLUGIN: the Kotlin plugin has no `$name` codec"
+                    name == "proto3" -> messages += "$PLUGIN: the Kotlin plugin has no `$name` codec"
                     else -> messages +=
                         "$PLUGIN: `$ENCODINGS` names `$name`, which is not an encoding; the names are $ENCODING_NAMES"
                 }

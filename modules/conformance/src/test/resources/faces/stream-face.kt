@@ -22,7 +22,9 @@ import face.stream.Summary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -269,6 +271,30 @@ fun probe(): List<String> = runBlocking(Dispatchers.Default) {
             outcome { client7.summarize(face.stream.LogSummarizeParams(), flowOf(reading(1))) },
         )
         truncated.join()
+
+        // dispatch counts a streamed query once its coroutine is started, before it settles: a reply stream
+        // and an upload, each dispatched by hand until its call returns.
+        val rt8 = Loopback(Log.catalog)
+        val handler8 = rt8.handler()
+        handler8.serve(Log.number, listOf(Ordinal(1u), Ordinal(4u)))
+        val client8 = LogAsyncClient(rt8.caller())
+        val logs8 = Logs()
+        val buffer8 = ByteBuffer.allocate(Log.sizes(handler8.encoding).maxBufferSize)
+        suspend fun <T> counted(call: suspend () -> T): Pair<Int, T> = coroutineScope {
+            val result = async { call() }
+            var count = 0
+            while (!result.isCompleted) {
+                count += Log.dispatch(handler8, logs8, buffer8, this)
+                kotlinx.coroutines.yield()
+            }
+            count to result.await()
+        }
+        expectEqual("a reply stream counts once", 1 to (1..2).map(::reading), counted { client8.history(Level.of(2)).toList() })
+        expectEqual(
+            "an upload query counts once",
+            1 to Summary(1, 4),
+            counted { client8.summarize(face.stream.LogSummarizeParams(), flowOf(reading(4))) },
+        )
 
         // Bytes and text: a value longer than a chunk is split, and text stays whole characters.
         val documents = Documents()
