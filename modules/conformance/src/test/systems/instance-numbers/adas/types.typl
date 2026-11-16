@@ -1,0 +1,3 @@
+package veh.adas
+
+type Engaged: boolean
