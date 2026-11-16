@@ -35,8 +35,83 @@ public sealed class VerifyError(message: String) : RuntimeException(message, nul
     public data class Invalid(val kind: String) : VerifyError("catalog descriptor is malformed: $kind")
 }
 
-/** The four bytes of an identifier as Rust's `{:?}` of a lossy string shows them. */
-internal fun quoted(bytes: ByteArray): String = "\"" + String(bytes, Charsets.UTF_8) + "\""
+/**
+ * The four bytes of an identifier as Rust's `{:?}` of `String::from_utf8_lossy`
+ * shows them: `<str as Debug>`, which escapes each character as
+ * `char::escape_debug_ext` does. Which characters are escaped past ASCII comes
+ * from the JDK's general categories, near Rust's Unicode properties but not
+ * equal to them: Rust also escapes a few spacing marks and fillers, and
+ * prints what a newer Unicode than the JDK's assigns.
+ */
+internal fun quoted(bytes: ByteArray): String = buildString {
+    append('"')
+    val text = lossy(bytes)
+    var i = 0
+    while (i < text.length) {
+        val c = text.codePointAt(i)
+        when (c) {
+            0 -> append("\\0")
+            '\t'.code -> append("\\t")
+            '\r'.code -> append("\\r")
+            '\n'.code -> append("\\n")
+            '"'.code, '\\'.code -> append('\\').append(c.toChar())
+            in 0x20..0x7E -> append(c.toChar())
+            else -> if (escaped(c)) append("\\u{").append(Integer.toHexString(c)).append('}') else appendCodePoint(c)
+        }
+        i += Character.charCount(c)
+    }
+    append('"')
+}
+
+/**
+ * Control, private use, whitespace, grapheme extender, default ignorable,
+ * format or unassigned: what `escape_debug_ext` escapes past ASCII.
+ */
+private fun escaped(c: Int): Boolean = when (Character.getType(c).toByte()) {
+    Character.CONTROL, Character.PRIVATE_USE, Character.SPACE_SEPARATOR, Character.LINE_SEPARATOR,
+    Character.PARAGRAPH_SEPARATOR, Character.NON_SPACING_MARK, Character.ENCLOSING_MARK, Character.FORMAT,
+    Character.UNASSIGNED,
+    -> true
+    else -> false
+}
+
+/**
+ * `String::from_utf8_lossy`: each maximal ill-formed subsequence is one
+ * U+FFFD (Unicode §3.9). The JDK's decoder takes a surrogate's three bytes as
+ * one, where Rust, refusing `ED` before `A0`, replaces each.
+ */
+private fun lossy(bytes: ByteArray): String = buildString {
+    var i = 0
+    while (i < bytes.size) {
+        val lead = bytes[i].toInt() and 0xFF
+        // The length of the sequence [lead] starts, and the range its second byte must lie in.
+        val (n, second) = when (lead) {
+            in 0x00..0x7F -> 1 to 0..0
+            in 0xC2..0xDF -> 2 to 0x80..0xBF
+            0xE0 -> 3 to 0xA0..0xBF
+            0xED -> 3 to 0x80..0x9F
+            in 0xE1..0xEF -> 3 to 0x80..0xBF
+            0xF0 -> 4 to 0x90..0xBF
+            in 0xF1..0xF3 -> 4 to 0x80..0xBF
+            0xF4 -> 4 to 0x80..0x8F
+            else -> 0 to 0..0 // continuation bytes, C0, C1, F5 to FF
+        }
+        // A lead byte that starts no sequence is a subsequence of its own.
+        var valid = 1
+        while (valid < n && i + valid < bytes.size) {
+            val b = bytes[i + valid].toInt() and 0xFF
+            if (b !in (if (valid == 1) second else 0x80..0xBF)) break
+            valid++
+        }
+        if (valid == n) {
+            append(String(bytes, i, n, Charsets.UTF_8))
+            i += n
+        } else {
+            append('\uFFFD')
+            i += valid
+        }
+    }
+}
 
 /** `ridl.descriptor.Kind`, the interaction kind, in schema order. */
 public enum class Kind { Signal, Event, Command, Query, Fixed }
