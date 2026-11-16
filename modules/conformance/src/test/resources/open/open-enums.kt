@@ -72,6 +72,20 @@ fun probe(): List<String> {
     val refused = runCatching { bytes(OpenMsgCodec, OpenMsg(DtcStatus.INACTIVE, Flags.of(1L shl 9))) }.exceptionOrNull()
     expectEqual("a bit above the width is refused", EncodeError.Contract(Violation("Flags", Rule.Range)), refused)
 
+    // A FlatBuffers enum is a 32-bit `int` (driftsys/ridl#1353): the int32
+    // boundaries and -1 round-trip, and a value outside int32 is refused, not
+    // truncated, as the Rust backend's `encode_check` refuses it.
+    for (value in listOf(-1L, Int.MAX_VALUE.toLong(), Int.MIN_VALUE.toLong())) {
+        val back = decoded(OpenMsgCodec, bytes(OpenMsgCodec, OpenMsg(DtcStatus.fromValue(value), Flags.A)))
+        expectEqual("the open enum value $value round-trips", value, back.status.value)
+    }
+    for (value in listOf(Int.MAX_VALUE + 1L, Int.MIN_VALUE - 1L)) {
+        val outside = runCatching { bytes(OpenMsgCodec, OpenMsg(DtcStatus.fromValue(value), Flags.A)) }.exceptionOrNull()
+        expectEqual("the open enum value $value is refused", EncodeError.Contract(Violation("DtcStatus", Rule.Range)), outside)
+    }
+    val elements = runCatching { bytes(OpenListCodec, OpenList(listOf(DtcStatus.fromValue(1L shl 31)))) }.exceptionOrNull()
+    expectEqual("an element outside int32 is refused", EncodeError.Contract(Violation("DtcStatus", Rule.Range)), elements)
+
     // The wire carries the raw integer: the strict message has the same
     // layout, and refuses what the open one wrote.
     val strict = runCatching { StrictMsgCodec.verify(written) }.exceptionOrNull()

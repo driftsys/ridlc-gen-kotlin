@@ -40,7 +40,7 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.17.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.20.0` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
@@ -123,7 +123,10 @@ why, and how the rule was last checked; CI does not check it.
 - **Every integer is a `Long` and every float a `Double`**, as every Rust
   backing is `i64` or `f64`; the declared widths are the codec's.
 - **An enum's discriminant is a `Long`**, not the `Int` of §4, because the
-  model's is an `int64`.
+  model's is an `int64`, as the Rust backend's is an `i64`. Since ridl 0.18.0
+  every declared value fits int32 (TYPL-225) and the FlatBuffers field is a
+  32-bit `int` (driftsys/ridl#1353). The FlatBuffers `encode` refuses an open
+  enum's value outside int32 with the rule `Range`, as the Rust `encode` does.
 - **An enum set has a private constructor** and `of`. A closed set's `of`
   refuses a bit no member declares with the rule `Variant`, as the Rust
   `TryFrom` does; an open set's keeps every bit, below.

@@ -336,12 +336,16 @@ class PodbufCodecTest {
         const val PREAMBLE = 8
         const val RANDOM = 200
 
-        /** Every form of the podbuf layout law, each integer and float width apart, and every interaction kind. */
+        /**
+         * Every form of the podbuf layout law, each integer and float width
+         * apart, and every interaction kind. An enum has no 64-bit form: since
+         * ridl 0.18.0 every enum value fits int32 (TYPL-225).
+         */
         val EXPECTED: Set<String> = setOf(
             "boolean",
             "int U8", "int I8", "int U16", "int I16", "int U32", "int I32", "int U64", "int I64",
             "float F32", "float F64",
-            "enum narrow", "enum 64-bit", "enum strict", "enum open",
+            "enum narrow", "enum strict", "enum open",
             "enum set narrow", "enum set 64-bit", "enum set strict", "enum set open",
             "optional with a flag bit",
             "inline struct", "inline tuple", "inline foreign head",
