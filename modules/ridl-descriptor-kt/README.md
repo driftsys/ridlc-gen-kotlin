@@ -17,8 +17,8 @@ Rust `VerifyError`s, and the tables of `schema/catalog.fbs` and
 
 ## Status
 
-driftsys/ridlc-gen-kotlin#142, for the loopback's `Node` (#139), which reads its
-machine from a deployment descriptor as `ridl-loopback`'s does.
+driftsys/ridlc-gen-kotlin#142, for the loopback's `Node` of #139, which is to
+read its machine from a deployment descriptor as `ridl-loopback`'s does.
 
 A buffer is refused here exactly when `ridl-descriptor` refuses it, for the same
 reason. `DescriptorTest`, in the conformance module, builds two deployments with
