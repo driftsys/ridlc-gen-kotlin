@@ -25,11 +25,13 @@ import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
 import ridl.rt.error.ClientError
 import ridl.rt.error.Contract
+import ridl.rt.contract.StreamNo
 import ridl.rt.error.Transport
 import ridl.rt.loopback.CallerHandle
 import ridl.rt.loopback.HandlerHandle
 import ridl.rt.loopback.Loopback
 import ridl.rt.port.Claim
+import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.Encoded
@@ -72,6 +74,12 @@ private class Refusing(private val handler: HandlerHandle, refusals: List<Settle
 
     override val catalog: CatalogRef get() = handler.catalog
 
+    // The provided defaults: the claim this double settles was never sent, and
+    // the loopback would report an unknown claim as forgotten.
+    override fun claimForget(claim: ClaimId): ClaimForget = ClaimForget.NotForgotten
+
+    override fun wakeOnClaimForget(claim: ClaimId, waker: Waker) {}
+
     override fun settle(claim: ClaimId, outcome: Result<ByteBuffer>) {
         outcomes += outcome
         left.removeFirstOrNull()?.let { throw it }
@@ -87,6 +95,20 @@ private class AtOnce(private val handler: HandlerHandle, times: Int) : StreamHan
     override fun wakeOn(what: Interest, waker: Waker) {
         handler.wakeOn(what, waker)
         if (what is Interest.ClaimStream && left.getAndDecrement() > 0) waker.wake()
+    }
+}
+
+/**
+ * A handler that stores no `ClaimStream` registration of the reply stream and
+ * never wakes one, so a driver reads a forget only from
+ * [StreamHandler.claimForget].
+ */
+private class NoReplyWake(private val handler: HandlerHandle) : StreamHandler by handler, Wakeable by handler {
+    override val catalog: CatalogRef get() = handler.catalog
+
+    override fun wakeOn(what: Interest, waker: Waker) {
+        if (what is Interest.ClaimStream && what.no == REPLY_STREAM) return
+        handler.wakeOn(what, waker)
     }
 }
 
@@ -344,6 +366,169 @@ class StreamDriveTest {
         port.poke()
         assertEquals(ClientError.Call(Transport.Timeout), first.await())
         second.cancelAndJoin()
+        server.cancelAndJoin()
+    }
+
+    // The caller's forget, as `StreamHandler.claimForget` reports it
+    // (driftsys/ridl#1298, issue #126). Each test runs twice as many calls as
+    // the loopback has slots: a forgotten call that kept its slot would leave
+    // a later send waiting for a slot until the test's bound.
+
+    private fun command(rt: Loopback) = StreamCall(rt.caller(), Mutex(), IFACE, ORD, false, null) { ByteBuffer.allocate(0) }
+
+    /** Acknowledges a command's claim, then runs [block] over its stream parameter, as the generated `serveAsync` does. */
+    private suspend fun acknowledged(handler: HandlerHandle, claim: Claim, block: suspend () -> Unit) {
+        handler.settle(claim.id, Result.success(ByteBuffer.allocate(0)))
+        consumeUpload(handler, claim.id, block)
+    }
+
+    @Test
+    fun `a forget reaches a provider suspended in settleUpload`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val started = AtomicInteger()
+        val stopped = AtomicInteger()
+        val server = serving(handler) { claim ->
+            settleUpload(handler, claim.id) {
+                started.incrementAndGet()
+                try {
+                    awaitCancellation()
+                } finally {
+                    stopped.incrementAndGet()
+                }
+            }
+        }
+        repeat(Loopback.SLOTS * 2) { i ->
+            val job = launch { call(rt).uploadQuery(CHUNKS, flow { emit(bytes(1)); awaitCancellation() }, 2) { it.get() } }
+            while (started.get() <= i) delay(1)
+            job.cancelAndJoin()
+        }
+        while (stopped.get() < Loopback.SLOTS * 2) delay(1)
+        server.cancelAndJoin()
+    }
+
+    @Test
+    fun `forgetting a query after its parameter ended cancels the provider and frees the slot`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val started = AtomicInteger()
+        val server = serving(handler) { claim ->
+            settleUpload(handler, claim.id) {
+                claimStream(handler, claim.id, CHUNKS).toList()
+                started.incrementAndGet()
+                awaitCancellation()
+            }
+        }
+        repeat(Loopback.SLOTS * 2) { i ->
+            val job = launch { call(rt).uploadQuery(CHUNKS, flowOf(bytes(1)), 2) { it.get() } }
+            while (started.get() <= i) delay(1)
+            job.cancelAndJoin()
+        }
+        server.cancelAndJoin()
+    }
+
+    @Test
+    fun `a consumer waiting on the stream parameter of a forgotten command sees Transport Interrupted`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val started = AtomicInteger()
+        val seen = CopyOnWriteArrayList<Throwable>()
+        val server = serving(handler) { claim ->
+            acknowledged(handler, claim) {
+                try {
+                    claimStream(handler, claim.id, CHUNKS).collect { started.incrementAndGet() }
+                } catch (e: Throwable) {
+                    seen += e
+                    throw e
+                }
+            }
+        }
+        // A raw forget, with no interruption of the stream before it: only the forget can stop the consumer.
+        val caller = rt.caller()
+        repeat(Loopback.SLOTS * 2) { i ->
+            val c = caller.command(IFACE, ORD, ByteBuffer.allocate(0), null)
+            while (caller.push(c, StreamNo(1u), ByteBuffer.wrap(bytes(7))) == 0) delay(1)
+            while (started.get() <= i) delay(1)
+            caller.forget(c)
+            while (seen.size <= i) delay(1)
+        }
+        assertEquals(List(Loopback.SLOTS * 2) { Transport.Interrupted }, seen.toList())
+        server.cancelAndJoin()
+    }
+
+    @Test
+    fun `forgetting an acknowledged command with an open stream cancels its consumer and frees the slot`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val started = AtomicInteger()
+        val stopped = AtomicInteger()
+        val server = serving(handler) { claim ->
+            acknowledged(handler, claim) {
+                started.incrementAndGet()
+                try {
+                    awaitCancellation()
+                } finally {
+                    stopped.incrementAndGet()
+                }
+            }
+        }
+        repeat(Loopback.SLOTS * 2) { i ->
+            val job = launch { command(rt).upload(CHUNKS, flow { emit(bytes(7)); awaitCancellation() }) }
+            while (started.get() <= i) delay(1)
+            job.cancelAndJoin()
+        }
+        while (stopped.get() < Loopback.SLOTS * 2) delay(1)
+        server.cancelAndJoin()
+    }
+
+    @Test
+    fun `a normally forgotten command keeps its consumer to the end of the stream`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val gate = CompletableDeferred<Unit>()
+        val received = CompletableDeferred<List<Byte>>()
+        val server = serving(handler) { claim ->
+            acknowledged(handler, claim) {
+                gate.await()
+                received.complete(claimStream(handler, claim.id, CHUNKS).toList().map { it.single() })
+            }
+        }
+        // The upload ends its stream, reads the acknowledgment and forgets the call.
+        command(rt).upload(CHUNKS, flowOf(bytes(7), bytes(8)))
+        delay(50)
+        gate.complete(Unit)
+        assertEquals(listOf<Byte>(7, 8), received.await())
+        server.cancelAndJoin()
+    }
+
+    @Test
+    fun `a forget stops a pending source without a push to the reply stream`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val quiet = NoReplyWake(handler)
+        val started = AtomicInteger()
+        val stopped = AtomicInteger()
+        val server = serving(handler) { claim ->
+            driveReply(
+                quiet,
+                claim.id,
+                CHUNKS,
+                flow<ByteArray> {
+                    started.incrementAndGet()
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        stopped.incrementAndGet()
+                    }
+                },
+            )
+        }
+        repeat(Loopback.SLOTS * 2) { i ->
+            val job = launch { call(rt).reply(CHUNKS).toList() }
+            while (started.get() <= i) delay(1)
+            job.cancelAndJoin()
+        }
+        while (stopped.get() < Loopback.SLOTS * 2) delay(1)
         server.cancelAndJoin()
     }
 }

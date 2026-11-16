@@ -77,6 +77,12 @@ ridl 0.15 adds the stream ports (driftsys/ridl#1154), `StreamCaller` and
 `wakeOnStream`, `takeStream` and `takeStreams`. `CorrelateTest` carries their
 cases.
 
+ridl 0.20 adds the caller's forget as a provider reads it (driftsys/ridl#1298):
+`StreamHandler.claimForget` and `StreamHandler.wakeOnClaimForget`, whose
+defaults answer `NotForgotten` and never wake, and `ClaimForget`. The Rust enum
+is `non_exhaustive`; the Kotlin `enum class` cannot say so, and a `when` over it
+keeps an `else` branch.
+
 ridl 0.5.1 adds `Rule.Unique`, a map holding two entries with one key
 (driftsys/ridl#654), and the float `step` check generated code calls, `Steps`,
 below.

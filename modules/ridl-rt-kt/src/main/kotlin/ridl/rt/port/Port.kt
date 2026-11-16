@@ -425,6 +425,36 @@ public interface StreamCaller : Caller {
  * known.
  */
 public interface StreamHandler : Handler {
+    /**
+     * Whether the caller forgot [claim], read without consuming a chunk or
+     * delivering anything to the caller. It answers for every claim the
+     * provider can still name, a claim only offered to the provider and an
+     * acknowledged command's settled claim included; a claim only offered and
+     * not forgotten answers [ClaimForget.NotForgotten].
+     *
+     * Register with [wakeOnClaimForget] before reading, so a forget between the
+     * registration and the read is not lost. A wake may be spurious: read again
+     * after every wake. The default cannot observe a forget and answers
+     * [ClaimForget.NotForgotten], which keeps a face's stream behavior as it
+     * was. A runtime that observes forgets overrides both methods.
+     */
+    public fun claimForget(claim: ClaimId): ClaimForget = ClaimForget.NotForgotten
+
+    /**
+     * Stores one [waker] per claim for the caller's forget of [claim], whatever
+     * the state of its streams: an ended stream parameter does not wake it at
+     * once, as it does an [Interest.ClaimStream] registration. A new waker
+     * replaces the stored one and wakes it when it is another task. A stored
+     * waker is cleared when woken, and a claim already forgotten or unknown
+     * wakes [waker] at once. A wake may be spurious: register first, then
+     * confirm with [claimForget]. A provider that keeps working after
+     * [ClaimForget.AfterEnd] does not register again, because the registration
+     * would wake at once: it reads first and, only on
+     * [ClaimForget.NotForgotten], registers and reads again, to catch a forget
+     * during the registration. The default stores nothing and never wakes.
+     */
+    public fun wakeOnClaimForget(claim: ClaimId, waker: Waker) {}
+
     /** Copies the next chunk of stream [s] of [claim] into [out], with the answers and errors of [StreamCaller.pull]. */
     public fun pullClaim(claim: ClaimId, s: StreamNo, out: ByteBuffer): Pull
 
@@ -442,6 +472,34 @@ public interface StreamHandler : Handler {
 
     /** Stops stream [s] of [claim] with outcome [e], from either side of the stream, as [StreamCaller.abort] does. */
     public fun abortClaim(claim: ClaimId, s: StreamNo, e: CallError)
+}
+
+/**
+ * Whether the caller forgot a claim, as [StreamHandler.claimForget] reports it.
+ * `ridl_rt::port::ClaimForget`, which is `non_exhaustive`: a later release may
+ * add a value, so a `when` over it keeps an `else` branch.
+ *
+ * A command's caller normally forgets after the acknowledgment and the
+ * producer end of its stream parameter. [AfterEnd] lets a provider go on with
+ * that ended stream, chunks or consumer work still pending included.
+ */
+public enum class ClaimForget {
+    /** The caller did not forget the call, or the runtime cannot tell. */
+    NotForgotten,
+
+    /**
+     * The caller forgot after every named stream parameter ended without a
+     * stop, with at least one stream parameter named. The answer holds after
+     * the provider pulled [Pull.End], while the claim is still known.
+     */
+    AfterEnd,
+
+    /**
+     * The caller forgot with a stream parameter open or stopped, or with no
+     * stream parameter named, a call with none included; or the runtime no
+     * longer knows the claim.
+     */
+    Forgotten,
 }
 
 /** The outcome of one [StreamCaller.pull] or [StreamHandler.pullClaim]. `ridl_rt::port::Pull`. */
@@ -624,7 +682,9 @@ public sealed interface Interest {
      * Stream [no] of one claim changed, on the provider's side: a chunk or its
      * end arrived, its window freed, the caller stopped it with an abort, the
      * caller forgot the call, or a settlement released it. The waker is stored
-     * with the claim, one for each stream of the claim.
+     * with the claim, one for each stream of the claim. An ended stream may wake
+     * this registration at once: [StreamHandler.wakeOnClaimForget] waits for the
+     * caller's forget after a stream parameter ended.
      */
     public data class ClaimStream(public val claim: ClaimId, public val no: StreamNo) : Interest
 }

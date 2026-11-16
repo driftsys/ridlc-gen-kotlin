@@ -13,7 +13,7 @@
 // | `SourceHandle`  | `EventSource`                                                                  | `Event`, one waker             | one thread at a time |
 // | `SinkHandle`    | `EventSink`                                                                    | none                           | one thread at a time |
 // | `CallerHandle`  | `Clock`, `Caller`                                                              | `Outcome` with each call, `Slot` | one thread at a time |
-// | `HandlerHandle` | `Handler`                                                                      | `Claim`, one waker             | one thread at a time |
+// | `HandlerHandle` | `Handler`                                                                      | `Claim`, one waker; one forget waker per claim | one thread at a time |
 //
 // `Encoded` is on every handle too: each carries the encoding its runtime was
 // made with, the payload bytes staying opaque to it (driftsys/ridl#887).
@@ -55,6 +55,7 @@ import ridl.rt.port.Caller
 import ridl.rt.port.Changed
 import ridl.rt.port.Check
 import ridl.rt.port.Claim
+import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.CoherentSignals
@@ -385,6 +386,18 @@ public class HandlerHandle internal constructor(
     override fun pushClaim(claim: ClaimId, s: StreamNo, chunk: ByteBuffer): Int {
         val bytes = chunk.remainingBytes()
         return store.waking { push(claimSlot(id, claim) ?: throw UNKNOWN, Side.Provider, s, bytes, it) }
+    }
+
+    /**
+     * Whether the caller forgot [claim], whichever handler holds it. Unlike
+     * the other claim methods, it answers for a claim this handler does not
+     * hold.
+     */
+    override fun claimForget(claim: ClaimId): ClaimForget = store.locked { claimForget(claim) }
+
+    /** Stores the one forget waker of [claim], whichever handler holds it; see [Store.waitClaimForget]. */
+    override fun wakeOnClaimForget(claim: ClaimId, waker: Waker) {
+        wake(store.wakeList { waitClaimForget(claim, waker, it) })
     }
 
     override fun endClaim(claim: ClaimId, s: StreamNo): Unit = store.waking { endClaim(id, claim, s, it) }
