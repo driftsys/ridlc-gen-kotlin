@@ -25,10 +25,6 @@ and `kt-values`, which select both (#134).
 | `stream-face`         | `crates/ridl-backend-rust/tests/fixtures/stream_face.ridl`                                      | driftsys/ridl#1154: every stream form the face carries, reply streams of elements, bytes and text, a stream parameter on a command and a query, and both at once; `FacesTest` drives them over the loopback                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `kt-podbuf`           | this repository                                                                                 | every podbuf form, in a package and its subpackage `kt.podbuf.parts` that select podbuf alone: each integer width, an f32 from a stepped range whose bounds are binary32 and an f64, strict and open enums of a narrow width and of 32 bits at the int32 boundaries, strict and open enum sets of a narrow and a 64-bit width, inline structs, a tuple, a foreign struct and union, an inline array, exact-length bytes, optionals, strings, bytes, arrays, maps keyed by a string, an f64, an f32, an i8, a u64 and `Glyph`, a string sampled with U+FFFD and U+1F600, whose UTF-8 and UTF-16 orders differ, a union with an empty arm, and an interface of every kind; `PodbufCodecTest` holds it to the Rust podbuf codec |
 
-`cabin` is still the copy of `editor-v0.17.0`. The six scalar types that later
-releases add to `examples/cabin/cabin.ridl` include patterned strings that the
-round-trip and value-object probes have no sample of.
-
 `veh-common` references `ridl.std`, which `ridl build` writes as a package of
 its own, so the plugin is also run on the standard library's patterned strings
 and fixed-length bytes.

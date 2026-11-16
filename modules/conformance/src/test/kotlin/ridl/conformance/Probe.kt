@@ -22,6 +22,9 @@ import java.math.BigDecimal
 object Probe {
     val SAMPLES: Map<String, String> = mapOf(
         "kt.values.Code" to "ABC",
+        "veh.cabin.Code" to "ABC",
+        "veh.cabin.Glyph" to "\uD83D\uDE00",
+        "veh.cabin.Digited" to "1",
         "kt.values.Serial" to "1234",
         "ridl.std.Uuid" to "123e4567-e89b-12d3-a456-426614174000",
         "ridl.std.Ulid" to "01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -39,6 +42,13 @@ object Probe {
         "ridl.std.CountryCode" to "FR",
         "ridl.std.LanguageCode" to "fr-FR",
     )
+
+    /**
+     * A string of a legal length that does not match, for each patterned type
+     * that a run of U+0001 matches: `veh.cabin.Glyph`'s `/^.$/` matches any
+     * one character but `\n`.
+     */
+    private val NON_MATCHES: Map<String, String> = mapOf("veh.cabin.Glyph" to "ab")
 
     /** A sample of each inline pattern of the corpus, by its pattern: an inline scalar has no type to key it. */
     val PATTERN_SAMPLES: Map<String, String> = mapOf("ABC" to "ABC")
@@ -155,8 +165,9 @@ object Probe {
                     } else {
                         ok("a sample", "\"${sample.replace("\\", "\\\\")}\"")
                     }
-                    // Control characters match no pattern of the corpus; the length is legal.
-                    breaks("a non-match", "Pattern", "\"\\u0001\".repeat(${maxOf(min, 1)})")
+                    // Control characters match no other pattern of the corpus; the length is legal.
+                    val nonMatch = NON_MATCHES[type]?.let { "\"$it\"" } ?: "\"\\u0001\".repeat(${maxOf(min, 1)})"
+                    breaks("a non-match", "Pattern", nonMatch)
                 } else {
                     ok("min length", "\"a\".repeat($min)")
                     if (max != null) {
