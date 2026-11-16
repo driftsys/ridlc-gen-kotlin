@@ -121,6 +121,12 @@ why, and how the rule was last checked; CI does not check it.
   agree; the codec called the `unchecked` of a class that had none.
 - **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
   whole: the pattern's own `^` and `$` decide.
+- **A pattern matches what the Rust `regex` crate matches** under its defaults
+  (#155): `.` is any character but `\n`, `$` outside a class is the end of the
+  text only, and `\d`, `\w`, `\s` and `\b` are Unicode classes. The plugin
+  prefixes each pattern with `(?dU)` and rewrites each such `$` to `\z`;
+  `java.util.regex` alone let `/^.$/` accept `"a\n"` and refuse `"\r"`. A
+  pattern that turns on the multi-line flag `m` is refused.
 - **A pattern `java.util.regex` cannot compile refuses its declaration**, with
   the pattern and Java's reason (#12). `ridl check` passes a pattern ECMA-262
   and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and some of
