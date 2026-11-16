@@ -112,7 +112,7 @@ compliance:
 rust-verdicts *args:
     rm -f modules/conformance/build/spike/*.txt
     ./gradlew -q :conformance:installRidl
-    -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.SpikeTest --tests ridl.conformance.DescriptorTest
+    -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.PodbufCodecTest --tests ridl.conformance.SpikeTest --tests ridl.conformance.DescriptorTest
     python3 scripts/rust-verdicts.py {{args}}
 
 # Serve the book (docs/book) locally, rebuilding on each change.

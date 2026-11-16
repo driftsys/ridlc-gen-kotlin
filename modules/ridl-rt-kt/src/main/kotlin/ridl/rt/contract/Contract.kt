@@ -25,6 +25,58 @@ public value class InterfaceNo(public val value: UInt) : Comparable<InterfaceNo>
 }
 
 /**
+ * Marks the debug instance identities, the Kotlin spelling of `ridl-rt`'s
+ * `debug` feature: code that names [InstanceNo.LISTENER], [InstanceNo.twin],
+ * [InstanceNo.isTwin] or [InstanceNo.isListener] does not compile unless it
+ * opts in with `@OptIn(DebugIdentity::class)`, as Rust code that names them
+ * does not compile without the feature. The opt-in adds no dependency.
+ */
+@RequiresOptIn(
+    message = "A debug instance identity: the twin of an instance or the listener. Opt in only in debug tooling.",
+    level = RequiresOptIn.Level.ERROR,
+)
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.FUNCTION)
+public annotation class DebugIdentity
+
+/**
+ * An instance number (rsdl §7): positive in production, with the debug
+ * identities available only under [DebugIdentity]. The twin of N is -N, and
+ * the listener is [Int.MIN_VALUE]. `ridl_rt::contract::InstanceNo`.
+ *
+ * The constructor is private, so construction always checks the production
+ * range: [new] is the only way to a value outside the debug opt-in.
+ */
+@JvmInline
+public value class InstanceNo private constructor(private val value: Int) : Comparable<InstanceNo> {
+    override fun compareTo(other: InstanceNo): Int = value.compareTo(other.value)
+
+    /** The signed instance number. */
+    public fun get(): Int = value
+
+    /** The debug twin of a positive instance, or `null` for a twin or the listener. */
+    @DebugIdentity
+    public fun twin(): InstanceNo? = if (value > 0) InstanceNo(-value) else null
+
+    /** Whether this number is a debug twin, excluding the listener. */
+    @DebugIdentity
+    public fun isTwin(): Boolean = value < 0 && value != Int.MIN_VALUE
+
+    /** Whether this number is the debug listener. */
+    @DebugIdentity
+    public fun isListener(): Boolean = value == Int.MIN_VALUE
+
+    public companion object {
+        /** The debug listener, which observes every catalog of its machine. */
+        @DebugIdentity
+        public val LISTENER: InstanceNo = InstanceNo(Int.MIN_VALUE)
+
+        /** A positive instance number, or `null` for zero and negative numbers. */
+        public fun new(n: Int): InstanceNo? = if (n > 0) InstanceNo(n) else null
+    }
+}
+
+/**
  * The catalog hash: SHA-256 over the catalog's interfaces, their numbers, and
  * the types they reach. `ridl_rt::contract::CatalogHash`.
  *

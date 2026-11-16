@@ -151,11 +151,11 @@ An interface becomes several declarations in `Faces.kt`:
 
 - **The descriptor**, `object Cabin`. It names the interface's catalog, its
   number and its members, holds `serve` and `serveAsync`, and gives the size
-  table of each encoding the package carries a codec for, FlatBuffers only:
-  `Cabin.sizes(Encoding.FlatBuffers)` holds each member's reservation and the
-  buffer sizes a runtime needs. A runtime port is created for a catalog:
-  `Loopback(Cabin.catalog)`, whose ports carry FlatBuffers unless another
-  encoding is named.
+  table of each encoding the package carries a codec for, FlatBuffers alone in
+  the sample: `Cabin.sizes(Encoding.FlatBuffers)` holds each member's
+  reservation and the buffer sizes a runtime needs. A runtime port is created
+  for a catalog: `Loopback(Cabin.catalog)`, whose ports carry FlatBuffers unless
+  another encoding is named.
 - **The provider interface**, `CabinProvider`, which the application implements
   to answer commands and queries.
 - **The publisher**, `CabinPublisher`, which the provider side uses to publish

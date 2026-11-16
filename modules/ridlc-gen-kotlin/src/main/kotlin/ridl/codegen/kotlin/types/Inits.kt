@@ -73,7 +73,7 @@ internal class Inits(private val model: Model, private val pkg: String, private 
      * An optional field with a declared init holds that value, not absence
      * (driftsys/ridl#654).
      */
-    private fun field(field: Field): CodeBlock {
+    fun field(field: Field): CodeBlock {
         val type = if (field.hasDeclaredInit() && field.type.optional) field.type.toBuilder().setOptional(false).build() else field.type
         if (field.hasDeclaredInit() && type.kindCase == Type.KindCase.NAMED) {
             val (owner, declaration) = wires.declarationOf(type.named)

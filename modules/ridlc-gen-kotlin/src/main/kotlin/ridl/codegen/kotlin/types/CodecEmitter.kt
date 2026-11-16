@@ -418,14 +418,6 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         }
     }
 
-    /** The backing [expr] of a [domain] value holds: a `Long`, `Double`, `Boolean`, `String` or `ByteArray`. */
-    private fun base(domain: Domain, expr: String): String = when (domain) {
-        Domain.Primitive, is Domain.Inline -> expr
-        is Domain.Named -> if (domain.scalar.class_ == ScalarClass.SCALAR_CLASS_BYTES) "$expr.toByteArray()" else "$expr.value"
-        is Domain.EnumOf -> "$expr.value"
-        is Domain.SetOf -> if (domain.narrow) "$expr.wireBits()" else "$expr.bits"
-    }
-
     // -- verifying ---------------------------------------------------------------
 
     /** The checks of [wire] at position [at], in the Rust codec's order. */
@@ -550,38 +542,11 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     }
 
     /** The contract checks of a value read at a position: its type's, or its owner's for an inline scalar. */
-    private fun domainCheck(domain: Domain, value: String, owner: String): CodeBlock = when (domain) {
-        Domain.Primitive -> CodeBlock.of("")
-        is Domain.Inline -> inlineChecks(domain.scalar, value, owner)
-        is Domain.Named -> if (domain.scalar.plain) {
-            CodeBlock.of("")
-        } else {
-            CodeBlock.of(
-                "%T.violation(%L)?.let { throw %T.Contract(%T(%S, it)) }\n",
-                domain.type, value, VERIFY_ERROR, VIOLATION, domain.declared,
-            )
-        }
-        is Domain.EnumOf -> if (domain.open) CodeBlock.of("") else CodeBlock.builder()
-            .beginControlFlow("if (%T.fromValue(%L) == null)", domain.type, value)
-            .addStatement("throw %T.Contract(%T(%S, %T.Variant))", VERIFY_ERROR, VIOLATION, domain.declared, RULE)
-            .endControlFlow().build()
-        is Domain.SetOf -> if (domain.open) CodeBlock.of("") else CodeBlock.builder()
-            .beginControlFlow("if (%L and %T.DECLARED_MASK.inv() != 0L)", value, domain.type)
-            .addStatement("throw %T.Contract(%T(%S, %T.Variant))", VERIFY_ERROR, VIOLATION, domain.declared, RULE)
-            .endControlFlow().build()
-    }
-
-    private fun inlineChecks(scalar: Scalar, value: String, owner: String): CodeBlock {
-        val pattern = if (scalar.checksPattern()) {
+    private fun domainCheck(domain: Domain, value: String, owner: String): CodeBlock =
+        checkDomain(domain, value, owner) { scalar ->
             patterns += scalar.constraint.pattern
             "PATTERN_${patterns.size - 1}"
-        } else {
-            null
         }
-        return scalarChecks(scalar, value, pattern) { rule ->
-            CodeBlock.of("throw %T.Contract(%T(%S, %T.%L))\n", VERIFY_ERROR, VIOLATION, owner, RULE, rule)
-        } ?: CodeBlock.of("")
-    }
 
     // -- decoding ------------------------------------------------------------------
 
@@ -640,22 +605,6 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         else -> construct(domain, CodeBlock.of("%L", wire.zero))
     }
 
-    /** [raw], read from a verified buffer, as the domain value. */
-    private fun construct(domain: Domain, raw: CodeBlock): CodeBlock = when (domain) {
-        Domain.Primitive, is Domain.Inline -> raw
-        is Domain.Named -> if (domain.scalar.plain) CodeBlock.of("%T(%L)", domain.type, raw) else CodeBlock.of("%T.unchecked(%L)", domain.type, raw)
-        is Domain.EnumOf -> if (domain.open) {
-            CodeBlock.of("%T.fromValue(%L)", domain.type, raw)
-        } else {
-            CodeBlock.of("(%T.fromValue(%L) ?: %T.%N)", domain.type, raw, domain.type, enumEntry(domain.first!!.name))
-        }
-        is Domain.SetOf -> if (domain.open) {
-            CodeBlock.of("%T.of(%L)", domain.type, raw)
-        } else {
-            CodeBlock.of("(%T.ofOrNull(%L) ?: %T.EMPTY)", domain.type, raw, domain.type)
-        }
-    }
-
     // -- tuples ---------------------------------------------------------------------
 
     /**
@@ -688,5 +637,62 @@ class CodecEmitter(private val model: Model, private val options: Options) {
             }
         }
         return seen.toList()
+    }
+}
+
+// -- shared with the podbuf codec ------------------------------------------------
+
+/** The backing [expr] of a [domain] value holds: a `Long`, `Double`, `Boolean`, `String` or `ByteArray`. */
+internal fun base(domain: Domain, expr: String): String = when (domain) {
+    Domain.Primitive, is Domain.Inline -> expr
+    is Domain.Named -> if (domain.scalar.class_ == ScalarClass.SCALAR_CLASS_BYTES) "$expr.toByteArray()" else "$expr.value"
+    is Domain.EnumOf -> "$expr.value"
+    is Domain.SetOf -> if (domain.narrow) "$expr.wireBits()" else "$expr.bits"
+}
+
+/**
+ * The contract checks of a [value] read at a position: its type's, or its
+ * owner's for an inline scalar, `verify`'s `Contract` on the first it breaks.
+ * [pattern] names the compiled pattern of an inline string scalar's.
+ */
+internal fun checkDomain(domain: Domain, value: String, owner: String, pattern: (Scalar) -> String): CodeBlock = when (domain) {
+    Domain.Primitive -> CodeBlock.of("")
+    is Domain.Inline -> {
+        val compiled = if (domain.scalar.checksPattern()) pattern(domain.scalar) else null
+        scalarChecks(domain.scalar, value, compiled) { rule ->
+            CodeBlock.of("throw %T.Contract(%T(%S, %T.%L))\n", VERIFY_ERROR, VIOLATION, owner, RULE, rule)
+        } ?: CodeBlock.of("")
+    }
+    is Domain.Named -> if (domain.scalar.plain) {
+        CodeBlock.of("")
+    } else {
+        CodeBlock.of(
+            "%T.violation(%L)?.let { throw %T.Contract(%T(%S, it)) }\n",
+            domain.type, value, VERIFY_ERROR, VIOLATION, domain.declared,
+        )
+    }
+    is Domain.EnumOf -> if (domain.open) CodeBlock.of("") else CodeBlock.builder()
+        .beginControlFlow("if (%T.fromValue(%L) == null)", domain.type, value)
+        .addStatement("throw %T.Contract(%T(%S, %T.Variant))", VERIFY_ERROR, VIOLATION, domain.declared, RULE)
+        .endControlFlow().build()
+    is Domain.SetOf -> if (domain.open) CodeBlock.of("") else CodeBlock.builder()
+        .beginControlFlow("if (%L and %T.DECLARED_MASK.inv() != 0L)", value, domain.type)
+        .addStatement("throw %T.Contract(%T(%S, %T.Variant))", VERIFY_ERROR, VIOLATION, domain.declared, RULE)
+        .endControlFlow().build()
+}
+
+/** [raw], read from a verified buffer, as the domain value. */
+internal fun construct(domain: Domain, raw: CodeBlock): CodeBlock = when (domain) {
+    Domain.Primitive, is Domain.Inline -> raw
+    is Domain.Named -> if (domain.scalar.plain) CodeBlock.of("%T(%L)", domain.type, raw) else CodeBlock.of("%T.unchecked(%L)", domain.type, raw)
+    is Domain.EnumOf -> if (domain.open) {
+        CodeBlock.of("%T.fromValue(%L)", domain.type, raw)
+    } else {
+        CodeBlock.of("(%T.fromValue(%L) ?: %T.%N)", domain.type, raw, domain.type, enumEntry(domain.first!!.name))
+    }
+    is Domain.SetOf -> if (domain.open) {
+        CodeBlock.of("%T.of(%L)", domain.type, raw)
+    } else {
+        CodeBlock.of("(%T.ofOrNull(%L) ?: %T.EMPTY)", domain.type, raw, domain.type)
     }
 }

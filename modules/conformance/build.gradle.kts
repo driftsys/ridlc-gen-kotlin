@@ -69,9 +69,11 @@ tasks.test {
         .file("install/ridlc-gen-kotlin/bin/ridlc-gen-kotlin")
     val corpus = layout.projectDirectory.dir("src/test/corpus")
     val descriptor = layout.projectDirectory.dir("src/test/descriptor")
+    val systems = layout.projectDirectory.dir("src/test/systems")
     val spike = layout.buildDirectory.dir("spike")
     inputs.dir(corpus)
     inputs.dir(descriptor)
+    inputs.dir(systems)
     // The binary itself, so that a `RIDL_BIN` naming another ridl, or one
     // rebuilt in place, runs the tests again instead of reusing a result.
     inputs.file(ridl).withPropertyName("ridl").withPathSensitivity(PathSensitivity.NONE)
@@ -84,6 +86,7 @@ tasks.test {
             "-Dplugin.bin=${plugin.get().asFile.absolutePath}",
             "-Dcorpus.dir=${corpus.asFile.absolutePath}",
             "-Ddescriptor.dir=${descriptor.asFile.absolutePath}",
+            "-Dsystems.dir=${systems.asFile.absolutePath}",
             "-Dspike.dir=${spike.get().asFile.absolutePath}",
         )
     })
