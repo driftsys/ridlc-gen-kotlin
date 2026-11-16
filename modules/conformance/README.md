@@ -79,7 +79,7 @@ generated `PodbufCodec.kt` encodes the samples `RoundTrip` writes from the
 model, in its podbuf mode; the corpus is `CodecTest`'s, plus 200 random mutants
 of every sample from seed 134, and for each map of a full sample its first two
 entries swapped, its second key made the first, and for a float key a NaN key
-and the keys -0.0 then 0.0, 24,331 buffers in all, and each goes through
+and the keys -0.0 then 0.0, 24,756 buffers in all, and each goes through
 `verify`, `decode` and `encode` in Kotlin at position 0 and at position 8 of a
 larger buffer, which must agree, and once in Rust, whose verdicts are checked in
 as `resources/podbuf/<package>-codec-rust-verdicts.txt`. The Rust program copies

@@ -373,7 +373,7 @@ internal class PodbufForms(private val model: Model, private val pkg: String) {
         val i = fresh("i")
         val e = fresh("e")
         val ea = fresh("ea")
-        val order = keyOrder(type.map.key, owner)
+        val order = keyOrder(type.map.key, entryFields(map, owner).first.form, owner)
         val code = CodeBlock.builder().addStatement("val %L = %L", entries, expr)
             .add(countCheck("$entries.size", false, map.min, map.max) { encodeRefusal(owner, RuleName.Length) })
         order.nan?.let { nan ->
@@ -435,10 +435,15 @@ internal class PodbufForms(private val model: Model, private val pkg: String) {
      * `codec_podbuf.rs`'s `key_order`: a string by its UTF-8 bytes and bytes
      * by their bytes, unsigned (not Kotlin's UTF-16 order); a float by
      * `partial_cmp`, the IEEE order in which `-0.0` and `0.0` are one key
-     * (codec_podbuf.rs:1740-1741), once a NaN key is refused; any other key
-     * by its `Long` or `Boolean` value.
+     * once a NaN key is refused; any other key by its `Long` or `Boolean`
+     * value. Two float keys are one key when they are equal at the width of
+     * [keyForm], the key's podbuf form: a key written as f32 is narrowed to
+     * `Float` first, so two doubles that round to one f32 are refused as
+     * `Unique` (codec_podbuf.rs `key_order` of editor-v0.20.0,
+     * driftsys/ridl#1285). Narrowing keeps the order, so the sort stays on the
+     * domain values.
      */
-    private fun keyOrder(key: Type, owner: String): KeyOrder {
+    private fun keyOrder(key: Type, keyForm: PodbufForm, owner: String): KeyOrder {
         val refused = "a podbuf map key of `$owner` must be a string, bytes, a boolean, an integer, a float, an enum or an enum set"
         val wire = if (key.kindCase == Type.KindCase.PRIMITIVE &&
             (key.primitive == PrimitiveType.PRIMITIVE_TYPE_STRING || key.primitive == PrimitiveType.PRIMITIVE_TYPE_BYTES)
@@ -470,13 +475,17 @@ internal class PodbufForms(private val model: Model, private val pkg: String) {
             }
             is Wire.ScalarWire -> if (wire.prim == Prim.F32 || wire.prim == Prim.F64) {
                 // NaN is refused first, so the IEEE order is total here.
+                if (keyForm.kindCase != PodbufForm.KindCase.FLOAT) {
+                    refuse("a float map key of `$owner` has a podbuf form that is not a float")
+                }
+                val narrow = if (floatPrim(keyForm.float) == Prim.F32) ".toFloat()" else ""
                 KeyOrder(
                     { a, b ->
                         val x = fresh("x")
                         val y = fresh("y")
                         "${base(wire.domain, a)}.let { $x -> ${base(wire.domain, b)}.let { $y -> if ($x < $y) -1 else if ($x > $y) 1 else 0 } }"
                     },
-                    { a, b -> "${base(wire.domain, a)} == ${base(wire.domain, b)}" },
+                    { a, b -> "${base(wire.domain, a)}$narrow == ${base(wire.domain, b)}$narrow" },
                     { k -> "${base(wire.domain, k)}.isNaN()" },
                 )
             } else {

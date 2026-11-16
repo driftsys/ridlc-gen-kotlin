@@ -210,20 +210,19 @@ to that over 19,023 buffers (`CodecTest`).
 ### `PodbufCodec.kt`
 
 `PodbufCodec.kt` is the Rust podbuf codec (`codec_podbuf.rs` of
-`editor-v0.17.0`; the float key check of `editor-v0.20.0` is #150) spelled in
-Kotlin, over `ridl-rt-kt`'s `ridl.rt.podbuf`: one `<Type>PodbufCodec` object
-implementing `Payload` per struct and union of the package, per box the
-projection lists (a named scalar, an enum or an enum set carried as a payload
-root) and per tuple a call sends on its own, and `internal` encode, verify and
-decode helpers per head. Its view is `<Type>PodbufView`, which only `verify`
-builds, so `decode` reads only checked bytes. The codec computes no layout:
-every offset, size, pad, flag bit, descriptor and tail order is read from the
-model's `PodbufProjection`, and it writes the tail in placement order, depth
-first, and verifies in Rust's order, so it writes the same bytes and reaches the
-same verdict. The conformance module holds it to that over 24,331 buffers
-(`PodbufCodecTest`). The name is `<Type>PodbufCodec` in a podbuf-only package
-too, so a name never changes meaning when a package adds an encoding, and
-`Codec.kt`'s `<Type>Codec` keeps its own.
+`editor-v0.20.0`) spelled in Kotlin, over `ridl-rt-kt`'s `ridl.rt.podbuf`: one
+`<Type>PodbufCodec` object implementing `Payload` per struct and union of the
+package, per box the projection lists (a named scalar, an enum or an enum set
+carried as a payload root) and per tuple a call sends on its own, and `internal`
+encode, verify and decode helpers per head. Its view is `<Type>PodbufView`,
+which only `verify` builds, so `decode` reads only checked bytes. The codec
+computes no layout: every offset, size, pad, flag bit, descriptor and tail order
+is read from the model's `PodbufProjection`, and it writes the tail in placement
+order, depth first, and verifies in Rust's order, so it writes the same bytes
+and reaches the same verdict. The conformance module holds it to that over
+24,756 buffers (`PodbufCodecTest`). The name is `<Type>PodbufCodec` in a
+podbuf-only package too, so a name never changes meaning when a package adds an
+encoding, and `Codec.kt`'s `<Type>Codec` keeps its own.
 
 A package is refused, with no file written, as the Rust codec refuses it: a
 model with no podbuf projection ("the model carries no podbuf projection"), a
@@ -246,13 +245,14 @@ tuple), and a root with no finite podbuf bound.
   generates, and then fails to compile, rather than skip the interface or the
   type. The Rust backend has the same constraint: the other crate has no
   `Payload<Podbuf>` implementation.
-- **The encoder's map check is Rust's, gap included** (driftsys/ridl#1280). It
-  sorts and compares a key carried as f32 as the double it holds, then writes
-  the f32, so two doubles one f32 rounds to pass `Unique`, and `verify` refuses
-  the buffer `encode` wrote with `KeyOrder`. A Kotlin value never reaches it: a
-  struct's constructor compares such keys as f32 and refuses the map with
-  `Unique` (#38). A Rust value does. #1280's other case, a u64 enum key of 2^63
-  or more, cannot be written: TYPL-209 gives a map no enum or enum set key.
+- **The encoder's map check is Rust's** (driftsys/ridl#1285). It sorts a key
+  carried as f32 as the double it holds, and compares two keys for `Unique` as
+  the f32 it writes, so two doubles that round to one f32 are refused as
+  `Unique`, not written for `verify` to refuse with `KeyOrder`. A struct's
+  constructor already refuses such keys with `Unique` (#38); the encoder's check
+  is reached by a value built past the constructor, as a Rust value is.
+  driftsys/ridl#1280's other case, a u64 enum key of 2^63 or more, cannot be
+  written: TYPL-209 gives a map no enum or enum set key.
 
 ### `Faces.kt`
 

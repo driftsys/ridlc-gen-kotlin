@@ -144,11 +144,6 @@ union Shape {
 /// Every tail form: strings, bytes, arrays of scalars, of heads and of
 /// strings, maps keyed by a string, an f64, an f32, an i8 and a u64, and a
 /// union. An enum is no map key (TYPL-209).
-///
-/// The float keys are sampled on distinct values that are binary32 values
-/// too: two f64 keys that round to one f32, like an open u64 enum or enum
-/// set key of 2^63 or more, make both encoders write a buffer their own
-/// verify refuses (driftsys/ridl#1280).
 struct Tails {
   name    : Name
   label   : string [0..6]
@@ -165,6 +160,13 @@ struct Tails {
   byBig   : [integer [0..9223372036854775807] : boolean; 0..2]
   shape   : Shape
   note    : Name?
+}
+
+/// A map keyed by a float that a range and a step lay out as `f32`: two keys
+/// that are one `f32` value are one key (driftsys/ridl#1285).
+struct Narrowed {
+  /// A level by its weight.
+  byLevel : [float [0.0..4.0 step 0.25] : Octet; 0..8]
 }
 
 /// One member of each kind: a call of two parameters sends an induced struct.
