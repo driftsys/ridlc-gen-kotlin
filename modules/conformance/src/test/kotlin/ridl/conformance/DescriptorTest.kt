@@ -34,9 +34,10 @@ import ridl.descriptor.verify as verifyCatalog
  *
  * Then every truncation of both deployment descriptors and of `alpha`'s
  * catalog descriptor, and each of their bytes set to 0x00, 0xFF and one more,
- * go through `verify`; the verdicts, down to planus's error kind, must be
- * those the Rust `verify` gives, committed, one letter per verdict, as
- * `resources/descriptor/descriptor-rust-verdicts.txt` by `just rust-verdicts`.
+ * go through `verify`; the verdicts, down to planus's error kind and every
+ * payload, must be those the Rust `verify` gives, committed, one code per
+ * verdict, as `resources/descriptor/descriptor-rust-verdicts.txt` by
+ * `just rust-verdicts`.
  */
 class DescriptorTest {
     @TempDir
@@ -113,10 +114,10 @@ class DescriptorTest {
         val files = built()
         val deployment = files.getValue("alpha.bench.deployment.binfb")
         val catalog = files.getValue("alpha.catalog.binfb")
-        assertEquals("err:TooShort", deploymentVerdict(deployment.copyOf(7)))
+        assertEquals("err:TooShort(7)", deploymentVerdict(deployment.copyOf(7)))
         // `the_catalog_verifier_refuses_a_deployment_descriptor` and its converse.
-        assertEquals("err:WrongIdentifier", catalogVerdict(deployment))
-        assertEquals("err:WrongIdentifier", deploymentVerdict(catalog))
+        assertEquals("err:WrongIdentifier([82, 68, 76, 68])", catalogVerdict(deployment))
+        assertEquals("err:WrongIdentifier([82, 68, 76, 67])", deploymentVerdict(catalog))
         // `the_foreign_identifier_message_names_rdld`.
         val message = runCatching { verifyDeployment(catalog) }.exceptionOrNull()!!.message!!
         assertTrue("RDLD" in message && "RDLC" in message, message)
@@ -143,16 +144,18 @@ class DescriptorTest {
                     writer.write(bytes.toHex())
                     writer.write("\n")
                     kinds += kind
-                    kotlin += if (kind == "deployment") deploymentVerdict(bytes) else catalogVerdict(bytes)
+                    kotlin += verdict(kind, bytes)
                 }
             }
         }
         val committed = javaClass.getResource("/descriptor/descriptor-rust-verdicts.txt")?.readText()
             ?: error("no resources/descriptor/descriptor-rust-verdicts.txt: `just rust-verdicts --write` writes it from $out")
-        // A legend, `<letter> <verdict>`, a blank line, then one letter per buffer.
+        // A legend, `<code> <verdict>`, a blank line, then one code per buffer. The codes have one width:
+        // one letter, or two when the verdicts outnumber the letters.
         val (legend, body) = committed.split("\n\n", limit = 2)
-        val verdicts = legend.lines().associate { it[0] to it.substring(2) }
-        val rust = body.filterNot { it == '\n' }.map { verdicts.getValue(it) }
+        val verdicts = legend.lines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
+        val width = verdicts.keys.first().length
+        val rust = body.filterNot { it == '\n' }.chunked(width).map { verdicts.getValue(it) }
         assertEquals(rust.size, kotlin.size, "the committed verdicts are for another corpus")
         val differ = kotlin.indices.filter { kotlin[it] != rust[it] }
         assertTrue(differ.isEmpty()) {
@@ -165,7 +168,7 @@ class DescriptorTest {
         // or adds a quarter of the buffer's length in values, so `TooDeep` and `TooManyAttributeValues`
         // are reached by no mutant. `AttributeLimitTest` in `ridl-descriptor-kt` reaches both, over
         // buffers written by hand.
-        val reached = kotlin.map { it.substringBefore('(') }.toSet()
+        val reached = kotlin.map { it.split('(', ' ').first() }.toSet()
         val expected = listOf(
             "ok", "err:TooShort", "err:WrongIdentifier", "err:WrongVersion", "err:Invalid", "err:EmbeddedCatalog",
             "err:CatalogHashMismatch", "err:InstanceNumber", "err:DuplicateInstanceNumber",
@@ -192,28 +195,75 @@ class DescriptorTest {
             return String(chars)
         }
 
-        /** The verdict line the Rust program prints: `ok`, or `err:` and the variant, with planus's error kind for `Invalid`. */
+        fun verdict(kind: String, bytes: ByteArray): String =
+            if (kind == "deployment") deploymentVerdict(bytes) else catalogVerdict(bytes)
+
+        /**
+         * The verdict line the Rust program prints: `ok`, or `err:` and the error as Rust's `{:?}` shows it,
+         * with planus's error kind alone for `Invalid`.
+         */
         fun catalogVerdict(bytes: ByteArray): String = try {
             verifyCatalog(bytes)
             "ok"
         } catch (e: CatalogError) {
-            "err:" + catalogVariant(e)
+            "err:" + catalogError(e)
         }
 
-        fun catalogVariant(e: CatalogError): String = when (e) {
+        /** `{:?}` of a catalog `VerifyError`, which derives `Debug`. */
+        fun catalogError(e: CatalogError): String = when (e) {
+            is CatalogError.TooShort -> "TooShort(${e.len})"
+            is CatalogError.WrongIdentifier -> "WrongIdentifier(${e.identifier.map { it.toInt() and 0xFF }})"
+            is CatalogError.WrongVersion -> "WrongVersion(${e.version})"
             is CatalogError.Invalid -> "Invalid(${e.kind})"
-            else -> e::class.simpleName!!
         }
 
         fun deploymentVerdict(bytes: ByteArray): String = try {
             verifyDeployment(bytes)
             "ok"
         } catch (e: DeploymentError) {
-            "err:" + when (e) {
-                is DeploymentError.Invalid -> "Invalid(${e.kind})"
-                is DeploymentError.EmbeddedCatalog -> "EmbeddedCatalog(${catalogVariant(e.source)})"
-                else -> e::class.simpleName!!
+            "err:" + deploymentError(e)
+        }
+
+        /** `{:?}` of a deployment `VerifyError`, which derives `Debug`, with the source of `EmbeddedCatalog` as [catalogError]. */
+        fun deploymentError(e: DeploymentError): String = when (e) {
+            is DeploymentError.TooShort -> "TooShort(${e.len})"
+            is DeploymentError.WrongIdentifier -> "WrongIdentifier(${e.identifier.map { it.toInt() and 0xFF }})"
+            is DeploymentError.WrongVersion -> "WrongVersion(${e.version})"
+            is DeploymentError.Invalid -> "Invalid(${e.kind})"
+            is DeploymentError.EmbeddedCatalog ->
+                "EmbeddedCatalog { catalog: ${debug(e.catalog)}, source: ${catalogError(e.source)} }"
+            is DeploymentError.CatalogHashMismatch -> "CatalogHashMismatch { catalog: ${debug(e.catalog)} }"
+            DeploymentError.TooDeep -> "TooDeep"
+            DeploymentError.TooManyAttributeValues -> "TooManyAttributeValues"
+            DeploymentError.MalformedAttributeValue -> "MalformedAttributeValue"
+            is DeploymentError.InstanceNumber ->
+                "InstanceNumber { component: ${debug(e.component)}, instance: ${debug(e.instance)}, number: ${e.number} }"
+            is DeploymentError.DuplicateInstanceNumber ->
+                "DuplicateInstanceNumber { number: ${e.number}, first_component: ${debug(e.firstComponent)}, " +
+                    "first_instance: ${debug(e.firstInstance)}, second_component: ${debug(e.secondComponent)}, " +
+                    "second_instance: ${debug(e.secondInstance)} }"
+            is DeploymentError.SurfaceLink -> "SurfaceLink { index: ${e.index}, link: ${e.link}, links: ${e.links} }"
+        }
+
+        /**
+         * `{:?}` of a name in an error, with the escapes of `char::escape_debug_ext`. Every name the corpus's
+         * refusals carry is ASCII; past ASCII this fails rather than guess at Rust's Unicode tables.
+         */
+        fun debug(name: String): String = buildString {
+            append('"')
+            for (c in name) {
+                when (c) {
+                    '\u0000' -> append("\\0")
+                    '\t' -> append("\\t")
+                    '\r' -> append("\\r")
+                    '\n' -> append("\\n")
+                    '"', '\\' -> append('\\').append(c)
+                    in ' '..'~' -> append(c)
+                    in '\u0000'..'\u007F' -> append("\\u{").append(Integer.toHexString(c.code)).append('}')
+                    else -> error("the name ${name.map { it.code }} is not ASCII")
+                }
             }
+            append('"')
         }
     }
 }

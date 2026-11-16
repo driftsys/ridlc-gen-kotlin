@@ -74,7 +74,12 @@ never fails each turns it red.
 read as built, and 55,824 truncations and one-byte changes of their deployment
 descriptors and of a catalog descriptor are refused or read as the Rust `verify`
 refuses or reads them, down to planus's error kind. `just rust-verdicts`
-regenerates `resources/descriptor/descriptor-rust-verdicts.txt`.
+regenerates `resources/descriptor/descriptor-rust-verdicts.txt`, with each
+error's payload as Rust's `{:?}` shows it (#148), and the test then compares the
+payloads too: the lengths, identifiers and versions, the instance names and
+numbers, the surface entry and link, the catalog names. The committed file
+predates the payloads, so until it is written again the test compares the
+variants alone, as before.
 
 `InstancesTest` (#137) builds the `instance-numbers` system with `--emit rust`:
 the `Instances.kt` of each of its two packages compiles, and its constants are
