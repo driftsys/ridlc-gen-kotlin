@@ -34,8 +34,8 @@ its own, so the plugin is also run on the standard library's patterned strings
 and fixed-length bytes.
 
 `kt-podbuf`'s float-keyed maps, `Tails.byGain` (f64) and `Tails.byRatio` (f32),
-are sampled on distinct values on the f32 grid. driftsys/ridl#1280: two f64 keys
-that round to one f32 make both encoders write a buffer their own verify
-refuses; the corpus keeps away from them, which would agree with Rust and say
-nothing. #1280's other case, an enum key of 2^63 or more, has no source: a map
-key is a named string or a primitive (TYPL-209).
+and `Narrowed.byLevel` (f32, the Rust fixture's), are sampled on distinct values
+on the f32 grid. Two f64 keys that round to one f32 are one key: both encoders
+refuse them with `Unique` (driftsys/ridl#1285), and the `PodbufEmitterRunTest`
+probe covers that case. driftsys/ridl#1280's other case, an enum key of 2^63 or
+more, has no source: a map key is a named string or a primitive (TYPL-209).

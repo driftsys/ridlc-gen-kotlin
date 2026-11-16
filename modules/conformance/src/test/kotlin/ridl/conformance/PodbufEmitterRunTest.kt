@@ -380,6 +380,11 @@ class PodbufEmitterRunTest {
           byFloat : [float : integer [0..255]; 0..4]
         }
 
+        /// A float key that a range and a step lay out as f32.
+        struct Narrowed {
+          byLevel : [float [0.0..4.0 step 0.25] : Weight; 0..4]
+        }
+
         struct Note {
           text : string [0..8]
         }
@@ -440,6 +445,8 @@ class PodbufEmitterRunTest {
         import probe.tails.Empty
         import probe.tails.Floats
         import probe.tails.FloatsPodbufCodec
+        import probe.tails.Narrowed
+        import probe.tails.NarrowedPodbufCodec
         import probe.tails.Kind
         import probe.tails.Labels
         import probe.tails.Legacy
@@ -663,6 +670,42 @@ class PodbufEmitterRunTest {
             expect("a repeated key a producer wrote is KeyOrder", verdict(FloatsPodbufCodec, floats(1.0, 1.0)) == "KeyOrder")
         }.failures
 
+        /**
+         * A Narrowed whose map holds [keys], set past the constructor: the value
+         * object refuses keys that are one f32 (#38), so only a forged value
+         * reaches the encoder's own check, as a Rust value does.
+         */
+        private fun narrowed(vararg keys: Pair<Double, Long>): Narrowed {
+            val value = Narrowed(byLevel = mapOf(1.0 to Weight.of(1)))
+            Narrowed::class.java.getDeclaredField("byLevel").apply { isAccessible = true }
+                .set(value, keys.associate { (k, w) -> k to Weight.of(w) })
+            return value
+        }
+
+        fun narrowedKeys(): List<String> = Check().apply {
+            // codec_podbuf.rs `key_order` (editor-v0.20.0, driftsys/ridl#1285): keys sort as
+            // doubles, and two keys that are one f32 on the wire are one key, `Unique`.
+            val tiny = Math.pow(2.0, -40.0)
+            expect("1.0 and 1.0 + 2^-40 are one f32 key", encoded(NarrowedPodbufCodec, narrowed(1.0 to 1L, 1.0 + tiny to 2L)) == "Narrowed Unique")
+            expect("the pair is found after sorting", encoded(NarrowedPodbufCodec, narrowed(1.0 to 1L, 2.0 to 3L, 1.0 + tiny to 2L)) == "Narrowed Unique")
+            expect("0.0 and -0.0 are one key", encoded(NarrowedPodbufCodec, narrowed(0.0 to 1L, -0.0 to 2L)) == "Narrowed Unique")
+            expect("a NaN key is Range", encoded(NarrowedPodbufCodec, narrowed(1.0 to 1L, Double.NaN to 2L)) == "Narrowed Range")
+            // Two adjacent f32 values below 1.0 are two keys, written in order.
+            val next = 0.5 + Math.pow(2.0, -24.0)
+            val b = bytes(NarrowedPodbufCodec, narrowed(next to 2L, 0.5 to 1L))
+            expect(
+                "0.5 then the next f32: ${'$'}{b.toList()}",
+                b.size == 32 && le32(b, 16) == java.lang.Float.floatToRawIntBits(0.5f).toLong() && b[20] == 1.toByte() &&
+                    le32(b, 24) == java.lang.Float.floatToRawIntBits(next.toFloat()).toLong() && b[28] == 2.toByte(),
+            )
+            // On an f64 wire form the same two doubles are two keys.
+            val f = bytes(FloatsPodbufCodec, Floats(byFloat = mapOf(1.0 + tiny to 2L, 1.0 to 1L)))
+            expect(
+                "f64 keys are not narrowed",
+                le64(f, 16) == java.lang.Double.doubleToRawLongBits(1.0) && le64(f, 32) == java.lang.Double.doubleToRawLongBits(1.0 + tiny),
+            )
+        }.failures
+
         fun zeroKeys(): List<String> = Check().apply {
             // codec_podbuf.rs:1740-1741 (`key_order`, editor-v0.17.0) sorts by `partial_cmp(..).unwrap_or(Equal)`, the
             // IEEE order, in a stable sort: -0.0 and 0.0 compare equal, so -0.0 sorts where 0.0 does and keeps its bits,
@@ -774,6 +817,9 @@ class PodbufEmitterRunTest {
 
     @Test
     fun `-0 and 0 keys are ordered as Rust orders them`() = runTails("zeroKeys")
+
+    @Test
+    fun `two map keys that are one f32 on the wire are refused as Unique`() = runTails("narrowedKeys")
 
     @Test
     fun `a string holding U+0000 is refused on encode as Pattern, a string missing its NUL is Terminator`() = runTails("nul")
