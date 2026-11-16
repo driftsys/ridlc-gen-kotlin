@@ -7,9 +7,9 @@ interfaces, the payload interface and the error types that generated code and a
 runtime agree on, and nothing that runs (docs/design.md §3). It is a JVM library
 with no dependency but the Kotlin standard library, in the packages
 `ridl.rt.contract`, `ridl.rt.encoding`, `ridl.rt.error`, `ridl.rt.payload`,
-`ridl.rt.port`, `ridl.rt.sample`, `ridl.rt.flatbuffers`, `ridl.rt.task` and
-`ridl.rt.trace`, one per `ridl_rt` module. The repository is licensed under the
-root [MIT License](../../LICENSE).
+`ridl.rt.port`, `ridl.rt.sample`, `ridl.rt.flatbuffers`, `ridl.rt.podbuf`,
+`ridl.rt.task` and `ridl.rt.trace`, one per `ridl_rt` module. The repository is
+licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
@@ -68,9 +68,9 @@ and adds `Rule.Utf8`, `Transport.Interrupted`, `EncodeError.Contract`,
 `StreamNo`, `StreamForm`, `StreamInfo`, `Member.streams`, `REPLY_STREAM`, the
 `Stream` and `ClaimStream` interests, and the `rateFloor` and `stalenessBound`
 accessors. The variants of an encoding Kotlin has no codec for are mirrored all
-the same, so a `when` over them stays the Rust one. `TranscodeError`,
-`ridl_rt::podbuf` and `ridl_rt::proto3` have no Kotlin item: nothing here
-transcodes or reads either encoding.
+the same, so a `when` over them stays the Rust one. `TranscodeError` and
+`ridl_rt::proto3` have no Kotlin item: nothing here transcodes or reads proto3.
+`ridl_rt::podbuf` is `ridl.rt.podbuf` since stage K6, below.
 
 ridl 0.15 adds the stream ports (driftsys/ridl#1154), `StreamCaller` and
 `StreamHandler` with `Pull` and `PushError`, and `Table`'s stream wakers,
@@ -95,6 +95,16 @@ carry it, under the delivery contract the port interfaces state. `TraceTest` is
 `ProcessHookTagTest` fails on a test file that calls `setPropagation` without
 the `process-hook` tag (#65).
 
+Stage K6 adds `ridl.rt.podbuf` (driftsys/ridlc-gen-kotlin#134), the spelling of
+`ridl_rt::podbuf` that a generated podbuf codec calls: `Buffer` and `Preamble`,
+`Region`, which reads 0 past the size the producer wrote, `Desc` and
+`ArrayDesc`, `tailRange`, `text`, `hasNul` and `scalarCount`, and `Writer`.
+Unsigned 32-bit values are `Long`, so no read goes negative. Every load and
+store is little-endian whatever the caller's `ByteBuffer.order()`: `Buffer` and
+`Writer` work on a little-endian slice. `PodbufTest`, `RegionTest` and
+`WriterTest` are the tests of `podbuf.rs`, one for one, with the cases the JVM
+adds.
+
 ## Compiling against Android
 
 The runtime and the loopback are also built from source against Android's
@@ -112,6 +122,16 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
 
 ## Where the code departs from docs/design.md
 
+- **podbuf alignment is the buffer's position.** Rust checks that the address of
+  the slice is a multiple of 8, and `Aligned` gives a byte array that address. A
+  `ByteBuffer` has no address to read, so `Preamble.read` and
+  `Writer.reserveHead` check `position() % 8` of the buffer they are given, and
+  `Aligned` has no Kotlin spelling. A `ByteBuffer.allocate` array starts at
+  position 0, so it is aligned for the codec's purposes; a buffer that begins
+  inside a larger array is aligned only when that position is. `Writer.finish`
+  returns the length and advances the output's position where Rust returns the
+  written slice, and the debug-build panic at a store outside the written bytes
+  has no JVM spelling: `finish` reports it.
 - **Errors are exceptions.** §3 spells the error types as `sealed interface`s
   that are thrown, and `Caller.ack` as a Kotlin `Result` carrying a `CallError`.
   Kotlin throws and carries in a `Result` only a `Throwable`, so every error

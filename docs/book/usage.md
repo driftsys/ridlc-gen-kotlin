@@ -8,19 +8,24 @@ ridl build --plugin kotlin .
 ridl build --plugin kotlin=path/to/bin/ridlc-gen-kotlin --out-dir out .
 ```
 
-For each package, the plugin writes three files into the package's directory
-under the output directory, `veh/cabin/` for package `veh.cabin`:
+For each package, the plugin writes its files into the package's directory under
+the output directory, `veh/cabin/` for package `veh.cabin`:
 
-| File       | What it holds                                                                                   |
-| ---------- | ----------------------------------------------------------------------------------------------- |
-| `Types.kt` | one value object per declaration: scalars, enums, enum sets, structs, tuples, unions, constants |
-| `Codec.kt` | the FlatBuffers codec of each payload: `encode`, `verify` and `decode`                          |
-| `Faces.kt` | per interface: its descriptor, the clients, the provider interface, the publisher, `serve`      |
+| File             | What it holds                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `Types.kt`       | one value object per declaration: scalars, enums, enum sets, structs, tuples, unions, constants |
+| `Codec.kt`       | the FlatBuffers codec of each payload: `encode`, `verify` and `decode`                          |
+| `PodbufCodec.kt` | the podbuf codec of each payload, the same three functions                                      |
+| `Faces.kt`       | per interface: its descriptor, the clients, the provider interface, the publisher, `serve`      |
 
-`Faces.kt` is written only for a package that declares an interface. The Kotlin
-package is the ridl package's name. The plugin has a `kotlin-package` option,
-but no `ridl build` flag sets a plugin option yet, so the name is always the
-default.
+The manifest chooses the codecs: `encodings` under `[backend.kotlin]` in
+`ridl.toml` names `flatbuffers`, `podbuf` or both, and the plugin writes a codec
+for each encoding named and no other. The sample names `flatbuffers`. A package
+that names none gets `Types.kt` alone, and `proto3` is refused. `Faces.kt` is
+written only for a package that names an encoding and declares an interface, and
+its face serves a port of any encoding the package names. The Kotlin package is
+the ridl package's name. The plugin has a `kotlin-package` option, but no
+`ridl build` flag sets a plugin option yet, so the name is always the default.
 
 ## The Gradle build
 

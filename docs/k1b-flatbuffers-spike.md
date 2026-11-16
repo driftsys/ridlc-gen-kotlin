@@ -102,18 +102,21 @@ stands), for a consumer in another language.
 `just rust-verdicts` regenerates every file the conformance module compares with
 the Rust codec of the pinned release — `cabin-golden.txt`,
 `cabin-rust-verdicts.txt` and each `<package>-codec-rust-verdicts.txt` under
-`modules/conformance/src/test/resources/flatbuffers/` — and fails when one
-differs from the committed file; `just rust-verdicts --write` writes them
-instead. The packages are those of the corpus, so a new corpus package with no
-verdict file fails the check until `--write` creates its file (#49). The
-`rust-verdicts` workflow runs it whenever the pin, the conformance tests and
-their corpus, the plugin, the runtime, a Gradle build file or the version
-catalog, or the recipe changes (#39, #53). It needs cargo, git and python3
-beside the JVM build. A program that fails has its standard error printed, and
-`--ridl-checkout` is refused unless it is at the pinned tag.
+`modules/conformance/src/test/resources/flatbuffers/`, for each package that
+selects FlatBuffers, and under `modules/conformance/src/test/resources/podbuf/`,
+for each package that selects podbuf (#134) — and fails when one differs from
+the committed file; `just rust-verdicts --write` writes them instead. The
+packages are those of the corpus, so a new corpus package with no verdict file
+fails the check until `--write` creates its file (#49). The `rust-verdicts`
+workflow runs it whenever the pin, the conformance tests and their corpus, the
+plugin, the runtime, a Gradle build file or the version catalog, or the recipe
+changes (#39, #53). It needs cargo, git and python3 beside the JVM build. A
+program that fails has its standard error printed, and `--ridl-checkout` is
+refused unless it is at the pinned tag.
 
-The recipe runs `CodecTest` and `SpikeTest`, which write the corpus to
-`modules/conformance/build/spike/`, and then `scripts/rust-verdicts.py`, which:
+The recipe runs `CodecTest`, `PodbufCodecTest` and `SpikeTest`, which write the
+corpus to `modules/conformance/build/spike/`, and then
+`scripts/rust-verdicts.py`, which:
 
 1. clones driftsys/ridl at the tag in `modules/conformance/ridl-release`
    (`--ridl-checkout` names an existing checkout instead);
@@ -121,7 +124,11 @@ The recipe runs `CodecTest` and `SpikeTest`, which write the corpus to
 3. writes, under `modules/conformance/build/rust-verdicts/`, one round-trip
    program per package — each `pkg.Type label hex` corpus line is verified,
    decoded and re-encoded by the Rust codec — and the cabin spike's program,
-   which encodes the golden values and verifies the spike's corpus. The
+   which encodes the golden values and verifies the spike's corpus. A package
+   that selects podbuf gets a second program over `Payload<Podbuf>`, which
+   copies each input into an 8-aligned `ridl_rt::podbuf::Aligned` buffer before
+   `verify`, as a podbuf buffer must start on an 8-byte boundary; the check
+   fails when a podbuf payload of the crate has no sample in the corpus. The
    repository tracks no Rust (D-K9), so the script writes them at each run. Each
    depends on `ridl-rt` at the release's minor version, `0.10` for
    `editor-v0.10.0`, patched to the tag's `crates/ridl-rt`;
