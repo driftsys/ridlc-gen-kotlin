@@ -5,8 +5,11 @@ them with the committed files (#39).
 `CodecTest` and `SpikeTest` compare the Kotlin codec with the Rust codec of the
 pinned ridl release through files under
 `modules/conformance/src/test/resources/flatbuffers/`: one
-`<package>-codec-rust-verdicts.txt` per corpus package, and the cabin spike's
-`cabin-golden.txt` and `cabin-rust-verdicts.txt`. This script makes them again
+`<package>-codec-rust-verdicts.txt` per corpus package that selects
+FlatBuffers, and the cabin spike's `cabin-golden.txt` and
+`cabin-rust-verdicts.txt`. `PodbufCodecTest` compares the podbuf codecs through
+`modules/conformance/src/test/resources/podbuf/<package>-codec-rust-verdicts.txt`,
+one per corpus package that selects podbuf (#134). This script makes them again
 from the pinned tag, as `docs/k1b-flatbuffers-spike.md` describes:
 
 1. `ridl build --emit rust` writes each corpus package's crate;
@@ -17,9 +20,10 @@ from the pinned tag, as `docs/k1b-flatbuffers-spike.md` describes:
    `modules/conformance/build/spike/`, and its output is compared with the
    committed file, or written over it with `--write`.
 
-The packages are the corpus's, as `CodecTest` lists them: a corpus package
-with no committed verdict file fails the check, and `--write` creates it. A
-verdict file with no corpus package fails both.
+The packages are the corpus's, as `CodecTest` and `PodbufCodecTest` list them,
+by the encodings each `ridl.toml` selects for the Kotlin backend: a corpus
+package with no committed verdict file fails the check, and `--write` creates
+it. A verdict file with no corpus package fails both.
 
 It expects `ridl` at the pinned release (`RIDL_BIN`, or the one `installRidl`
 installs) and the corpus of a conformance test run; `just rust-verdicts` runs
@@ -40,6 +44,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONFORMANCE = ROOT / "modules" / "conformance"
 CORPUS = CONFORMANCE / "src" / "test" / "corpus"
 VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "flatbuffers"
+PODBUF_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "podbuf"
 SPIKE = CONFORMANCE / "build" / "spike"
 WORK = CONFORMANCE / "build" / "rust-verdicts"
 
@@ -58,6 +63,50 @@ fn roundtrip<T: Payload<FlatBuffers>>(buf: &[u8]) -> String {
             let value = r.decode();
             let mut out = vec![0u8; 1 << 16];
             match Ref::<T, FlatBuffers>::encode(&value, &mut out) {
+                Ok(e) => format!("ok {}", hex(e.bytes())),
+                Err(e) => format!("reencode-failed {e:?}"),
+            }
+        }
+    }
+}
+
+fn main() {
+    for line in std::io::stdin().lock().lines() {
+        let line = line.unwrap();
+        let mut parts = line.split_whitespace();
+        let (ty, label, h) = (parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap_or(""));
+        let b = unhex(h);
+        let out = match ty {
+ARMS
+        _ => "unknown-type".to_string(),
+        };
+        println!("{ty} {label} {out}");
+    }
+}
+"""
+
+PODBUF_ROUNDTRIP_MAIN = """// Verifies, decodes and re-encodes each buffer with the Rust podbuf codec.
+// A podbuf buffer starts on an 8-byte boundary, so each input is copied into
+// an `Aligned` buffer before `verify`, and encoded into one.
+use ridl_rt::encoding::Podbuf;
+use ridl_rt::payload::{Payload, Ref};
+use ridl_rt::podbuf::Aligned;
+use std::io::BufRead;
+
+const CAPACITY: usize = 1 << 16;
+
+fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02x}")).collect() }
+fn unhex(s: &str) -> Vec<u8> { (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect() }
+
+fn roundtrip<T: Payload<Podbuf>>(buf: &[u8]) -> String {
+    let mut input: Box<Aligned<[u8; CAPACITY]>> = Box::new(Aligned::zeroed());
+    input.0[..buf.len()].copy_from_slice(buf);
+    match Ref::<T, Podbuf>::verify(&input.0[..buf.len()]) {
+        Err(e) => format!("err {e:?}"),
+        Ok(r) => {
+            let value = r.decode();
+            let mut out: Box<Aligned<[u8; CAPACITY]>> = Box::new(Aligned::zeroed());
+            match Ref::<T, Podbuf>::encode(&value, &mut out.0) {
                 Ok(e) => format!("ok {}", hex(e.bytes())),
                 Err(e) => format!("reencode-failed {e:?}"),
             }
@@ -209,7 +258,7 @@ edition = "2024"
 
 [dependencies]
 veh_crate = {{ path = "{crate_dir}", package = "{crate_name}" }}
-ridl-rt = {{ version = "{rt_version}", features = ["flatbuffers"] }}
+ridl-rt = {{ version = "{rt_version}", features = ["flatbuffers", "podbuf"] }}
 
 [patch.crates-io]
 ridl-rt = {{ path = "{ridl_checkout}/crates/ridl-rt" }}
@@ -222,21 +271,27 @@ ridl-rt = {{ path = "{ridl_checkout}/crates/ridl-rt" }}
     return WORK / "target" / "debug" / name
 
 
-def roundtrip_main(crate_dir):
-    """The round trip's `main.rs`: one arm per public FlatBuffers payload of the crate."""
-    arms = []
+def payload_types(crate_dir, encoding="FlatBuffers"):
+    """The public payloads of the crate under [encoding], `FlatBuffers` or `Podbuf`, as `pkg.Type` with their Rust paths."""
+    types = []
     for f in sorted(crate_dir.glob("*.rs")):
         if f.name == "lib.rs":
             continue
         pkg = f.stem
         path = "::".join(pkg.split("."))
         text = f.read_text()
-        for t in re.findall(r"Payload<::ridl_rt::encoding::FlatBuffers>\s+for\s+([A-Za-z0-9_]+)", text):
+        for t in re.findall(r"Payload<::ridl_rt::encoding::" + encoding + r">\s+for\s+([A-Za-z0-9_]+)", text):
             # An internal declaration is `pub(crate)`: unreachable from the program.
             if re.search(r"pub\(crate\) (struct|enum) " + t + r"\b", text):
                 continue
-            arms.append(f'        "{pkg}.{t}" => roundtrip::<veh_crate::{path}::{t}>(&b),')
-    return ROUNDTRIP_MAIN.replace("ARMS", "\n".join(arms))
+            types.append((f"{pkg}.{t}", f"veh_crate::{path}::{t}"))
+    return types
+
+
+def roundtrip_main(crate_dir, encoding="FlatBuffers"):
+    """The round trip's `main.rs`: one arm per public payload of the crate under [encoding]."""
+    arms = [f'        "{name}" => roundtrip::<{path}>(&b),' for name, path in payload_types(crate_dir, encoding)]
+    return (PODBUF_ROUNDTRIP_MAIN if encoding == "Podbuf" else ROUNDTRIP_MAIN).replace("ARMS", "\n".join(arms))
 
 
 def compact(output):
@@ -260,22 +315,31 @@ def corpus(name):
     return path.read_text()
 
 
-def compare(name, regenerated, write):
+def encodings(package):
+    """The encodings the corpus package's `ridl.toml` selects for the Kotlin backend, as `Harness.encodings` reads them."""
+    manifest = (CORPUS / package / "ridl.toml").read_text()
+    kotlin = manifest.partition("[backend.kotlin]")[2].split("\n[")[0]
+    listed = re.search(r"^encodings\s*=\s*\[([^\]]*)\]", kotlin, re.M)
+    return re.findall(r'"([^"]+)"', listed.group(1)) if listed else []
+
+
+def compare(name, regenerated, write, directory=VERDICTS):
     """Compares one regenerated file with the committed one, or writes it. Returns whether they agree."""
-    committed = VERDICTS / name
+    committed = directory / name
     if write:
+        directory.mkdir(parents=True, exist_ok=True)
         committed.write_text(regenerated)
         return True
     if not committed.exists():
-        print(f"  {name}: not committed; `just rust-verdicts --write` creates it")
+        print(f"  {directory.name}/{name}: not committed; `just rust-verdicts --write` creates it")
         return False
     current = committed.read_text()
     if current == regenerated:
-        print(f"  {name}: unchanged")
+        print(f"  {directory.name}/{name}: unchanged")
         return True
     old, new = current.splitlines(), regenerated.splitlines()
     changed = sum(1 for a, b in zip(old, new) if a != b) + abs(len(old) - len(new))
-    print(f"  {name}: {changed} of {len(new)} lines differ")
+    print(f"  {directory.name}/{name}: {changed} of {len(new)} lines differ")
     for i, (a, b) in enumerate(zip(old, new)):
         if a != b:
             print(f"    line {i + 1}: committed `{a}`, Rust `{b}`")
@@ -298,18 +362,38 @@ def main():
     print(f"Rust verdicts of {tag} (ridl-rt {rt_version}), from {source}")
 
     agree = True
-    # Every corpus package, as `CodecTest` lists them (#49): a package with no
-    # committed verdict file fails the check, and `--write` creates its file.
-    packages = sorted(p.parent.name for p in CORPUS.glob("*/ridl.toml"))
-    for stray in sorted(VERDICTS.glob("*-codec-rust-verdicts.txt")):
-        if stray.name.removesuffix("-codec-rust-verdicts.txt") not in packages:
-            print(f"  {stray.name}: no corpus package; delete it")
-            agree = False
-    for package in packages:
+    # Every corpus package, as `CodecTest` and `PodbufCodecTest` list them
+    # (#49): a package with no committed verdict file fails the check, and
+    # `--write` creates its file.
+    every = sorted(p.parent.name for p in CORPUS.glob("*/ridl.toml"))
+    selected = {package: encodings(package) for package in every}
+    flatbuffers = [p for p in every if "flatbuffers" in selected[p]]
+    podbuf = [p for p in every if "podbuf" in selected[p]]
+    for directory, packages in ((VERDICTS, flatbuffers), (PODBUF_VERDICTS, podbuf)):
+        for stray in sorted(directory.glob("*-codec-rust-verdicts.txt")):
+            if stray.name.removesuffix("-codec-rust-verdicts.txt") not in packages:
+                print(f"  {directory.name}/{stray.name}: no corpus package selects {directory.name}; delete it")
+                agree = False
+    for package in every:
+        if package not in flatbuffers and package not in podbuf:
+            continue
         crate_dir = crate(ridl, package)
-        binary = program(f"roundtrip-{package}", crate_dir, rt_version, source, roundtrip_main(crate_dir))
-        output = run([binary], input=corpus(f"{package}-codec-corpus.txt"), capture_output=True, text=True).stdout
-        agree &= compare(f"{package}-codec-rust-verdicts.txt", compact(output), args.write)
+        if package in flatbuffers:
+            binary = program(f"roundtrip-{package}", crate_dir, rt_version, source, roundtrip_main(crate_dir))
+            output = run([binary], input=corpus(f"{package}-codec-corpus.txt"), capture_output=True, text=True).stdout
+            agree &= compare(f"{package}-codec-rust-verdicts.txt", compact(output), args.write)
+        if package in podbuf:
+            binary = program(f"podbuf-roundtrip-{package}", crate_dir, rt_version, source, roundtrip_main(crate_dir, "Podbuf"))
+            buffers = corpus(f"{package}-podbuf-corpus.txt")
+            # Every payload the Rust codec has is sampled: a root the Kotlin
+            # codec lacks would otherwise go unseen.
+            sampled = {line.split(" ", 1)[0] for line in buffers.splitlines() if line}
+            for name, _ in payload_types(crate_dir, "Podbuf"):
+                if name not in sampled:
+                    print(f"  podbuf/{package}: the Rust payload {name} has no sample in the corpus")
+                    agree = False
+            output = run([binary], input=buffers, capture_output=True, text=True).stdout
+            agree &= compare(f"{package}-codec-rust-verdicts.txt", compact(output), args.write, PODBUF_VERDICTS)
 
     spike = program("cabin-vectors", WORK / "crate-cabin", rt_version, source, SPIKE_MAIN)
     golden = run([spike, "encode"], capture_output=True, text=True).stdout

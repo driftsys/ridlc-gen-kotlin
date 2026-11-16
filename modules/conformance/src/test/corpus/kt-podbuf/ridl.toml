@@ -1,0 +1,11 @@
+[package]
+name = "kt.podbuf"
+version = "1.0.0"
+
+# The podbuf codec alone, in both backends (#134): the package's Kotlin and
+# Rust codecs are held to each other by PodbufCodecTest.
+[backend.kotlin]
+encodings = ["podbuf"]
+
+[backend.rust]
+encodings = ["podbuf"]

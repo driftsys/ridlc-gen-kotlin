@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0] (2026-11-16)
+
+### Build System
+
+- **repo:** follow ridl 0.17.0 ([#132]) ([987b2fa])
+
+[0.5.0]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.4.0...v0.5.0
+[987b2fa]: https://github.com/driftsys/ridlc-gen-kotlin/commit/987b2fa
+[#132]: https://github.com/driftsys/ridlc-gen-kotlin/issues/132
+
 ## [0.4.0] (2026-11-08)
 
 ### Documentation

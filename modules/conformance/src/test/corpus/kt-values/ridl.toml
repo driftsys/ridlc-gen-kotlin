@@ -3,9 +3,10 @@ name = "kt.values"
 version = "1.0.0"
 
 # Every backend generates the types alone unless the manifest names an
-# encoding (#83, driftsys/ridl#851).
+# encoding (#83, driftsys/ridl#851). Both encodings, so the face over each and
+# the podbuf codec are held to the Rust backend's (#134).
 [backend.kotlin]
-encodings = ["flatbuffers"]
+encodings = ["flatbuffers", "podbuf"]
 
 [backend.rust]
-encodings = ["flatbuffers"]
+encodings = ["flatbuffers", "podbuf"]
