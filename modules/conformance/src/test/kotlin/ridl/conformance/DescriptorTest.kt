@@ -163,7 +163,8 @@ class DescriptorTest {
         }
         // The corpus reaches every refusal but two: no change of one byte nests a value past the limit
         // or adds a quarter of the buffer's length in values, so `TooDeep` and `TooManyAttributeValues`
-        // are reached by no mutant.
+        // are reached by no mutant. `AttributeLimitTest` in `ridl-descriptor-kt` reaches both, over
+        // buffers written by hand.
         val reached = kotlin.map { it.substringBefore('(') }.toSet()
         val expected = listOf(
             "ok", "err:TooShort", "err:WrongIdentifier", "err:WrongVersion", "err:Invalid", "err:EmbeddedCatalog",
