@@ -1,6 +1,7 @@
 package ridl.codegen.kotlin.types
 
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.MemberName
 import ridl.codegen.v1.ModelOuterClass.FloatWidth
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
@@ -8,7 +9,20 @@ import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 
 /** `ridl.rt.payload.Rule`, the kind of constraint a value breaks. */
-internal enum class RuleName { Range, Step, Length, Pattern, Variant, Unique }
+internal enum class RuleName { Range, Step, Length, Pattern, Variant, Unique, Utf8 }
+
+private val IS_WELL_FORMED = MemberName("ridl.rt.payload", "isWellFormedString")
+
+/**
+ * The check that the string [value] holds no unpaired surrogate (typl §4.4),
+ * ending in [fail] with [RuleName.Utf8]. A Kotlin `String` can hold one and a
+ * Rust `str` cannot, so the Rust backend has no such check: the constructor
+ * of a named string scalar runs it before [scalarChecks] (driftsys/ridl#1322),
+ * and each encoder before it writes a string, which would otherwise carry a
+ * replacement character (driftsys/ridl#1330).
+ */
+internal fun wellFormedCheck(value: String, fail: (RuleName) -> CodeBlock): CodeBlock =
+    CodeBlock.builder().beginControlFlow("if (!%M(%L))", IS_WELL_FORMED, value).add(fail(RuleName.Utf8)).endControlFlow().build()
 
 /**
  * The typl constraint checks of one scalar (docs/design.md §4), in the order

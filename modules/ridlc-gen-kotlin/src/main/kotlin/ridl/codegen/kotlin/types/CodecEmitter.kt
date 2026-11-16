@@ -51,7 +51,8 @@ private const val BUFFER_ALIGN = 8
  * same verdicts — with one difference: `verify` also checks what the value
  * objects check and the Rust verifier does not (a float's `step`, a NaN, an
  * inline scalar's constraints), because `decode` builds value objects and
- * must never throw.
+ * must never throw. And `encode` refuses a string holding an unpaired
+ * surrogate, which a Rust `str` cannot hold (#157).
  */
 class CodecEmitter(private val model: Model, private val options: Options) {
     private val pkg = options.kotlinPackage
@@ -401,7 +402,15 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     /** The out-of-line object of [expr]: pushed, and its position. */
     private fun pos(wire: Wire, expr: String, owner: String): CodeBlock = when (wire) {
         is Wire.ScalarWire -> error("a scalar is inline")
-        is Wire.Text -> CodeBlock.of("builder.pushString(%L)", base(wire.domain, expr))
+        is Wire.Text -> {
+            // An unpaired surrogate is refused as the podbuf encoder refuses it, naming the type, not as the builder would.
+            val text = fresh("text")
+            val type = if (wire.domain is Domain.Named) wire.domain.declared else owner
+            val refusal = wellFormedCheck(text) { CodeBlock.of("throw %T.Contract(%T(%S, %T.%L))\n", ENCODE_ERROR, VIOLATION, type, RULE, it) }
+            CodeBlock.builder().add("run {\n").indent()
+                .add("val %L = %L\n%Lbuilder.pushString(%L)\n", text, base(wire.domain, expr), refusal, text)
+                .unindent().add("}").build()
+        }
         is Wire.Bytes -> CodeBlock.of("builder.pushVector(%L, 1)", base(wire.domain, expr))
         is Wire.Table -> CodeBlock.of("%M(%L, builder)", MemberName(wire.functions.pkg, wire.functions.encode), expr)
         is Wire.UnionOf -> CodeBlock.of("%M(%L, builder)", MemberName(wire.functions.pkg, wire.functions.encode), expr)

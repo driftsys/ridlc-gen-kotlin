@@ -289,18 +289,22 @@ internal class PodbufForms(private val model: Model, private val pkg: String) {
      * string's length is checked against its bound, a named one's by its
      * constructor; a string holding U+0000 is refused as `Pattern`, because
      * its NUL could not be told from the terminator (ADR-0031 decision 5).
+     * First, a string holding an unpaired surrogate is refused as `Utf8`,
+     * which `encodeToByteArray` would write as U+FFFD.
      */
     private fun textWrite(type: Type, expr: String, at: String, owner: String): CodeBlock {
         val domain = sequenceOf(type, text = true)
+        val checked = if (domain is Domain.Named) domain.declared else owner
         val text = fresh("text")
         val utf8 = fresh("utf8")
         val data = fresh("data")
         return CodeBlock.builder()
             .addStatement("val %L = %L", text, base(domain, expr))
+            .add(wellFormedCheck(text) { encodeRefusal(checked, it) })
             .add(inlineLength(domain, "$text.codePointCount(0, $text.length)", owner))
             .addStatement("val %L = %L.encodeToByteArray()", utf8, text)
             .beginControlFlow("if (%M(%L))", PB_HAS_NUL, utf8)
-            .add(encodeRefusal(if (domain is Domain.Named) domain.declared else owner, RuleName.Pattern))
+            .add(encodeRefusal(checked, RuleName.Pattern))
             .endControlFlow()
             .beginControlFlow("if (%L.isNotEmpty())", utf8)
             .addStatement("val %L = w.tailData(%L, true)", data, utf8)
