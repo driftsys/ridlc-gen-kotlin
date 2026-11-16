@@ -41,6 +41,7 @@ import ridl.rt.port.Caller
 import ridl.rt.port.Changed
 import ridl.rt.port.Check
 import ridl.rt.port.Claim
+import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.CoherentSignals
@@ -92,10 +93,7 @@ import kotlin.reflect.full.isSubclassOf
  * variants, fields and methods under their Kotlin spellings.
  *
  * The rows are transcribed from `crates/ridl-rt/src` of the pinned release,
- * ridl 0.20.0. The items that ridl 0.20.0 adds to `port.rs` for a caller
- * that forgets a stream (`ClaimForget`, `StreamHandler::claim_forget` and
- * `wake_on_claim_forget`) have no row (issue #152). Two other
- * Rust items have no row: `payload::Ref` and
+ * ridl 0.20.0. Two Rust items have no row: `payload::Ref` and
  * `payload::Encoded`, the borrow-checked proof that a value is decoded only
  * from checked bytes, whose guarantee [Payload] gives by taking the view
  * `verify` returned. Nor have the fixed-size buffer types, `Payload::Buffer`
@@ -259,8 +257,10 @@ class CorrespondenceTest {
         Row("ridl_rt::port::StreamCaller", StreamCaller::class, members = listOf("pull", "push", "end", "abort"), extends = listOf(Caller::class)),
         Row(
             "ridl_rt::port::StreamHandler", StreamHandler::class,
-            members = listOf("pull_claim", "push_claim", "end_claim", "abort_claim"), extends = listOf(Handler::class),
+            members = listOf("claim_forget", "wake_on_claim_forget", "pull_claim", "push_claim", "end_claim", "abort_claim"),
+            extends = listOf(Handler::class),
         ),
+        Row("ridl_rt::port::ClaimForget", ClaimForget::class, variants = listOf("NotForgotten", "AfterEnd", "Forgotten")),
         Row("ridl_rt::port::Pull", Pull::class, variants = listOf("Chunk", "End", "Pending", "Failed")),
         Row("ridl_rt::port::PushError", PushError::class, variants = listOf("TooLarge", "Ended", "Failed", "Contract", "Detached")),
         Row("ridl_rt::port::SignalReader", SignalReader::class, members = listOf("check_with", "read"), extends = listOf(Attached::class)),
