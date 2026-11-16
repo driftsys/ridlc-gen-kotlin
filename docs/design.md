@@ -159,6 +159,7 @@ without a second record. The table is the contract of the module:
 | `Encoded`                                                                                           | `interface Encoded { val encoding: Encoding }`, the associated type a value                                                                                                                 | a face reads it from its port, §5                                                    |
 | `SignalReader`, `SignalWriter`, `EventSource`, `EventSink`, `Caller`, `Handler`                     | one `interface` each, same method names, same semantics                                                                                                                                     | §3, "the ports"                                                                      |
 | `FixedReader`, `ScannableSignals`, `CoherentSignals`                                                | the same three, optional for a runtime                                                                                                                                                      |                                                                                      |
+| `StreamHandler::claim_forget`, `wake_on_claim_forget`, `ClaimForget`                                | `fun claimForget(claim): ClaimForget`, `fun wakeOnClaimForget(claim, waker)`, each with the Rust default; `enum class ClaimForget` `NotForgotten`, `AfterEnd`, `Forgotten`                  | the Rust enum is `non_exhaustive`: a `when` over it keeps an `else` branch           |
 | `Payload<E: Encoding>`                                                                              | `interface Payload<T> { val maxSize: Int; fun encode(value: T, out: ByteBuffer): Int; fun verify(buf: ByteBuffer): View; fun decode(view: View): T }`                                       | one object per generated type per encoding, `<Type>Codec` or `<Type>PodbufCodec`, §4 |
 | `Encoding` with `FlatBuffers`, `Proto3`, `Podbuf`                                                   | `enum class Encoding(val tag: Int)` 1, 2, 3                                                                                                                                                 | the frame's tags; FlatBuffers and podbuf have a codec, §4                            |
 | `podbuf`: `Preamble`, `Region`, `Desc`, `ArrayDesc`, `tail_range`, `text`, `Writer`                 | `ridl.rt.podbuf`, the same items over a `ByteBuffer`, every load and store little-endian                                                                                                    | what a generated podbuf codec calls, §4                                              |
@@ -661,8 +662,12 @@ Each decision names the alternative it rejected.
   blocking face carries none. The forms are the Rust face's: a reply stream, one
   stream parameter, or both. A member with several stream parameters stays out
   (driftsys/ridl#1224). A forget stops a source even while it is suspended,
-  which the Rust face leaves to the source's next element
-  (`modules/ridl-rt-kt-coroutines/README.md`).
+  which the Rust face did up to ridl 0.19 only at the source's next element
+  (`modules/ridl-rt-kt-coroutines/README.md`). ridl 0.20 adds
+  `StreamHandler::claim_forget` and `wake_on_claim_forget` (driftsys/ridl#1298),
+  and the provider's drivers read a forget through them as the Rust `serve`
+  does: a forgotten reply source or query upload stops, and a command upload
+  stops unless its caller forgot it after the end of its stream.
 
 ## Trace
 

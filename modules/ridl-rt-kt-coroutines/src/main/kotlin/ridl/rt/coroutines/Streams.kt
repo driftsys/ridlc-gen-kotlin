@@ -6,6 +6,8 @@
 package ridl.rt.coroutines
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ChannelResult
 import kotlinx.coroutines.coroutineScope
@@ -27,6 +29,7 @@ import ridl.rt.payload.Payload
 import ridl.rt.payload.Rule
 import ridl.rt.payload.VerifyError
 import ridl.rt.payload.Violation
+import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.Correlation
@@ -46,6 +49,7 @@ import ridl.rt.task.Waker
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /** The one stream parameter the face carries (driftsys/ridl#1224): several stay outside it. */
@@ -501,7 +505,12 @@ private class ReplyWatch<H>(private val handler: H, private val claim: ClaimId, 
 /**
  * Pushes [source] to the reply stream of [claim] and ends it, which settles the
  * claim. A collector's refusal or a forget stops [source], even one suspended
- * between two elements, and the claim settles with it. An element that cannot
+ * between two elements, and the claim settles with it. Before each element it
+ * registers with [StreamHandler.wakeOnClaimForget] and reads
+ * [StreamHandler.claimForget]: a forget reported there stops [source] without
+ * waiting for another element, as `PushError.Failed(Transport.Interrupted)`
+ * does. On a runtime with the provided defaults, the empty push of the reply
+ * watch reads the forget instead. An element that cannot
  * be written stops the stream with that outcome. A [source] that fails with a
  * [CallError], a refusal from [claimStream] included, stops the stream with
  * that error, and another failure with `Transport.Interrupted`, the outcome a
@@ -523,7 +532,11 @@ public suspend fun <H, T> driveReply(handler: H, claim: ClaimId, chunks: StreamC
             }
             val changed = Channel<Unit>(Channel.CONFLATED)
             val watch = ReplyWatch(handler, claim) { changed.trySend(Unit) }
+            // One object for every registration, so a registration again is a refresh, not a displacement.
+            val forget = Waker { changed.trySend(Unit) }
             while (true) {
+                handler.wakeOnClaimForget(claim, forget)
+                if (handler.claimForget(claim) != ClaimForget.NotForgotten) throw PushError.Failed(Transport.Interrupted)
                 watch.check()
                 val next = select<ChannelResult<ByteBuffer>?> {
                     ready.onReceiveCatching { it }
@@ -572,10 +585,16 @@ private inline fun stopReply(stop: () -> Unit) {
  * command was acknowledged, and one stream does not end `serveAsync`. Whatever
  * is left unread is refused, so an unfinished stream parameter does not hold the
  * call's slot.
+ *
+ * A caller's forget that [StreamHandler.claimForget] reports as
+ * [ClaimForget.Forgotten] cancels [block], wherever it is suspended, and the
+ * stream is refused with `Transport.Interrupted`. A forget after the stream
+ * parameter ended, [ClaimForget.AfterEnd], is how a command's caller normally
+ * finishes: [block] goes on to the end of the stream.
  */
 public suspend fun <H> consumeUpload(handler: H, claim: ClaimId, block: suspend () -> Unit) where H : StreamHandler, H : Wakeable {
     try {
-        block()
+        untilForgotten(handler, claim, command = true, block)
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
@@ -590,11 +609,14 @@ public suspend fun <H> consumeUpload(handler: H, claim: ClaimId, block: suspend 
  * claim with the reply it returns. A [CallError] from [block], a stream's
  * failure included, settles with that error, and another failure with
  * `Transport.Interrupted`: one stream does not end `serveAsync`. A cancellation
- * settles the same way and goes on.
+ * settles the same way and goes on. A caller's forget that
+ * [StreamHandler.claimForget] reports, after the stream parameter ended or not,
+ * cancels [block], wherever it is suspended, and settles with
+ * `Transport.Interrupted`, which frees the call's slot.
  */
 public suspend fun <H> settleUpload(handler: H, claim: ClaimId, block: suspend () -> ByteBuffer) where H : StreamHandler, H : Wakeable {
     val outcome = try {
-        Result.success(block())
+        untilForgotten(handler, claim, command = false, block)?.let { Result.success(it) } ?: Result.failure(Transport.Interrupted)
     } catch (e: CallError) {
         Result.failure(e)
     } catch (e: CancellationException) {
@@ -604,6 +626,55 @@ public suspend fun <H> settleUpload(handler: H, claim: ClaimId, block: suspend (
         Result.failure(Transport.Interrupted)
     }
     settle(handler, claim, outcome)
+}
+
+/**
+ * Runs [block] until it returns, and answers what it returned, or until the
+ * caller forgets [claim], which cancels it, and answers `null`. A failure of
+ * [block] is thrown, and a cancellation of the caller goes on.
+ */
+private suspend fun <H : StreamHandler, T : Any> untilForgotten(handler: H, claim: ClaimId, command: Boolean, block: suspend () -> T): T? = coroutineScope {
+    val work = async { block() }
+    val forgotten = AtomicBoolean(false)
+    val watch = launch {
+        awaitForget(handler, claim, command)
+        forgotten.set(true)
+        work.cancel()
+    }
+    try {
+        work.await()
+    } catch (e: CancellationException) {
+        if (!forgotten.get()) throw e
+        null
+    } finally {
+        watch.cancel()
+    }
+}
+
+/**
+ * Suspends until the caller forgot [claim] in a way that ends the provider's
+ * work. For a query, that is any forget. For a [command], it is
+ * [ClaimForget.Forgotten]: after [ClaimForget.AfterEnd] it suspends until it
+ * is cancelled, and does not register again, since a registration would wake
+ * at once. A query registers, then reads; a command reads first and, only on
+ * [ClaimForget.NotForgotten], registers and reads again (`ridl_rt`'s
+ * `StreamHandler::wake_on_claim_forget`). One waker serves the whole wait.
+ */
+private suspend fun <H : StreamHandler> awaitForget(handler: H, claim: ClaimId, command: Boolean) {
+    val stops = awaitPoll({}) { waker ->
+        if (command) {
+            var forget = handler.claimForget(claim)
+            if (forget == ClaimForget.NotForgotten) {
+                handler.wakeOnClaimForget(claim, waker)
+                forget = handler.claimForget(claim)
+            }
+            if (forget == ClaimForget.NotForgotten) null else forget == ClaimForget.Forgotten
+        } else {
+            handler.wakeOnClaimForget(claim, waker)
+            true.takeIf { handler.claimForget(claim) != ClaimForget.NotForgotten }
+        }
+    }
+    if (!stops) awaitCancellation()
 }
 
 /**

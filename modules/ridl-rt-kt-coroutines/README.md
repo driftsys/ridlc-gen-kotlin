@@ -49,9 +49,21 @@ alone. Waiting on a source that has nothing to push, it registers again: a
 registration woken at once, on the registering thread, marks a stream that will
 not change, and only then does it push an empty chunk, which a stopped stream
 refuses. A runtime that wakes such a registration from another thread is not
-wrong, but `driveReply` then learns of a forget at the source's next element.
-This goes beyond the Rust face, whose `drive_stream` returns on a pending
-source. So an empty chunk carries no value here, in any stream form.
+wrong, but `driveReply` then learns of a forget at the source's next element. Up
+to ridl 0.19 this went beyond the Rust face, whose `drive_stream` returned on a
+pending source. So an empty chunk carries no value here, in any stream form.
+
+ridl 0.20 gives the provider a read of the caller's forget
+(`StreamHandler.claimForget` and `wakeOnClaimForget`, driftsys/ridl#1298), and
+the drivers use it as the generated Rust `serve` does. `driveReply` registers
+and reads before each element: a forget stops the source, and the claim settles,
+without an empty push. `settleUpload` cancels its block on any forget and
+settles with `Transport.Interrupted`. `consumeUpload` cancels its block on
+`Forgotten` and refuses the stream; on `AfterEnd`, the normal end of a command,
+the block goes on to the end of the stream. So a provider suspended outside its
+stream parameter no longer keeps a forgotten call's slot
+(driftsys/ridlc-gen-kotlin#126) on a runtime that reports a forget. A runtime
+with the provided defaults reports none, and keeps the behavior above.
 
 `SignalState<T>` is a signal as a shared `StateFlow` of its samples (#76), what
 a generated `<signal>` property of an async client returns; a client keeps its
