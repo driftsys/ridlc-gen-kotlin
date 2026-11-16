@@ -427,18 +427,26 @@ public class StreamCall<P>(
  * The stream parameter of [claim], for a provider to collect once: its elements
  * as they arrive, ending with the stream. It throws the outcome, a [CallError],
  * when the stream stopped. A chunk that fails its check refuses the stream and
- * throws that refusal.
+ * throws that refusal. A caller's forget, [ClaimForget.Forgotten], that cancels
+ * a provider waiting for the next element throws `Transport.Interrupted`, as
+ * `ridl_rt` reports it to the consumer, not the cancellation.
  */
 public fun <H, T> claimStream(handler: H, claim: ClaimId, chunks: StreamChunks<T>): Flow<T> where H : StreamHandler, H : Wakeable = flow {
     val buf = ByteBuffer.allocate(chunks.maxChunk)
     while (true) {
         buf.clear()
-        val pull = await(handler, Interest.ClaimStream(claim, PARAMETER_STREAM)) {
-            try {
-                handler.pullClaim(claim, PARAMETER_STREAM, buf).takeUnless { it == Pull.Pending }
-            } catch (_: ReadError.Short) {
-                Pull.Failed(refuseClaim(handler, claim, Transport.Corrupt))
+        val pull = try {
+            await(handler, Interest.ClaimStream(claim, PARAMETER_STREAM)) {
+                try {
+                    handler.pullClaim(claim, PARAMETER_STREAM, buf).takeUnless { it == Pull.Pending }
+                } catch (_: ReadError.Short) {
+                    Pull.Failed(refuseClaim(handler, claim, Transport.Corrupt))
+                }
             }
+        } catch (e: CancellationException) {
+            // A caller's forget cancels a provider waiting here: the stream stopped with Transport.Interrupted.
+            if (handler.claimForget(claim) != ClaimForget.Forgotten) throw e
+            throw refuseClaim(handler, claim, Transport.Interrupted)
         }
         when (pull) {
             is Pull.Chunk -> {

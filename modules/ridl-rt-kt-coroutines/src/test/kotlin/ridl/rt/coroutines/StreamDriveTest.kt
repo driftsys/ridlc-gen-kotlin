@@ -25,6 +25,7 @@ import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
 import ridl.rt.error.ClientError
 import ridl.rt.error.Contract
+import ridl.rt.contract.StreamNo
 import ridl.rt.error.Transport
 import ridl.rt.loopback.CallerHandle
 import ridl.rt.loopback.HandlerHandle
@@ -423,6 +424,35 @@ class StreamDriveTest {
             while (started.get() <= i) delay(1)
             job.cancelAndJoin()
         }
+        server.cancelAndJoin()
+    }
+
+    @Test
+    fun `a consumer waiting on the stream parameter of a forgotten command sees Transport Interrupted`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val started = AtomicInteger()
+        val seen = CopyOnWriteArrayList<Throwable>()
+        val server = serving(handler) { claim ->
+            acknowledged(handler, claim) {
+                try {
+                    claimStream(handler, claim.id, CHUNKS).collect { started.incrementAndGet() }
+                } catch (e: Throwable) {
+                    seen += e
+                    throw e
+                }
+            }
+        }
+        // A raw forget, with no interruption of the stream before it: only the forget can stop the consumer.
+        val caller = rt.caller()
+        repeat(Loopback.SLOTS * 2) { i ->
+            val c = caller.command(IFACE, ORD, ByteBuffer.allocate(0), null)
+            while (caller.push(c, StreamNo(1u), ByteBuffer.wrap(bytes(7))) == 0) delay(1)
+            while (started.get() <= i) delay(1)
+            caller.forget(c)
+            while (seen.size <= i) delay(1)
+        }
+        assertEquals(List(Loopback.SLOTS * 2) { Transport.Interrupted }, seen.toList())
         server.cancelAndJoin()
     }
 
