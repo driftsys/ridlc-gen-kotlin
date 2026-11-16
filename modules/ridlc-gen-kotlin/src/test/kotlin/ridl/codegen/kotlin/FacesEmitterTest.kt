@@ -5,10 +5,13 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import ridl.codegen.kotlin.types.EmittedFaces
 import ridl.codegen.kotlin.types.FacesEmitter
 import com.google.protobuf.ByteString
 import ridl.codegen.v1.ModelOuterClass.Catalog
 import ridl.codegen.v1.ModelOuterClass.Clause
+import ridl.codegen.v1.ModelOuterClass.Comparison
+import ridl.codegen.v1.ModelOuterClass.ComparisonOp
 import ridl.codegen.v1.ModelOuterClass.Constraint
 import ridl.codegen.v1.ModelOuterClass.DeclKind
 import ridl.codegen.v1.ModelOuterClass.Declaration
@@ -153,6 +156,66 @@ class FacesEmitterTest {
         val model = model(command).toBuilder().addDeclarations(scalar).build()
         val warning = FacesEmitter(model, options).emit().warnings.single()
         assertTrue("`level * 2 > 3`" in warning && "an arithmetic subject" in warning, warning)
+    }
+
+    /** The faces of a command `go(rate: Rate)` over a float `Rate`, required to compare [op] with [literal]. */
+    private fun floatClause(op: ComparisonOp, literal: String): EmittedFaces {
+        val rate = TypeRef.newBuilder().setReference("Rate").setResolved(true).setIndex(0).setKind(DeclKind.DECL_KIND_SCALAR)
+        val scalar = Declaration.newBuilder().setName(spelled("Rate"))
+            .setScalar(Scalar.newBuilder().setClass_(ScalarClass.SCALAR_CLASS_FLOAT))
+        val clause = Clause.newBuilder().setKind(ContractKind.CONTRACT_KIND_REQUIRE).setSource("rate ? $literal")
+            .setComparison(Comparison.newBuilder().setOp(op).setLiteral(literal).setParam(0))
+        val command = CommandShape.newBuilder()
+            .addParams(Param.newBuilder().setName(spelled("rate")).setType(Type.newBuilder().setNamed(rate)))
+            .setRequest(Payload.newBuilder().setType(rate).setFlatbuffersMaxSize(43))
+            .addClauses(clause).build()
+        return FacesEmitter(model(command).toBuilder().addDeclarations(scalar).build(), options).emit()
+    }
+
+    @Test
+    fun `a float bound rounds in the direction that keeps the exact comparison`() {
+        // ridl 0.20.0: rounding `0.1` to nearest gives `0.1`, which is above the
+        // exact tenth, so `rate <= 0.1` accepted a value the contract forbids.
+        for ((op, bound) in listOf(
+            ComparisonOp.COMPARISON_OP_LE to "0.09999999999999999",
+            ComparisonOp.COMPARISON_OP_GT to "0.09999999999999999",
+            ComparisonOp.COMPARISON_OP_GE to "0.1",
+            ComparisonOp.COMPARISON_OP_LT to "0.1",
+        )) {
+            val text = checkNotNull(floatClause(op, "0.1").text) { op.name }
+            val symbol = mapOf("COMPARISON_OP_LE" to "<=", "COMPARISON_OP_GT" to ">", "COMPARISON_OP_GE" to ">=", "COMPARISON_OP_LT" to "<")
+            assertTrue("Boolean = args.value ${symbol[op.name]} $bound\n" in text, "${op.name}\n$text")
+        }
+    }
+
+    @Test
+    fun `an exact float literal is printed as a Kotlin double`() {
+        val text = checkNotNull(floatClause(ComparisonOp.COMPARISON_OP_EQ, "+.5").text)
+        assertTrue("Boolean = args.value == 0.5\n" in text, text)
+    }
+
+    @Test
+    fun `an inexact float equality skips its interface with the Rust face's reason`() {
+        for (op in listOf(ComparisonOp.COMPARISON_OP_EQ, ComparisonOp.COMPARISON_OP_NE)) {
+            val emitted = floatClause(op, "0.1")
+            assertNull(emitted.text)
+            val warning = emitted.warnings.single()
+            assertTrue(
+                "cannot translate contract clause `rate ? 0.1`: the literal has no exact binary64 value, " +
+                    "so `==` and `!=` cannot be checked exactly" in warning,
+                warning,
+            )
+        }
+    }
+
+    @Test
+    fun `a float literal outside the finite range is refused, not clamped`() {
+        for (op in listOf(ComparisonOp.COMPARISON_OP_LT, ComparisonOp.COMPARISON_OP_GE)) {
+            val warning = floatClause(op, "-1e999").warnings.single()
+            assertTrue("the literal is outside the finite binary64 range" in warning, warning)
+        }
+        val warning = floatClause(ComparisonOp.COMPARISON_OP_LE, "1e10001").warnings.single()
+        assertTrue("the literal cannot be read as an exact decimal" in warning, warning)
     }
 
     @Test

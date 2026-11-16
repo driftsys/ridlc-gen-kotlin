@@ -323,7 +323,10 @@ and the plugin then writes no file.
   for a query, its `ensure`, translated from the model's clauses by the same
   narrow translator ADR-0023 decision 1 gives the Rust backend: every clause
   form it does not accept is a refusal at generation time, reported as an error
-  diagnostic naming the clause.
+  diagnostic naming the clause. A float literal is the binary64 bound that keeps
+  the exact comparison, rounded down for `<=` and `>` and up for `>=` and `<`;
+  an inexact `==` or `!=` and a literal outside the finite binary64 range are
+  refused.
 - **`class <Iface>Client<P>(private val port: P)`** with upper bounds computed
   from the interface's own kinds and no others (RA-19): a `SignalReader` bound
   only if it declares a signal, `P : EventSource` only if an event, `P : Caller`
