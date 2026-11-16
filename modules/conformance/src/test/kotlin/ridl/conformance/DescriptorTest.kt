@@ -62,10 +62,10 @@ class DescriptorTest {
     fun `the identity descriptor reads as the fixture states`() {
         val files = built()
         assertEquals(
-            setOf("alpha.Bench.deployment.binfb", "alpha.catalog.binfb", "beta.catalog.binfb", "mapped.catalog.binfb", "remote.catalog.binfb"),
+            setOf("alpha.bench.deployment.binfb", "alpha.catalog.binfb", "beta.catalog.binfb", "mapped.catalog.binfb", "remote.catalog.binfb"),
             files.keys,
         )
-        val deployment = verifyDeployment(files.getValue("alpha.Bench.deployment.binfb"))
+        val deployment = verifyDeployment(files.getValue("alpha.bench.deployment.binfb"))
         assertEquals("Bench", deployment.name)
         assertEquals(listOf("Local", "Other"), deployment.machines.map { it.name })
         val placed = deployment.instances.associate {
@@ -93,7 +93,7 @@ class DescriptorTest {
 
     @Test
     fun `attribute values nested to the limit, flags and a surface read in full`() {
-        val deployment = verifyDeployment(built("attributes").getValue("alpha.Bench.deployment.binfb"))
+        val deployment = verifyDeployment(built("attributes").getValue("alpha.bench.deployment.binfb"))
         fun depth(value: AttributeValue): Int = 1 + (value.list?.maxOf(::depth) ?: 0)
         val layers = deployment.attributes.single { it.key == "layers" }
         assertEquals(MAX_ATTRIBUTE_DEPTH, depth(layers.value!!))
@@ -111,7 +111,7 @@ class DescriptorTest {
     @Test
     fun `the header refusals are Rust's`() {
         val files = built()
-        val deployment = files.getValue("alpha.Bench.deployment.binfb")
+        val deployment = files.getValue("alpha.bench.deployment.binfb")
         val catalog = files.getValue("alpha.catalog.binfb")
         assertEquals("err:TooShort", deploymentVerdict(deployment.copyOf(7)))
         // `the_catalog_verifier_refuses_a_deployment_descriptor` and its converse.
@@ -126,9 +126,9 @@ class DescriptorTest {
     fun `every mutant is refused or read exactly as the Rust verify does`() {
         val files = built()
         val bases = listOf(
-            "deployment" to files.getValue("alpha.Bench.deployment.binfb"),
+            "deployment" to files.getValue("alpha.bench.deployment.binfb"),
             "catalog" to files.getValue("alpha.catalog.binfb"),
-            "deployment" to built("attributes").getValue("alpha.Bench.deployment.binfb"),
+            "deployment" to built("attributes").getValue("alpha.bench.deployment.binfb"),
         )
         // Streamed: the corpus is some 55,000 buffers of up to 7 kB.
         val out = Path.of(System.getProperty("spike.dir", work.toString())).resolve("descriptor-corpus.txt")

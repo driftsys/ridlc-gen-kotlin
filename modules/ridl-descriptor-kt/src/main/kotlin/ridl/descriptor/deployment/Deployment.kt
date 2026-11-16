@@ -14,7 +14,11 @@ public const val SCHEMA_VERSION: Long = 1
 /** The file identifier at bytes 4..8 of every deployment descriptor. */
 public const val FILE_IDENTIFIER: String = "RDLD"
 
-/** The artifact suffix, `<deployment package>.<DeploymentName>.deployment.binfb`. */
+/**
+ * The artifact suffix, `<stem>.deployment.binfb`. The stem is the deployment's
+ * package and name in lowercase, `<package>.<name>`, unless the rsdl `file`
+ * attribute gives it. `ridl_descriptor::deployment::FILE_SUFFIX`.
+ */
 public const val FILE_SUFFIX: String = ".deployment.binfb"
 
 /** How deeply attribute values may nest. `MAX_ATTRIBUTE_DEPTH`. */

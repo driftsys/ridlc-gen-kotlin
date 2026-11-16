@@ -4,7 +4,8 @@
 
 This module reads the two descriptors a RIDL runtime is given: the catalog
 descriptor (`<unit>.catalog.binfb`, file identifier `RDLC`) and the deployment
-descriptor (`<package>.<Deployment>.deployment.binfb`, identifier `RDLD`), which
+descriptor (`<stem>.deployment.binfb`, identifier `RDLD`; the stem is the
+lowercase `<package>.<name>` unless the rsdl `file` attribute gives it), which
 embeds the catalog descriptor of every region. It is the Kotlin spelling of the
 reading half of `crates/ridl-descriptor` at the pinned release: `verify` in
 `ridl.descriptor` and in `ridl.descriptor.deployment`, with the refusals of the
