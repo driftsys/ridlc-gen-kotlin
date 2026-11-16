@@ -75,11 +75,21 @@ internal class Flat(private val buf: ByteArray) {
         return advance(start, 4) to len
     }
 
+    // One copy per string or byte vector, keyed by where its bytes start (the
+    // length precedes them, so a start fixes the length): Rust borrows from the
+    // buffer, so many references to one large string cost it nothing, and
+    // copying once per reference turned a small buffer into an
+    // OutOfMemoryError where Rust accepts it (#148). Only the copy is shared:
+    // every reference is still checked, as planus checks each.
+    private val strings = HashMap<Long, String>()
+    private val byteVectors = HashMap<Long, ByteArray>()
+
     /** A `&str`: `len` bytes of UTF-8, `InvalidLength` past the buffer, `InvalidUtf8` when not UTF-8. */
     fun string(window: Long, at: Long): String {
         val (start, len) = array(window, at)
         if (start + len > size) malformed("InvalidLength")
-        return try {
+        strings[start]?.let { return it }
+        val text = try {
             Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
@@ -88,13 +98,15 @@ internal class Flat(private val buf: ByteArray) {
         } catch (_: CharacterCodingException) {
             malformed("InvalidUtf8")
         }
+        strings[start] = text
+        return text
     }
 
-    /** A `&[u8]`: a copy of its bytes, `InvalidLength` past the buffer. */
+    /** A `&[u8]`: a copy of its bytes, one per buffer location, `InvalidLength` past the buffer. */
     fun bytes(window: Long, at: Long): ByteArray {
         val (start, len) = array(window, at)
         if (start + len > size) malformed("InvalidLength")
-        return buf.copyOfRange(start.toInt(), (start + len).toInt())
+        return byteVectors.getOrPut(start) { buf.copyOfRange(start.toInt(), (start + len).toInt()) }
     }
 
     /** A `Vector<T>` of [stride]-byte elements: its first element's start, the window its elements are read in. */

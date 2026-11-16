@@ -65,7 +65,12 @@ iterator.
   field anyway, so it keeps what it reads: `verify` returns `Deployment` or
   `Catalog`, plain values holding copies of their strings and bytes. Kotlin has
   no borrow to make a view cheaper, and a value cannot be read from a buffer
-  that changed after `verify`.
+  that changed after `verify`. A string or byte vector is copied once per place
+  in the buffer, and every reference to that place shares the copy, so a buffer
+  naming one large string many times costs one copy (#148); a shared `ByteArray`
+  is one array. Strings that start at different places but overlap are each
+  copied, so a buffer written to overlap them can still make `verify` allocate
+  more than its own size, where Rust, which copies nothing, accepts it.
 - **Errors are exceptions**, as in `ridl-rt-kt`: each `VerifyError` is a sealed
   class over `RuntimeException`. `Invalid` carries the name of planus's
   `ErrorKind`, not the error itself.
