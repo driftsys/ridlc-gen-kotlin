@@ -159,6 +159,12 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
   and advances the output's position where Rust returns the written slice, and
   the debug-build panic at a store outside the written bytes has no JVM
   spelling: `finish` reports it.
+- **A read-only podbuf output throws `ReadOnlyBufferException`.** Rust's
+  `Writer` takes `&mut [u8]`, so a read-only output cannot reach it and no
+  `EncodeError` variant stands for one. `Writer` lets the JVM's exception
+  through at its first store, in `reserveHead` once its own checks pass, with
+  nothing written, as `ridl.rt.flatbuffers.Builder` does; an `EncodeError` would
+  take a variant `ridl_rt::payload` does not have (#149).
 - **Errors are exceptions.** §3 spells the error types as `sealed interface`s
   that are thrown, and `Caller.ack` as a Kotlin `Result` carrying a `CallError`.
   Kotlin throws and carries in a `Result` only a `Throwable`, so every error

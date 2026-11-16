@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test
 import ridl.rt.payload.EncodeError
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.ReadOnlyBufferException
 
 /** `Writer`, with the Rust tests of `podbuf.rs` that apply. */
 class WriterTest {
@@ -140,6 +141,15 @@ class WriterTest {
         assertEquals(8, a[16].toInt())
         assertEquals(1, a[23].toInt())
         assertEquals(0x55, a[0].toInt())
+    }
+
+    @Test
+    fun `a read-only output throws ReadOnlyBufferException at the first write and is left as it was`() {
+        val out = dirty(32)
+        val w = Writer(out.asReadOnlyBuffer())
+        assertThrows(ReadOnlyBufferException::class.java) { w.reserveHead(8) }
+        assertTrue(out.array().all { it == 0xAA.toByte() }, "no byte was written")
+        assertEquals(EncodeError.Capacity(PREAMBLE_SIZE, 32), encodeError { w.finish() })
     }
 
     @Test

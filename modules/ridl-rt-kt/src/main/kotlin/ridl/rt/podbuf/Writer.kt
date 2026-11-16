@@ -26,6 +26,11 @@ import java.nio.ByteOrder
  * caller's buffer keeps its order. Nothing is written to the caller's buffer
  * position: [finish] advances it. The output's alignment is its position, as
  * for [Buffer], not the address of its bytes.
+ *
+ * The output must be writable. Rust takes `&mut [u8]`, so no `EncodeError`
+ * stands for a read-only output: its first store throws the JVM's
+ * `ReadOnlyBufferException`, in [reserveHead] once its own checks pass, with
+ * nothing written, as `ridl.rt.flatbuffers.Builder` lets it through too.
  */
 public class Writer(private val out: ByteBuffer) {
     private val aligned: Boolean = out.position() % BUFFER_ALIGN == 0
