@@ -109,8 +109,11 @@ with `isTwin()` and `isListener()`, are in the same class behind
 `@DebugIdentity`, a `@RequiresOptIn` at error level: code that names one without
 `@OptIn(DebugIdentity::class)` does not compile, as Rust code that names one
 without the feature does not, and a consumer that never opts in takes no other
-dependency. `InstanceNoTest` is `instance_no.rs`, case for case, and compiles
-each of the Rust `compile_fail` examples without the opt-in.
+dependency. The opt-in departs from Rust, where the four debug items exist only
+when the cargo feature `debug` is on: Kotlin has no compile-time features, so
+they are always in the class, and docs/design.md §3 records the opt-in (#138).
+`InstanceNoTest` is `instance_no.rs`, case for case, and compiles each of the
+Rust `compile_fail` examples without the opt-in.
 
 Stage K6 adds `ridl.rt.podbuf` (driftsys/ridlc-gen-kotlin#134), the spelling of
 `ridl_rt::podbuf` that a generated podbuf codec calls: `Buffer` and `Preamble`,
@@ -139,9 +142,6 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
 
 ## Where the code departs from docs/design.md
 
-- **The `debug` feature is an opt-in.** Kotlin has no compile-time features, so
-  the four debug items are always in the class and `@DebugIdentity` keeps them
-  out of reach of code that does not opt in (#138).
 - **podbuf alignment is the buffer's position.** Rust checks that the address of
   the slice is a multiple of 8, and `Aligned` gives a byte array that address. A
   `ByteBuffer` has no address to read, so `Preamble.read` and
