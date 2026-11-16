@@ -47,6 +47,8 @@ enum Health {
   OK   = 0
   WARN = 1
   FAIL = 2
+  NEGATIVE = -1
+  MAXIMUM = 2147483647
 }
 
 enumset WarningFlags {

@@ -215,7 +215,8 @@ internal class Wires(private val model: Model, private val pkg: String) {
                 val enum = declaration.enum
                 if (enum.valuesCount == 0 && !enum.open) refuse("the enum `$reference` has no value")
                 val zero = if (enum.hasZeroMember()) enum.valuesList.getOrNull(enum.zeroMember) else null
-                Wire.ScalarWire(Prim.I64, Domain.EnumOf(type, declaration.name.declared, enum.valuesList.firstOrNull(), zero, enum.open))
+                // Every typl enum is a FlatBuffers `int`: FbEnum.width_bytes is 4 (driftsys/ridl#1353).
+                Wire.ScalarWire(Prim.I32, Domain.EnumOf(type, declaration.name.declared, enum.valuesList.firstOrNull(), zero, enum.open))
             }
             Declaration.KindCase.ENUM_SET -> {
                 val set = declaration.enumSet

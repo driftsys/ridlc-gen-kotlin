@@ -30,6 +30,7 @@ private val TABLE_FIELD = ClassName(FB, "TableField")
 private val FIELD = ClassName(FB, "Field")
 private val PAYLOAD = ClassName("ridl.rt.payload", "Payload")
 private val VERIFY_ERROR = ClassName("ridl.rt.payload", "VerifyError")
+private val ENCODE_ERROR = ClassName("ridl.rt.payload", "EncodeError")
 private val VIOLATION = ClassName("ridl.rt.payload", "Violation")
 private val MALFORMED = ClassName("ridl.rt.payload", "Malformed")
 private val RULE = ClassName("ridl.rt.payload", "Rule")
@@ -377,8 +378,24 @@ class CodecEmitter(private val model: Model, private val options: Options) {
 
     /** The `Field` a table slot holding [expr] of [wire] carries, its children pushed first. */
     private fun field(wire: Wire, expr: String, owner: String): CodeBlock = when (wire) {
-        is Wire.ScalarWire -> CodeBlock.of("%T.%L(%L)", FIELD, wire.prim.field, wire.prim.raw(base(wire.domain, expr)))
+        is Wire.ScalarWire -> CodeBlock.of("%T.%L(%L)", FIELD, wire.prim.field, raw(wire, expr))
         else -> CodeBlock.of("%T.Offset(%L)", FIELD, pos(wire, expr, owner))
+    }
+
+    /**
+     * The field argument of a scalar [expr] of [wire]. An open enum keeps
+     * every `Long` and its field is a 32-bit `int`, so `encode` refuses a
+     * value outside int32 with `Range` instead of truncating it, as the Rust
+     * backend's `encode_check` does.
+     */
+    private fun raw(wire: Wire.ScalarWire, expr: String): CodeBlock {
+        val domain = wire.domain
+        if (domain !is Domain.EnumOf || !domain.open || wire.prim.width == 8) return CodeBlock.of("%L", wire.prim.raw(base(domain, expr)))
+        val v = fresh("v")
+        return CodeBlock.of(
+            "%L.value.let { %L -> if (%L !in %LL..%LL) throw %T.Contract(%T(%S, %T.Range)); %L.toInt() }",
+            expr, v, v, Int.MIN_VALUE, Int.MAX_VALUE, ENCODE_ERROR, VIOLATION, domain.declared, RULE, v,
+        )
     }
 
     /** The out-of-line object of [expr]: pushed, and its position. */
@@ -395,7 +412,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
                 CodeBlock.of(
                     "run {\nval %L = %T.allocate(%L.size * %L).order(%T.LITTLE_ENDIAN)\nfor (%L in %L) %L\nbuilder.pushVector(%L.array(), %L)\n}",
                     bytes, BYTE_BUFFER, expr, element.prim.width, BYTE_ORDER,
-                    e, expr, element.prim.put(bytes, element.prim.raw(base(element.domain, e))),
+                    e, expr, CodeBlock.of(element.prim.put(bytes, "%L"), raw(element, e)),
                     bytes, element.prim.width,
                 )
             }
