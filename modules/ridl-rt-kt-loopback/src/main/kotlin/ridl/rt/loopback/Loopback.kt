@@ -13,6 +13,7 @@ import ridl.rt.port.Caller
 import ridl.rt.port.Changed
 import ridl.rt.port.Check
 import ridl.rt.port.Claim
+import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
 import ridl.rt.port.CoherentSignals
@@ -287,6 +288,10 @@ public class Loopback private constructor(
     override fun end(c: Correlation, s: StreamNo): Unit = handles.caller.end(c, s)
 
     override fun abort(c: Correlation, s: StreamNo, e: CallError): Unit = handles.caller.abort(c, s, e)
+
+    override fun claimForget(claim: ClaimId): ClaimForget = handles.handler.claimForget(claim)
+
+    override fun wakeOnClaimForget(claim: ClaimId, waker: Waker): Unit = handles.handler.wakeOnClaimForget(claim, waker)
 
     override fun pullClaim(claim: ClaimId, s: StreamNo, out: ByteBuffer): Pull = handles.handler.pullClaim(claim, s, out)
 

@@ -30,6 +30,7 @@ import ridl.rt.error.Transport
 import ridl.rt.port.Changed
 import ridl.rt.port.Check
 import ridl.rt.port.Claim
+import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Correlation
 import ridl.rt.port.Interest
@@ -248,6 +249,14 @@ internal class Store {
          * handler's claim is withdrawn rather than returned by this one.
          */
         var forgotten: Boolean = false
+
+        /**
+         * The provider's registration for the caller's forget, kept whatever
+         * the state of each stream and whichever handler holds the claim.
+         */
+        var claimForgetWaker: Waker? = null
+
+        fun takeClaimForgetWaker(): Waker? = claimForgetWaker.also { claimForgetWaker = null }
 
         /**
          * The claim id minted when the call was first presented, through
@@ -704,6 +713,7 @@ internal class Store {
         if (entry.correlation != c || entry.forgotten || !held || !entry.undrained()) return false
         entry.forgotten = true
         entry.pendingForget = true
+        entry.takeClaimForgetWaker()?.let(wake::add)
         // The table hands back the stored `Outcome` waker when another is
         // registered in its place; the no-op waker left behind wakes nothing.
         table.wakeOn(c, noopWaker())?.let(wake::add)
@@ -726,7 +736,9 @@ internal class Store {
             is Forgotten.Marked -> {
                 forgotten.waker?.let(wake::add)
                 wake += table.takeStreams(Table.slot(c))
-                entry(c).forgotten = true
+                val entry = entry(c)
+                entry.forgotten = true
+                entry.takeClaimForgetWaker()?.let(wake::add)
             }
             Forgotten.Unknown -> {}
         }
@@ -768,7 +780,10 @@ internal class Store {
     private fun reclaimed(c: Correlation, wake: MutableList<Waker>) {
         val slot = Table.slot(c)
         wake += table.takeStreams(slot)
-        calls.remove(slot)?.streams?.values?.forEach { stream -> stream.claimWaker?.let(wake::add) }
+        calls.remove(slot)?.let { entry ->
+            entry.claimForgetWaker?.let(wake::add)
+            entry.streams.values.forEach { stream -> stream.claimWaker?.let(wake::add) }
+        }
         for (waiters in callers.values) waiters.take(Interest.Slot)?.let(wake::add)
     }
 
@@ -1227,6 +1242,34 @@ internal class Store {
     }
 
     /**
+     * Whether the caller forgot the call presented under [claim], whichever
+     * handler holds it: a claim only offered, or one a command's
+     * acknowledgment settled, included. A claim no call has answers
+     * `Forgotten`. The ended and stopped state of each stream parameter holds
+     * after a pull of `End`.
+     */
+    fun claimForget(claim: ClaimId): ClaimForget {
+        val entry = calls.values.firstOrNull { it.claim == claim.value } ?: return ClaimForget.Forgotten
+        if (!entry.forgotten) return ClaimForget.NotForgotten
+        val parameters = entry.streams.filterKeys { it != REPLY_STREAM }.values
+        return if (parameters.isNotEmpty() && parameters.all { it.ended && it.stopped == null }) ClaimForget.AfterEnd else ClaimForget.Forgotten
+    }
+
+    /**
+     * Stores the one forget [waker] of [claim], whatever the state of its
+     * streams, with the refresh and displacement rules of [replace]. A claim
+     * already forgotten, or that no call has, wakes [waker] at once.
+     */
+    fun waitClaimForget(claim: ClaimId, waker: Waker, wake: MutableList<Waker>) {
+        val entry = calls.values.firstOrNull { it.claim == claim.value }
+        if (entry == null || entry.forgotten) {
+            wake += waker
+            return
+        }
+        entry.claimForgetWaker = replace(entry.claimForgetWaker, waker, false, wake)
+    }
+
+    /**
      * Stops every stream of the call the caller holds under [c] with
      * `Transport.Interrupted`, except one already ended or stopped, and takes
      * the provider's waker of each stream. A correlation the caller does not
@@ -1235,6 +1278,7 @@ internal class Store {
      */
     private fun interruptStreams(c: Correlation, wake: MutableList<Waker>) {
         val entry = calls[callerSlot(c) ?: return] ?: return
+        entry.takeClaimForgetWaker()?.let(wake::add)
         for (stream in entry.streams.values) {
             if (!stream.finished) stream.stopped = INTERRUPTED to Side.Caller
             stream.takeClaimWaker()?.let(wake::add)

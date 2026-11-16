@@ -32,13 +32,16 @@ c2543c2 left it). Every handle is `Wakeable`, and stores one waker per kind of
 key it observes: `SourceHandle` one `Event` waker, `HandlerHandle` one `Claim`
 waker, `CallerHandle` an `Outcome` waker with each call and one `Slot` waker;
 each open stream of a call also keeps a `Stream` waker for the caller and a
-`ClaimStream` waker for the provider. Any other kind is woken at once. The
-aggregate routes each key to the handle that observes it, and `CallerHandle`
-also carries `Clock`. Closing a handler returns the claims it held and had not
-settled to the waiting calls, in send order, and wakes the handlers that serve
-them (ADR-0021 decision 5). A claim on which it already moved a stream does not
-go back, because another handler would read partial streams: its streams stop
-and the call settles with `Transport.Interrupted`.
+`ClaimStream` waker for the provider. `HandlerHandle` also stores one forget
+waker per claim, through `wakeOnClaimForget`, whatever the state of the claim's
+streams, and answers `claimForget` for a claim whichever handler holds it
+(driftsys/ridl#1298). Any other kind is woken at once. The aggregate routes each
+key to the handle that observes it, and `CallerHandle` also carries `Clock`.
+Closing a handler returns the claims it held and had not settled to the waiting
+calls, in send order, and wakes the handlers that serve them (ADR-0021 decision
+5). A claim on which it already moved a stream does not go back, because another
+handler would read partial streams: its streams stop and the call settles with
+`Transport.Interrupted`.
 
 `attach()`, of ridl 0.5.0 (driftsys/ridl#488), makes a second aggregate on the
 same store: six new role handles, opened as `reader()` to `handler()` open one

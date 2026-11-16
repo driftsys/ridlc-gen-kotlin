@@ -18,6 +18,7 @@ import ridl.rt.error.CallError
 import ridl.rt.error.Contract
 import ridl.rt.error.Transport
 import ridl.rt.port.Caller
+import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Handler
 import ridl.rt.port.Interest
@@ -1364,6 +1365,161 @@ class PortsTest {
         val claim = rt.nextClaim(out(8))!!
         assertThrows<IllegalArgumentException> { rt.settle(claim.id, Result.failure(RuntimeException("no"))) }
         rt.settle(claim.id, ok())
+    }
+
+    // ---------------------------------------------------------------------
+    // The caller's forget, as a provider reads it (driftsys/ridl#1298).
+    // ---------------------------------------------------------------------
+
+    /** A waker that counts its wakes, and the count. */
+    private fun counting(): Pair<AtomicInteger, Waker> {
+        val count = AtomicInteger()
+        return count to Waker { count.incrementAndGet() }
+    }
+
+    @Test
+    fun `claim forget is independent of the handler identity and caller drop`() {
+        val rt = runtime()
+        val observer = rt.handler()
+        val caller = rt.caller()
+        val c = caller.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        assertEquals(ClaimForget.NotForgotten, observer.claimForget(claim))
+        val (count, waker) = counting()
+        observer.wakeOnClaimForget(claim, waker)
+        assertEquals(0, count.get())
+        caller.close()
+        assertEquals(1, count.get(), "caller drop wakes claim-forget registration")
+        assertEquals(ClaimForget.Forgotten, observer.claimForget(claim))
+        rt.settle(claim, ok())
+        assertNull(rt.ack(c))
+        assertEquals(ClaimForget.Forgotten, observer.claimForget(claim))
+    }
+
+    @Test
+    fun `claim forget waker is woken when an acknowledged call is reclaimed`() {
+        val rt = runtime()
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        val (count, waker) = counting()
+        rt.wakeOnClaimForget(claim, waker)
+        assertEquals(0, count.get())
+        rt.forget(c)
+        assertEquals(1, count.get(), "reclaim wakes the stored claim-forget waker")
+        assertEquals(ClaimForget.Forgotten, rt.claimForget(claim))
+    }
+
+    @Test
+    fun `claim forget on an offered call survives withdrawal of its handler`() {
+        val rt = runtime()
+        val offeredTo = rt.handler()
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = assertThrows<ReadError.ShortClaim>("an offer") { offeredTo.nextClaim(out(0)) }.claim
+        val (count, waker) = counting()
+        rt.wakeOnClaimForget(claim, waker)
+        assertEquals(ClaimForget.NotForgotten, rt.claimForget(claim))
+        offeredTo.close()
+        rt.forget(c)
+        assertEquals(1, count.get(), "withdrawal wakes the stored waker on reclaim")
+        assertEquals(ClaimForget.Forgotten, rt.claimForget(claim))
+    }
+
+    @Test
+    fun `a deferred forget wakes only the claim forget registration`() {
+        val rt = runtime()
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        assertEquals(1, rt.push(c, StreamNo(1u), bytes(1)))
+        rt.end(c, StreamNo(1u))
+        val (count, waker) = counting()
+        rt.wakeOnClaimForget(claim, waker)
+        assertEquals(0, count.get())
+        rt.forget(c)
+        assertEquals(1, count.get(), "deferred forget wakes its claim waiter")
+        assertEquals(ClaimForget.AfterEnd, rt.claimForget(claim))
+        assertEquals(Pull.Chunk(1), rt.pullClaim(claim, StreamNo(1u), out(8)))
+    }
+
+    @Test
+    fun `forgetting a call in flight wakes only the claim forget registration`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        val (count, waker) = counting()
+        rt.wakeOnClaimForget(claim, waker)
+        assertEquals(0, count.get())
+        rt.forget(c)
+        assertEquals(1, count.get(), "forget of a call in flight wakes its claim waiter")
+        assertEquals(ClaimForget.Forgotten, rt.claimForget(claim))
+        rt.settle(claim, ok())
+        assertEquals(1, count.get(), "settlement does not wake a cleared waiter")
+    }
+
+    @Test
+    fun `after end ignores an open reply stream`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        assertEquals(1, rt.pushClaim(claim, REPLY_STREAM, bytes(2)))
+        rt.end(c, StreamNo(1u))
+        rt.forget(c)
+        assertEquals(ClaimForget.AfterEnd, rt.claimForget(claim), "only parameter streams determine AfterEnd")
+    }
+
+    @Test
+    fun `reclaiming a call wakes only the claim forget registration`() {
+        val rt = runtime()
+        val c = rt.command(iface, ord, bytes(1), null)
+        val claim = takeClaim(rt)
+        rt.settle(claim, ok())
+        val (count, waker) = counting()
+        rt.wakeOnClaimForget(claim, waker)
+        assertEquals(0, count.get())
+        rt.forget(c)
+        assertEquals(1, count.get(), "reclaim wakes its claim waiter")
+        assertEquals(ClaimForget.Forgotten, rt.claimForget(claim))
+        assertEverySlotIsFree(rt, "after reclaiming the acknowledged call")
+    }
+
+    @Test
+    fun `claim forget waits after a parameter stream ended`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(), null)
+        val claim = takeClaim(rt)
+        rt.end(c, StreamNo(1u))
+        assertEquals(Pull.End, rt.pullClaim(claim, StreamNo(1u), out(0)))
+        val (count, waker) = counting()
+        rt.wakeOnClaimForget(claim, waker)
+        assertEquals(0, count.get(), "ended stream does not satisfy forget registration")
+        assertEquals(ClaimForget.NotForgotten, rt.claimForget(claim))
+        rt.forget(c)
+        assertTrue(count.get() > 0)
+        assertEquals(ClaimForget.AfterEnd, rt.claimForget(claim))
+    }
+
+    @Test
+    fun `claim forget registration refreshes displaces and wakes unknown`() {
+        val rt = runtime()
+        val c = rt.query(iface, ord, bytes(), null)
+        val claim = takeClaim(rt)
+        val (first, firstWaker) = counting()
+        val (second, secondWaker) = counting()
+        rt.wakeOnClaimForget(claim, firstWaker)
+        rt.wakeOnClaimForget(claim, firstWaker)
+        assertEquals(0, first.get())
+        rt.wakeOnClaimForget(claim, secondWaker)
+        assertEquals(1, first.get(), "displaced registration wakes")
+        assertEquals(0, second.get())
+        rt.forget(c)
+        assertEquals(1, second.get())
+        rt.wakeOnClaimForget(claim, secondWaker)
+        assertEquals(2, second.get(), "already forgotten wakes immediately")
+        rt.settle(claim, Result.failure(Transport.Interrupted))
+        assertEquals(ClaimForget.Forgotten, rt.claimForget(claim))
+        rt.wakeOnClaimForget(claim, secondWaker)
+        assertEquals(3, second.get(), "reclaimed unknown claim wakes immediately")
     }
 
     // ---------------------------------------------------------------------
