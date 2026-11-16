@@ -95,6 +95,17 @@ carry it, under the delivery contract the port interfaces state. `TraceTest` is
 `ProcessHookTagTest` fails on a test file that calls `setPropagation` without
 the `process-hook` tag (#65).
 
+`InstanceNo`, an instance number (rsdl §7), is in `ridl_rt::contract` at ridl
+0.17.0, and here since #138. Its constructor is private, and `InstanceNo.new`
+takes only a positive number. The debug instance identities of `ridl-rt`'s
+`debug` feature, the listener `InstanceNo.LISTENER` and a twin from `twin()`,
+with `isTwin()` and `isListener()`, are in the same class behind
+`@DebugIdentity`, a `@RequiresOptIn` at error level: code that names one without
+`@OptIn(DebugIdentity::class)` does not compile, as Rust code that names one
+without the feature does not, and a consumer that never opts in takes no other
+dependency. `InstanceNoTest` is `instance_no.rs`, case for case, and compiles
+each of the Rust `compile_fail` examples without the opt-in.
+
 Stage K6 adds `ridl.rt.podbuf` (driftsys/ridlc-gen-kotlin#134), the spelling of
 `ridl_rt::podbuf` that a generated podbuf codec calls: `Buffer` and `Preamble`,
 `Region`, which reads 0 past the size the producer wrote, `Desc` and
@@ -122,6 +133,9 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
 
 ## Where the code departs from docs/design.md
 
+- **The `debug` feature is an opt-in.** Kotlin has no compile-time features, so
+  the four debug items are always in the class and `@DebugIdentity` keeps them
+  out of reach of code that does not opt in (#138).
 - **podbuf alignment is the buffer's position.** Rust checks that the address of
   the slice is a multiple of 8, and `Aligned` gives a byte array that address. A
   `ByteBuffer` has no address to read, so `Preamble.read` and

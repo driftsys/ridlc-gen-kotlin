@@ -144,6 +144,7 @@ without a second record. The table is the contract of the module:
 | `ridl-rt`                                                                                           | `ridl-rt-kt`                                                                                                                                                                                | Note                                                                                 |
 | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `Ordinal(u32)`, `InterfaceNo(u32)`                                                                  | `@JvmInline value class Ordinal(val value: UInt)`, `InterfaceNo` likewise                                                                                                                   | inline, so a port method takes them at no allocation                                 |
+| `InstanceNo(i32)`, its `debug` feature                                                              | `@JvmInline value class InstanceNo` with a private constructor, `InstanceNo.new(n)`, `get()`; `LISTENER`, `twin()`, `isTwin()`, `isListener()` behind the `@DebugIdentity` opt-in           | the feature is an opt-in, which adds no dependency                                   |
 | `CatalogHash([u8; 32])`, `CatalogRef`                                                               | `class CatalogHash(bytes: ByteArray)` with structural equality, `data class CatalogRef(name, hash)`                                                                                         |                                                                                      |
 | `Kind` 1 to 5                                                                                       | `enum class Kind(val value: Int)` in the language order                                                                                                                                     |                                                                                      |
 | `Member`, `Timing`, `TimingMode`, `PayloadInfo`                                                     | `data class` each                                                                                                                                                                           | the `MEMBERS` row of a generated descriptor                                          |
@@ -297,6 +298,17 @@ same model, under ADR-0019 and ADR-0017; the consumer's Gradle build runs
 `flatc --kotlin` or `protoc` over them beside the plugin's output. One emitter
 per schema, and the plugin's codec is written against the classes that emitter's
 tool produces (D-K5).
+
+**The instance constants, `Instances.kt`.** For a request that carries a
+deployment section, the plugin also writes `object Instances_` in the
+`kotlin-package`: one `const val` per numbered instance of the system (rsdl
+reference §7), at the path the Rust backend's `instances` module gives it, one
+nested object per snake-case segment of the component's qualified name and the
+instance name in screaming snake case (#137). A deployment places every instance
+of its system (RSDL-701), so the section carries every number the Rust module
+does. The Rust module is written from the system itself; a plugin request
+carries only the section, which is absent when the build selects no deployment,
+and the plugin then writes no file.
 
 ## 5. The face
 
