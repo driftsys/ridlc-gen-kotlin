@@ -137,11 +137,12 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
 `ridl-rt-kt-conformance` and the generated code of every corpus package with
 `kotlinc -no-jdk` against `android-34/android.jar`.
 
-## Where the code departs from docs/design.md
+## Where the code departs from Rust and docs/design.md
 
-- **The `debug` feature is an opt-in.** Kotlin has no compile-time features, so
-  the four debug items are always in the class and `@DebugIdentity` keeps them
-  out of reach of code that does not opt in (#138).
+- **The `debug` feature is an opt-in.** This departs from Rust, not from
+  docs/design.md, which describes the opt-in. Kotlin has no compile-time
+  features, so the four debug items are always in the class and `@DebugIdentity`
+  keeps them out of reach of code that does not opt in (#138).
 - **podbuf alignment is the buffer's position.** Rust checks that the address of
   the slice is a multiple of 8, and `Aligned` gives a byte array that address. A
   `ByteBuffer` has no address to read, so `Preamble.read` and
