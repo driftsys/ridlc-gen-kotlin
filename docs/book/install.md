@@ -88,10 +88,10 @@ shows how.
 
 An Android tree that builds with Soong cannot read Maven. Each release attaches
 `ridl-rt-kt-<version>-android.tar.gz` for it: the sources of `ridl-rt-kt`,
-`ridl-rt-kt-coroutines` and `ridl-rt-kt-loopback`, with an `Android.bp`
-declaring the three libraries, an AOSP `METADATA` file and the license files.
-Unpack it at a path such as `external/ridl-rt-kt` and depend on the libraries by
-name.
+`ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback` and `ridl-descriptor-kt`, with an
+`Android.bp` declaring the four libraries, an AOSP `METADATA` file and the
+license files. Unpack it at a path such as `external/ridl-rt-kt` and depend on
+the libraries by name.
 
 The tree must provide two things:
 

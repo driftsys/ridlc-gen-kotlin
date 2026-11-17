@@ -116,6 +116,8 @@ class NodeTest {
         assertThrows<AttachError.UnknownCatalog> { n.attach(id(1), CatalogRef("remote", CatalogHash(ByteArray(32)))) }
     }
 
+    // This test only documents the intent. On the JVM it cannot fail: nothing in
+    // it observes whether the node was collected, and `System.gc()` is a hint.
     @Test
     fun `attachments survive node drop`() {
         var n: Node? = node()

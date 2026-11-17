@@ -198,7 +198,12 @@ internal class Reservations {
     }
 
     internal companion object {
-        /** Only tests pause an attach after its conflict check, as Rust's `AFTER_CONFLICT_CHECK`. */
+        /**
+         * Only tests pause an attach after its conflict check, as Rust's
+         * `AFTER_CONFLICT_CHECK`. Rust compiles it only under `cfg(test)`. Kotlin
+         * has no such switch, so the hook is part of the shipped code and each
+         * reservation reads one thread-local.
+         */
         internal val afterConflictCheck = ThreadLocal<(() -> Unit)?>()
     }
 }
