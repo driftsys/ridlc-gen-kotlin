@@ -136,4 +136,50 @@ class PatternsTest {
             verdicts,
         )
     }
+
+    /** A pattern that turns on the multi-line flag `m` in a group is refused, not translated. */
+    @Test
+    fun `a pattern with a multi-line group is refused`() {
+        val response = response("multiline", "type Multi : string [1..8 match /^(?m:a$)/]")
+        assertEquals(emptyList<String>(), response.filesList.map { it.path })
+        val message = response.diagnosticsList.single().message
+        assertTrue("`probe.multiline.Multi`" in message && "multi-line flag `m`" in message, message)
+    }
+
+    /**
+     * An escaped `$` stays a literal, `\w`, `\s` and `\b` are Unicode
+     * classes, and a `$` inside a nested class stays a member of the class.
+     * Each verdict is the one the Rust `regex` crate gives.
+     */
+    @Test
+    fun `an escaped dollar, a Unicode class and a nested class match as the Rust regex crate does`() {
+        val response = response(
+            "classes",
+            """
+            type Price  : string [1..8 match /^a\$/]
+            type Word   : string [1..8 match /^\w+$/]
+            type Space  : string [1..8 match /^\s$/]
+            type Edge   : string [1..8 match /\bé/]
+            type Nested : string [1..8 match /^[a[$]]+$/]
+            """.trimIndent(),
+        )
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        val compiled = Compiler.compile(response.filesList.associate { it.path to it.text }, work.resolve("compile"))
+        assertTrue(compiled.ok, compiled.messages)
+        fun accepts(type: String, value: String): Boolean {
+            val owner = Class.forName("probe.classes.$type", true, compiled.classLoader)
+            val companion = owner.getField("Companion").get(null)
+            val ofOrNull = companion.javaClass.methods.single { it.name.startsWith("ofOrNull") }
+            return ofOrNull.invoke(companion, value) != null
+        }
+        val cases = listOf(
+            Triple("Price", "a$", true), Triple("Price", "a", false), Triple("Price", "ab", false),
+            Triple("Word", "é", true), Triple("Word", "a-", false),
+            Triple("Space", "\u00A0", true), Triple("Space", "\u2003", true), Triple("Space", "x", false),
+            Triple("Edge", " é", true), Triple("Edge", "aé", false),
+            Triple("Nested", "a$", true), Triple("Nested", "$", true), Triple("Nested", "b", false),
+        )
+        val wrong = cases.filter { (type, value, expected) -> accepts(type, value) != expected }
+        assertEquals(emptyList<Triple<String, String, Boolean>>(), wrong)
+    }
 }
