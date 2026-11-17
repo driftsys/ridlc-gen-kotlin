@@ -87,4 +87,53 @@ class PatternsTest {
         assertTrue(compiled.ok, compiled.messages)
         for (i in patterns.indices) Class.forName("probe.compiled.P$i", true, compiled.classLoader)
     }
+
+    /**
+     * driftsys/ridlc-gen-kotlin#155: a generated check accepts the strings the
+     * Rust output's `regex::Regex::is_match` accepts. Under the `regex`
+     * defaults, `.` is any scalar value except `\n`, `$` is the end of the
+     * text only, and `\d` is a Unicode digit. The `java.util.regex` defaults
+     * differ on all three: `.` also refuses `\r`, U+0085, U+2028 and U+2029,
+     * `$` also matches before a final line terminator, and `\d` is ASCII.
+     */
+    @Test
+    fun `a pattern accepts the strings the Rust regex crate accepts`() {
+        val response = response(
+            "rust",
+            """
+            type Glyph   : string [0..4 match /^.$/]
+            type Digited : string [0..16 match /\d/]
+            type Code    : string [1..8 match /^[A-Z$]+$/]
+            """.trimIndent(),
+        )
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        val compiled = Compiler.compile(response.filesList.associate { it.path to it.text }, work.resolve("compile"))
+        assertTrue(compiled.ok, compiled.messages)
+        fun accepts(type: String, value: String): Boolean {
+            val owner = Class.forName("probe.rust.$type", true, compiled.classLoader)
+            val companion = owner.getField("Companion").get(null)
+            val ofOrNull = companion.javaClass.methods.single { it.name.startsWith("ofOrNull") }
+            return ofOrNull.invoke(companion, value) != null
+        }
+        val cases = listOf(
+            "Glyph" to "a", "Glyph" to "😀", "Glyph" to "�", "Glyph" to "\r", "Glyph" to "\u0085",
+            "Glyph" to " ", "Glyph" to " ", "Glyph" to "", "Glyph" to "ab", "Glyph" to "\n",
+            "Glyph" to "a\n", "Digited" to "1", "Digited" to "x٣", "Digited" to "x",
+            "Code" to "AB", "Code" to "A$", "Code" to "AB\n", "Code" to "ab",
+        )
+        val verdicts = cases.map { (type, value) ->
+            "$type(${value.map { "U+%04X".format(it.code) }.joinToString(" ")}) ${accepts(type, value)}"
+        }
+        assertEquals(
+            listOf(
+                "Glyph(U+0061) true", "Glyph(U+D83D U+DE00) true", "Glyph(U+FFFD) true", "Glyph(U+000D) true",
+                "Glyph(U+0085) true", "Glyph(U+2028) true", "Glyph(U+2029) true", "Glyph() false",
+                "Glyph(U+0061 U+0062) false", "Glyph(U+000A) false", "Glyph(U+0061 U+000A) false",
+                "Digited(U+0031) true", "Digited(U+0078 U+0663) true", "Digited(U+0078) false",
+                "Code(U+0041 U+0042) true", "Code(U+0041 U+0024) true", "Code(U+0041 U+0042 U+000A) false",
+                "Code(U+0061 U+0062) false",
+            ),
+            verdicts,
+        )
+    }
 }

@@ -96,14 +96,59 @@ internal fun scalarChecks(
  * ECMA-262 and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and
  * neither guarantees Java does: `\p{Greek}`, `\p{Letter}` or `\u{41}` pass
  * both and throw `PatternSyntaxException` here (driftsys/ridlc-gen-kotlin#12).
+ *
+ * The result is rewritten to match what the Rust output's `regex::Regex`
+ * matches under its defaults (driftsys/ridlc-gen-kotlin#155). The `(?dU)`
+ * prefix makes `\n` the only line terminator, so `.` refuses `\n` alone, and
+ * makes `\d`, `\w`, `\s` and `\b` Unicode classes. Each `$` outside a class
+ * becomes `\z`, because a Java `$` also matches before a final line
+ * terminator. A pattern that turns on the multi-line flag `m` is refused:
+ * its `$` must keep the line meaning, and this rewrite does not track flag
+ * scopes.
  */
 internal fun javaPattern(body: String): String {
+    val rewritten = StringBuilder("(?dU)")
+    var i = 0
+    var depth = 0
+    while (i < body.length) {
+        val c = body[i]
+        when {
+            c == '\\' && i + 1 < body.length -> {
+                rewritten.append(c).append(body[i + 1])
+                i += 2
+                continue
+            }
+            c == '[' -> {
+                rewritten.append(c)
+                i++
+                if (i < body.length && body[i] == '^') rewritten.append(body[i++])
+                // A `]` first in a class is a literal `]`.
+                if (i < body.length && body[i] == ']') rewritten.append(body[i++])
+                depth++
+                continue
+            }
+            c == ']' && depth > 0 -> depth--
+            c == '$' && depth == 0 -> {
+                rewritten.append("\\z")
+                i++
+                continue
+            }
+            c == '(' && depth == 0 && body.startsWith("(?", i) -> {
+                val flags = body.substring(i + 2).takeWhile { it.isLetter() || it == '-' }
+                if ('m' in flags.substringBefore('-')) {
+                    refuse("its pattern `/$body/` turns on the multi-line flag `m`, which this plugin does not translate")
+                }
+            }
+        }
+        rewritten.append(c)
+        i++
+    }
     try {
-        Pattern.compile(body)
+        Pattern.compile(rewritten.toString())
     } catch (e: PatternSyntaxException) {
         refuse("its pattern `/$body/` does not compile under java.util.regex: ${e.description}")
     }
-    return body
+    return rewritten.toString()
 }
 
 /**
