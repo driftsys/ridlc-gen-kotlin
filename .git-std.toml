@@ -10,6 +10,7 @@ scopes = [
   "ridl-rt-kt-loopback",
   "ridl-rt-kt-coroutines",
   "ridl-rt-kt-conformance",
+  "ridl-descriptor-kt",
   "samples",
   "ci",
 ]

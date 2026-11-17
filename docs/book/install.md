@@ -40,7 +40,7 @@ just dist
 ## The runtime libraries
 
 The generated code compiles against `ridl-rt-kt`, and a client or provider needs
-a runtime that implements its ports. The four JVM libraries publish as
+a runtime that implements its ports. The five JVM libraries publish as
 `org.driftsys.ridl`: each release goes to Maven Central, and each push to `main`
 publishes the `-SNAPSHOT` version to this repository's GitHub Packages registry.
 A release needs no repository beyond `mavenCentral()`:

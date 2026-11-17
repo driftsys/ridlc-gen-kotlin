@@ -9,6 +9,7 @@ dependencies {
     testImplementation(project(":ridl-rt-kt"))
     testImplementation(project(":ridl-rt-kt-loopback"))
     testImplementation(project(":ridl-rt-kt-coroutines"))
+    testImplementation(project(":ridl-descriptor-kt"))
     testImplementation(libs.protobuf.java.util)
     testImplementation(libs.kotlin.compile.testing)
     testImplementation(platform(libs.junit.bom))
@@ -67,9 +68,11 @@ tasks.test {
     val plugin = project(":ridlc-gen-kotlin").layout.buildDirectory
         .file("install/ridlc-gen-kotlin/bin/ridlc-gen-kotlin")
     val corpus = layout.projectDirectory.dir("src/test/corpus")
+    val descriptor = layout.projectDirectory.dir("src/test/descriptor")
     val systems = layout.projectDirectory.dir("src/test/systems")
     val spike = layout.buildDirectory.dir("spike")
     inputs.dir(corpus)
+    inputs.dir(descriptor)
     inputs.dir(systems)
     // The binary itself, so that a `RIDL_BIN` naming another ridl, or one
     // rebuilt in place, runs the tests again instead of reusing a result.
@@ -82,6 +85,7 @@ tasks.test {
             "-Dridl.release=${release.get()}",
             "-Dplugin.bin=${plugin.get().asFile.absolutePath}",
             "-Dcorpus.dir=${corpus.asFile.absolutePath}",
+            "-Ddescriptor.dir=${descriptor.asFile.absolutePath}",
             "-Dsystems.dir=${systems.asFile.absolutePath}",
             "-Dspike.dir=${spike.get().asFile.absolutePath}",
         )
