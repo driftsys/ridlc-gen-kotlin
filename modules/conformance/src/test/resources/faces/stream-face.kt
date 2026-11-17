@@ -68,7 +68,7 @@ private class Logs : LogProvider {
     var collectedAll = AtomicBoolean(false)
 
     override fun clear(level: Level) {
-        cleared += level
+        synchronized(this) { cleared += level }
     }
 
     override fun history(limit: Level): Flow<Reading> = flow {
@@ -162,12 +162,15 @@ fun probe(): List<String> = runBlocking(Dispatchers.Default) {
             outcome { refused.toList() },
         )
 
-        // A plain command beside the streams still works.
+        // A plain command beside the streams still works. `dispatch` settles a command before its
+        // provider method runs, so the acknowledgment can come back before `clear` has run. The one
+        // serving coroutine runs it before it takes the next claim, so once the next call is
+        // answered, the command has been recorded.
         client.clear(Level.of(1))
-        expectEqual("a plain call beside the streams", listOf(Level.of(1)), logs.cleared)
 
         // A collector that stops early leaves the slot free.
         expectEqual("an early stop", reading(1), client.history(Level.of(20)).first())
+        expectEqual("a plain call beside the streams", listOf(Level.of(1)), synchronized(logs) { logs.cleared.toList() })
         repeat(Loopback.SLOTS * 2) { client.history(Level.of(2)).first() }
 
         // A source that fails stops the stream with Interrupted, after what it sent.
