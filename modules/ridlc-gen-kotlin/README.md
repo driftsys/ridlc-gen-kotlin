@@ -245,7 +245,7 @@ tuple), and a root with no finite podbuf bound.
   an `Int`, which is not widened. As in Rust, every struct and union of the
   package gets a codec, so a type no interface sends can refuse its package.
 - **podbuf alignment is the buffer's position**, not its address:
-  [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-docsdesignmd)
+  [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-rust-and-docsdesignmd)
   says how. A buffer the face allocates starts at position 0.
 - **A type from another package is written by that package's helpers**, as in
   `Codec.kt`, and the face names that package's `<Type>PodbufCodec`. A package

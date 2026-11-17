@@ -35,7 +35,10 @@ public sealed class VerifyError(message: String) : RuntimeException(message, nul
     public data class Invalid(val kind: String) : VerifyError("catalog descriptor is malformed: $kind")
 }
 
-/** The four bytes of an identifier as Rust's `{:?}` of a lossy string shows them. */
+/**
+ * The four bytes of an identifier as a lossy string in double quotes, as Rust's
+ * `{:?}` shows them, except that this does not escape `\0`, `"` or `\`.
+ */
 internal fun quoted(bytes: ByteArray): String = "\"" + String(bytes, Charsets.UTF_8) + "\""
 
 /** `ridl.descriptor.Kind`, the interaction kind, in schema order. */

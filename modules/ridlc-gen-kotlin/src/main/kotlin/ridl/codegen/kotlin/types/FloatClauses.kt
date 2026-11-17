@@ -47,6 +47,7 @@ internal object FloatClauses {
     private const val EXPONENT_LIMIT = 10000
 
     private val MAX = BigDecimal(Double.MAX_VALUE)
+    private val COEFFICIENT = Regex("[+-]?[0-9][0-9_]*")
 
     fun bound(text: String, direction: Direction): Bound {
         val exact = decimal(text) ?: return Bound.Refused(UNREADABLE)
@@ -72,9 +73,11 @@ internal object FloatClauses {
         val point = mantissa.indexOf('.')
         val whole = if (point < 0) mantissa else mantissa.substring(0, point)
         val fraction = if (point < 0) "" else mantissa.substring(point + 1)
-        // A leading `+` is read as Rust's `BigInt` reads it; Kotlin's reader refuses it.
-        val digits = "$whole$fraction".let { if (it.startsWith('+') && !it.startsWith("+-")) it.substring(1) else it }
-        val coefficient = digits.toBigIntegerOrNull() ?: return null
+        // The digits follow the grammar of Rust's `BigInt`: an optional sign, then ASCII digits with `_`
+        // between or after them. Kotlin's reader refuses `_` and a leading `+`, and accepts non-ASCII digits.
+        val digits = "$whole$fraction"
+        if (!COEFFICIENT.matches(digits)) return null
+        val coefficient = digits.replace("_", "").removePrefix("+").toBigInteger()
         if (exponent < -EXPONENT_LIMIT || exponent > EXPONENT_LIMIT) return null
         val scale = fraction.length.toLong() - exponent
         if (scale !in Int.MIN_VALUE..Int.MAX_VALUE) return null

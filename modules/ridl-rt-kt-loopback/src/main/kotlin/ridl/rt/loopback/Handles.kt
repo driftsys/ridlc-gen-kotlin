@@ -6,14 +6,14 @@
 // split: the five roles with a mutating method take a handle each, and the six
 // whose methods only read share one.
 //
-// | Handle          | Port roles beside `Attached` and `Wakeable`                                    | Kinds of key it stores         | Threading            |
-// | --------------- | ------------------------------------------------------------------------------ | ------------------------------ | -------------------- |
-// | `ReaderHandle`  | `Clock`, `SignalReader`, `FixedReader`, `ScannableSignals`, `CoherentSignals` | none                           | any threads at once  |
-// | `WriterHandle`  | `SignalWriter`                                                                 | none                           | one thread at a time |
-// | `SourceHandle`  | `EventSource`                                                                  | `Event`, one waker             | one thread at a time |
-// | `SinkHandle`    | `EventSink`                                                                    | none                           | one thread at a time |
-// | `CallerHandle`  | `Clock`, `Caller`                                                              | `Outcome` with each call, `Slot` | one thread at a time |
-// | `HandlerHandle` | `Handler`                                                                      | `Claim`, one waker; one forget waker per claim | one thread at a time |
+// | Handle          | Port roles beside `Attached` and `Wakeable`                                   | Kinds of key it stores                         | Threading            |
+// | --------------- | ----------------------------------------------------------------------------- | ---------------------------------------------- | -------------------- |
+// | `ReaderHandle`  | `Clock`, `SignalReader`, `FixedReader`, `ScannableSignals`, `CoherentSignals` | none                                           | any threads at once  |
+// | `WriterHandle`  | `SignalWriter`                                                                | none                                           | one thread at a time |
+// | `SourceHandle`  | `EventSource`                                                                 | `Event`, one waker                             | one thread at a time |
+// | `SinkHandle`    | `EventSink`                                                                   | none                                           | one thread at a time |
+// | `CallerHandle`  | `Clock`, `Caller`                                                             | `Outcome` with each call, `Slot`               | one thread at a time |
+// | `HandlerHandle` | `Handler`                                                                     | `Claim`, one waker; one forget waker per claim | one thread at a time |
 //
 // `Encoded` is on every handle too: each carries the encoding its runtime was
 // made with, the payload bytes staying opaque to it (driftsys/ridl#887).
