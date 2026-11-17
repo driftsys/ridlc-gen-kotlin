@@ -74,7 +74,7 @@ class NodeTest {
                 if (Files.isDirectory(path)) dest.createDirectories() else path.copyTo(dest)
             }
         }
-        bytes = Harness.build(pkg, work.resolve("out"), "--emit", "deployment").resolve("alpha.Bench.deployment.binfb").readBytes()
+        bytes = Harness.build(pkg, work.resolve("out"), "--emit", "deployment").resolve("alpha.bench.deployment.binfb").readBytes()
     }
 
     private fun node(): Node = Node.fromDescriptor(bytes, "Local")
