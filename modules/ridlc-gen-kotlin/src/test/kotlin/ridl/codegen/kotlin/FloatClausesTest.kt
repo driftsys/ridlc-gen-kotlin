@@ -50,6 +50,42 @@ class FloatClausesTest {
     }
 
     @Test
+    fun `the coefficient follows the grammar of Rust's BigInt`() {
+        for (direction in all) {
+            assertEquals(literal("1000.0"), FloatClauses.bound("1_000", direction), "$direction 1_000")
+            assertEquals(literal("-1000.5"), FloatClauses.bound("-1_000.5", direction), "$direction -1_000.5")
+            for (text in listOf("_1", "-_1", "\u0661", "1\u0661", "+-1", "1__0x")) {
+                assertEquals(Bound.Refused(FloatClauses.UNREADABLE), FloatClauses.bound(text, direction), "$direction $text")
+            }
+        }
+    }
+
+    @Test
+    fun `a literal halfway between two doubles rounds in the refusing direction`() {
+        // Each literal is exactly halfway between two doubles, so DOWN gives the lower one and UP the upper one,
+        // whichever one round-to-even picks as the nearest.
+        for ((low, high) in listOf(1.0 to Math.nextUp(1.0), Math.nextUp(1.0) to Math.nextUp(Math.nextUp(1.0)))) {
+            val tie = (BigDecimal(low) + BigDecimal(high)).divide(BigDecimal(2)).toPlainString()
+            assertEquals(literal(low.toString()), FloatClauses.bound(tie, Direction.DOWN), "down $tie")
+            assertEquals(literal(high.toString()), FloatClauses.bound(tie, Direction.UP), "up $tie")
+            assertEquals(Bound.Refused(FloatClauses.INEXACT), FloatClauses.bound(tie, Direction.EXACT), "exact $tie")
+        }
+    }
+
+    @Test
+    fun `the boundary between subnormal and normal values is exact`() {
+        val normal = java.lang.Double.MIN_NORMAL
+        val subnormal = Math.nextDown(normal)
+        for (direction in all) {
+            assertEquals(literal(normal.toString()), FloatClauses.bound(BigDecimal(normal).toPlainString(), direction))
+            assertEquals(literal(subnormal.toString()), FloatClauses.bound(BigDecimal(subnormal).toPlainString(), direction))
+        }
+        val middle = (BigDecimal(normal) + BigDecimal(subnormal)).divide(BigDecimal(2)).toPlainString()
+        assertEquals(literal(subnormal.toString()), FloatClauses.bound(middle, Direction.DOWN))
+        assertEquals(literal(normal.toString()), FloatClauses.bound(middle, Direction.UP))
+    }
+
+    @Test
     fun `the binary64 range boundary is exact`() {
         val max = BigDecimal(Double.MAX_VALUE).toBigIntegerExact()
         for (sign in listOf("", "-")) {
