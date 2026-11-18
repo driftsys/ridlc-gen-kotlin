@@ -216,11 +216,13 @@ template's (D-K2). Per declaration of the model:
 Every constraint the model states is checked in `of`: range, step, byte length,
 pattern (through `java.util.regex`, rewritten so that `.`, `$`, `\d`, `\w`,
 `\s`, `\b` and case folding match as the Rust backend's `regex` crate does under
-its defaults (#155); `\v` and the class operators `--` and `~~` still differ
-(#169); a pattern that `regex` accepts and `java.util.regex` rejects is a defect
-to file, not to work around). The exception type is one
-`class ConstraintViolation(type, rule, value)` in `ridl-rt-kt`, mirroring
-`ridl_rt::payload::Violation` with its five rule variants.
+its defaults (#155); `\v` and the class operators `--` and `~~` are refused
+because their Java meanings differ (#169). Multi-line groups such as `(?m:...)`
+are also refused: the rewrite does not track flag scopes. A pattern that `regex`
+accepts and `java.util.regex` rejects is a defect to file, not to work around).
+The exception type is one `class ConstraintViolation(type, rule, value)` in
+`ridl-rt-kt`, mirroring `ridl_rt::payload::Violation` with its five rule
+variants.
 
 **The codec, one per encoding the package selects.** The manifest's
 `[backend.kotlin] encodings` chooses the codecs, and the plugin generates

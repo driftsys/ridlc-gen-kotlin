@@ -137,13 +137,61 @@ class PatternsTest {
         )
     }
 
+    @Test
+    fun `vertical whitespace and unsupported class operators are refused`() {
+        val patterns = listOf(
+            """\v""", """[\v]""", "[a-z--b]", "[a-z~~b]",
+            "[a-z&&[a-z--b]]", "[a-z&&[a-z~~b]]",
+        )
+        for ((i, pattern) in patterns.withIndex()) {
+            val response = response("unsupported$i", "type Value : string [1..8 match /$pattern/]")
+            assertEquals(emptyList<String>(), response.filesList.map { it.path })
+            val message = response.diagnosticsList.single().message
+            assertTrue("`probe.unsupported$i.Value`" in message && "/$pattern/" in message, message)
+            assertTrue("does not translate" in message, message)
+        }
+    }
+
+    @Test
+    fun `escaped backslashes and operators outside classes remain literals`() {
+        val response = response(
+            "literals",
+            """
+            type Slash : string [1..8 match /\\v/]
+            type Dash  : string [1..8 match /a--b/]
+            type Tilde : string [1..8 match /a~~b/]
+            type Class : string [1..8 match /[a\-\-b]/]
+            """.trimIndent(),
+        )
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        val compiled = Compiler.compile(response.filesList.associate { it.path to it.text }, work.resolve("compile"))
+        assertTrue(compiled.ok, compiled.messages)
+        fun accepts(type: String, value: String): Boolean {
+            val owner = Class.forName("probe.literals.$type", true, compiled.classLoader)
+            val companion = owner.getField("Companion").get(null)
+            val ofOrNull = companion.javaClass.methods.single { it.name.startsWith("ofOrNull") }
+            return ofOrNull.invoke(companion, value) != null
+        }
+        val cases = listOf(
+            Triple("Slash", "\\v", true), Triple("Slash", "v", false), Triple("Slash", "\u000B", false),
+            Triple("Dash", "a--b", true), Triple("Dash", "ab", false),
+            Triple("Tilde", "a~~b", true), Triple("Tilde", "ab", false),
+            Triple("Class", "-", true), Triple("Class", "c", false),
+        )
+        for ((type, value, expected) in cases) assertEquals(expected, accepts(type, value), "$type($value)")
+    }
+
     /** A pattern that turns on the multi-line flag `m` in a group is refused, not translated. */
     @Test
     fun `a pattern with a multi-line group is refused`() {
-        val response = response("multiline", "type Multi : string [1..8 match /^(?m:a$)/]")
-        assertEquals(emptyList<String>(), response.filesList.map { it.path })
-        val message = response.diagnosticsList.single().message
-        assertTrue("`probe.multiline.Multi`" in message && "multi-line flag `m`" in message, message)
+        val patterns = listOf("(?m:a$)", "^(?m:a$)", "(?im:a$)", "(?i:(?m:a$))")
+        for ((i, pattern) in patterns.withIndex()) {
+            val response = response("multiline$i", "type Multi : string [1..8 match /$pattern/]")
+            assertEquals(emptyList<String>(), response.filesList.map { it.path })
+            val message = response.diagnosticsList.single().message
+            assertTrue("`probe.multiline$i.Multi`" in message && "/$pattern/" in message, message)
+            assertTrue("multi-line flag `m`" in message && "does not translate" in message, message)
+        }
     }
 
     /**

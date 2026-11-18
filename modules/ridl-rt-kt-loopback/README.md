@@ -126,7 +126,10 @@ itself and `missing_embedded_catalog_is_refused`, whose descriptor no
 - **`Attachment` is `AutoCloseable`.** `close()` is the Rust drop: it closes the
   attachment's handles, which returns its handler's claims and wakes another
   serving handler, then releases the identity, so a waker woken by that close
-  still sees it reserved. A second `close()` does nothing.
+  still sees it reserved. A second `close()` does nothing. Every port access
+  after `close()` throws `IllegalStateException`, including a listener's
+  otherwise inert operations. Rust prevents access after drop through ownership;
+  Kotlin checks it at runtime. `Node` itself has no `close()` method.
 - **`NodeError` and `AttachError` extend `RuntimeException`**, not `RidlError`,
   whose constructor is internal to `ridl-rt-kt`. Like `RidlError`, they capture
   no stack trace.

@@ -17,12 +17,14 @@ import ridl.rt.contract.DebugIdentity
 import ridl.rt.contract.InstanceNo
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.contract.StreamNo
 import ridl.rt.loopback.AttachError
 import ridl.rt.loopback.Attachment
 import ridl.rt.loopback.Loopback
 import ridl.rt.loopback.Node
 import ridl.rt.loopback.NodeError
 import ridl.rt.port.Changed
+import ridl.rt.port.ClaimId
 import ridl.rt.port.Interest
 import ridl.rt.port.RaiseError
 import ridl.rt.port.RawSample
@@ -184,6 +186,50 @@ class NodeTest {
             val next = b.query(iface, Ordinal(4u), bytes(), null)
             a.settle(a.nextClaim(out(8))!!.id, Result.success(bytes()))
             b.forget(next)
+        }
+    }
+
+    @OptIn(DebugIdentity::class)
+    @Test
+    fun `closed attachments refuse every port even after an opposite identity attaches`() {
+        val n = debugNode()
+        val c = catalog(n, "alpha")
+        for (who in listOf(id(1), InstanceNo.LISTENER)) {
+            val a = n.attach(who, c)
+            val call = a.query(iface, ord, bytes(), null)
+            a.close()
+            n.attach(id(1).twin()!!, c).use { replacement ->
+                replacement.set(iface, ord, bytes(42))
+                replacement.commit()
+                val operations: List<() -> Any?> = listOf(
+                    { a.catalog }, { a.encoding }, { a.now() },
+                    { a.checkWith(iface, ord) { } },
+                    { a.read(iface, ord, out(8)) }, { a.readFixed(iface, ord, out(8)) },
+                    { a.generation(iface) }, { a.scan(emptyArray(), emptyArray()) },
+                    { a.readCoherent(iface, emptyList(), out(8), emptyArray()) },
+                    { a.set(iface, ord, bytes(7)) }, { a.invalidate(iface, ord) },
+                    { a.touch(iface, ord) }, { a.commit() },
+                    { a.subscribe(iface, listOf(ord)) }, { a.unsubscribe(iface, listOf(ord)) },
+                    { a.next(out(8)) }, { a.raise(iface, ord, bytes(), null) },
+                    { a.command(iface, ord, bytes(), null) }, { a.query(iface, ord, bytes(), null) },
+                    { a.ack(call) }, { a.reply(call, out(8)) }, { a.forget(call) },
+                    { a.serve(iface, listOf(ord)) }, { a.nextClaim(out(8)) },
+                    { a.settle(ClaimId(1), Result.success(bytes())) },
+                    { a.wakeOn(Interest.Slot, Waker {}) },
+                    { a.wakeOn(Interest.Outcome(call), Waker {}) },
+                    { a.wakeOn(Interest.Stream(call, StreamNo(1u)), Waker {}) },
+                    { a.wakeOn(Interest.ClaimStream(ClaimId(1), StreamNo(1u)), Waker {}) },
+                    { a.wakeOn(Interest.Event(iface), Waker {}) },
+                    { a.wakeOn(Interest.Claim(iface), Waker {}) },
+                )
+                repeat(2) {
+                    for (operation in operations) assertThrows<IllegalStateException> { operation() }
+                    a.close()
+                }
+                val out = out(8)
+                replacement.read(iface, ord, out)
+                assertArrayEquals(array(42), out.written())
+            }
         }
     }
 

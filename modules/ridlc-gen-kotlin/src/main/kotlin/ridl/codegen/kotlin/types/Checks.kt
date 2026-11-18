@@ -104,7 +104,8 @@ internal fun scalarChecks(
  * becomes `\z`, because a Java `$` also matches before a final line
  * terminator. A pattern that turns on the multi-line flag `m` is refused:
  * its `$` must keep the line meaning, and this rewrite does not track flag
- * scopes.
+ * scopes. `\v` and the class operators `--` and `~~` are refused because
+ * Java assigns them different meanings from Rust.
  */
 internal fun javaPattern(body: String): String {
     val rewritten = StringBuilder("(?dU)")
@@ -114,9 +115,15 @@ internal fun javaPattern(body: String): String {
         val c = body[i]
         when {
             c == '\\' && i + 1 < body.length -> {
+                if (body[i + 1] == 'v') {
+                    refuse("its pattern `/$body/` uses `\\v`, which this plugin does not translate to Rust's U+000B")
+                }
                 rewritten.append(c).append(body[i + 1])
                 i += 2
                 continue
+            }
+            depth > 0 && (body.startsWith("--", i) || body.startsWith("~~", i)) -> {
+                refuse("its pattern `/$body/` uses class operator `${body.substring(i, i + 2)}`, which this plugin does not translate")
             }
             c == '[' -> {
                 rewritten.append(c)
