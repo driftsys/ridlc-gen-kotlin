@@ -45,6 +45,11 @@ class WellFormedTest {
           code : Code
         }
 
+        /// A table containing a bare string.
+        struct Nested {
+          text : string [0..8]
+        }
+
         /// Every position a string is written at.
         struct Texts {
           bare   : string [0..8]
@@ -53,6 +58,8 @@ class WellFormedTest {
           byWord : [Word : string [0..8]; 0..2]
           maybe  : string [0..8]?
           choice : Choice
+          nested : Nested
+          tables : [Nested; 0..2]
         }
     """.trimIndent()
 
@@ -64,6 +71,7 @@ class WellFormedTest {
         import probe.utf8.Choice
         import probe.utf8.Code
         import probe.utf8.Constants_
+        import probe.utf8.Nested
         import probe.utf8.Text
         import probe.utf8.Texts
         import probe.utf8.TextsCodec
@@ -86,7 +94,9 @@ class WellFormedTest {
             byWord: Map<Word, String> = mapOf(Word.of("😀") to "😀"),
             maybe: String? = "😀",
             choice: Choice = Choice.Word(Word.of("😀")),
-        ) = Texts(bare = bare, word = word, list = list, byWord = byWord, maybe = maybe, choice = choice)
+            nested: Nested = Nested(text = "😀"),
+            tables: List<Nested> = listOf(Nested(text = "😀")),
+        ) = Texts(bare = bare, word = word, list = list, byWord = byWord, maybe = maybe, choice = choice, nested = nested, tables = tables)
 
         /** `ok`, or `<type> <rule>` of the encoder's `Contract`; `THREW` for anything else. */
         private fun <T, V> encoded(codec: Payload<T, V>, value: T): String = try {
@@ -143,6 +153,8 @@ class WellFormedTest {
                 for (bad in illFormed) {
                     val shown = bad.map { "%04X".format(it.code) }
                     val cases = listOf(
+                        "a nested table field" to (texts(nested = Nested(text = bad)) to "Nested"),
+                        "a vector of tables field" to (texts(tables = listOf(Nested(text = "ok"), Nested(text = bad))) to "Nested"),
                         "a bare field" to (texts(bare = bad) to "Texts"),
                         "a named field" to (texts(word = Word.unchecked(bad)) to "Word"),
                         "an array element" to (texts(list = listOf("ok", bad)) to "Texts"),
