@@ -261,7 +261,7 @@ tuple), and a root with no finite podbuf bound.
   package gets a codec, so a type no interface sends can refuse its package.
 - **`encode` refuses an unpaired surrogate** as `Codec.kt` does, before the
   string's length and its U+0000 check, where `encodeToByteArray` would write
-  U+FFFD (#157).
+  `?` (#157).
 - **podbuf alignment is the buffer's position**, not its address:
   [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-rust-and-docsdesignmd)
   says how. A buffer the face allocates starts at position 0.
