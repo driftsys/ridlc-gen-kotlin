@@ -122,11 +122,10 @@ why, and how the rule was last checked; CI does not check it.
 - **A named string scalar refuses an unpaired surrogate** as `Rule.Utf8`, before
   its length and its pattern (#157), as the TypeScript backend's constructors do
   (driftsys/ridl#1322). A Kotlin `String` can hold one and a Rust `String`
-  cannot, so the Rust backend has no such check. A string scalar that checks
-  nothing keeps its public constructor, where the TypeScript backend gives every
-  string scalar a checking one, and a struct does not check its inline strings
-  for it, as the TypeScript backend does not: in both cases the encoder refuses
-  the value (`Codec.kt` and `PodbufCodec.kt`, below).
+  cannot, so the Rust backend has no such check. Every named string scalar
+  checks this, including one without constraints (#182). A struct does not check
+  its inline strings for it, as the TypeScript backend does not: the encoder
+  refuses the value (`Codec.kt` and `PodbufCodec.kt`, below).
 - **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
   whole: the pattern's own `^` and `$` decide.
 - **A pattern matches as the Rust `regex` crate does** under its defaults on
@@ -261,7 +260,7 @@ tuple), and a root with no finite podbuf bound.
   package gets a codec, so a type no interface sends can refuse its package.
 - **`encode` refuses an unpaired surrogate** as `Codec.kt` does, before the
   string's length and its U+0000 check, where `encodeToByteArray` would write
-  U+FFFD (#157).
+  `?` on the JVM (#157).
 - **podbuf alignment is the buffer's position**, not its address:
   [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-rust-and-docsdesignmd)
   says how. A buffer the face allocates starts at position 0.
