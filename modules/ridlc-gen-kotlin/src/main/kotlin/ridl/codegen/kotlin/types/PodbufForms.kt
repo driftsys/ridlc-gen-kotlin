@@ -290,7 +290,7 @@ internal class PodbufForms(private val model: Model, private val pkg: String) {
      * constructor; a string holding U+0000 is refused as `Pattern`, because
      * its NUL could not be told from the terminator (ADR-0031 decision 5).
      * First, a string holding an unpaired surrogate is refused as `Utf8`,
-     * which `encodeToByteArray` would write as U+FFFD.
+     * which `encodeToByteArray` would write as `?` on the JVM.
      */
     private fun textWrite(type: Type, expr: String, at: String, owner: String): CodeBlock {
         val domain = sequenceOf(type, text = true)
