@@ -8,12 +8,14 @@
 // whole suite from its own tests with [suite], and the tests of the
 // extensions it implements with [scannableSuite], [coherentSuite],
 // [wakeableSuite] and [streamsSuite], and, when it carries the trace context,
-// [traceSuite]:
+// [traceSuite]. A runtime that overrides both claim-forget methods of
+// `StreamHandler` also runs [claimForgetSuite]:
 //
 //     @TestFactory fun ports() = suite(MyFactory)
 //     @TestFactory fun scannable() = scannableSuite(MyFactory)
 //     @TestFactory fun trace() = traceSuite(MyFactory)
 //     @TestFactory fun streams() = streamsSuite(MyFactory)
+//     @TestFactory fun claimForget() = claimForgetSuite(MyFactory)
 //
 // What the suite leaves out is the crate documentation's list, unchanged: what
 // the port contract leaves to a runtime (where the clock starts, what `advance`
@@ -248,3 +250,15 @@ public fun <R> streamsSuite(factory: Factory<R>): List<DynamicTest>
     where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
           R : Handler, R : StreamCaller, R : StreamHandler, R : Wakeable =
     StreamsContract(factory).dynamicTests()
+
+/**
+ * The tests of the claim-forget capability: `suite!(F; claim_forget)`. They
+ * check a runtime that overrides both `StreamHandler.claimForget` and
+ * `StreamHandler.wakeOnClaimForget`; a runtime that keeps their defaults does
+ * not run them, and its [streamsSuite] is unchanged. They have the bounds of
+ * [streamsSuite] and ask [factory] for nothing more.
+ */
+public fun <R> claimForgetSuite(factory: Factory<R>): List<DynamicTest>
+    where R : Attached, R : Clock, R : SignalReader, R : SignalWriter, R : EventSource, R : EventSink, R : Caller,
+          R : Handler, R : StreamCaller, R : StreamHandler, R : Wakeable =
+    ClaimForgetContract(factory).dynamicTests()

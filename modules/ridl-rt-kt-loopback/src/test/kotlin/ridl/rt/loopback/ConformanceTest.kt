@@ -3,6 +3,7 @@ package ridl.rt.loopback
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import ridl.rt.conformance.Factory
+import ridl.rt.conformance.claimForgetSuite
 import ridl.rt.conformance.coherentSuite
 import ridl.rt.conformance.scannableSuite
 import ridl.rt.conformance.streamsSuite
@@ -18,8 +19,10 @@ import ridl.rt.sample.Duration
 /**
  * The port contract suite of `ridl-rt-kt-conformance`, run over this runtime:
  * `crates/ridl-loopback/tests/conformance.rs`. Every test the suite has runs
- * here, including those of the extensions, which the loopback implements. The tests of what only this runtime can express are in
- * `PortsTest`.
+ * here, including those of the extensions, which the loopback implements, and
+ * the claim-forget arm, because the loopback overrides both claim-forget
+ * methods of `StreamHandler`. The tests of what only this runtime can express
+ * are in `PortsTest`.
  */
 class ConformanceTest {
     /** The loopback as the suite builds it: the aggregate, the additional role handles, and its two test hooks. */
@@ -56,4 +59,7 @@ class ConformanceTest {
 
     @TestFactory
     fun `the streams extension`(): List<DynamicTest> = streamsSuite(LoopbackFactory)
+
+    @TestFactory
+    fun `the claim forget capability`(): List<DynamicTest> = claimForgetSuite(LoopbackFactory)
 }

@@ -24,6 +24,7 @@ a `@TestFactory`:
 @TestFactory fun coherent() = coherentSuite(MyFactory)
 @TestFactory fun trace() = traceSuite(MyFactory)
 @TestFactory fun streams() = streamsSuite(MyFactory)
+@TestFactory fun claimForget() = claimForgetSuite(MyFactory)
 ```
 
 A runtime in another repository takes the suite from Maven Central, which the
@@ -46,8 +47,9 @@ tasks.test { useJUnitPlatform() }
 
 The suite's version follows `ridl-rt-kt`'s: a runtime takes the suite of the
 `ridl-rt-kt` it implements, because the suite's surface changes with the port
-contract. Run only the suites of the extensions the runtime implements, and
-`traceSuite` only when it carries the trace context.
+contract. Run only the suites of the extensions the runtime implements,
+`traceSuite` only when it carries the trace context, and `claimForgetSuite` only
+when it overrides both `StreamHandler.claimForget` and `wakeOnClaimForget`.
 
 ## Status
 
@@ -134,6 +136,17 @@ The case of a forget before any claim accepts either a call still presented and
 settled or a withdrawn one, and checks that the runtime then accepts exactly
 `slots` further sends, so the forgotten call gave its slot back.
 
+ridl 0.20 (driftsys/ridl#1298, pinned as `editor-v0.20.0`): the caller's forget
+as the provider reads it. `ClaimForgetContract`, run by `claimForgetSuite`,
+holds the 7 cases of the opt-in `claim_forget` arm, for a runtime that overrides
+both `StreamHandler.claimForget` and `wakeOnClaimForget`: 7 claim-forget cases
+and 123 in all. It has the bounds of `streamsSuite` and adds no factory hook; a
+runtime that keeps the defaults does not run it, and its streams suite is
+unchanged. The case of a claim only offered is skipped by a runtime that
+presents the call to an empty buffer without a `ShortClaim` offer. Over the
+loopback, a `claimForget` that always answers `NotForgotten`, the default, fails
+all 7.
+
 What the suite leaves out is the Rust crate's list, unchanged: what the port
 contract leaves to a runtime, a handler that has served nothing, two sinks on
 one event channel, `FixedReader`, a member's limit other than the default
@@ -159,6 +172,10 @@ of a handle.
 - **The trace arm is one contract.** Rust keeps the `trace` arm's cases in
   `calls.rs` and `events.rs`; here they are `TraceContract`, in the order of the
   arm, because each Kotlin contract class is one arm's.
+- **The claim-forget arm is one contract.** Rust keeps the `claim_forget` arm's
+  cases in `streams.rs`, as the `claim_forget_*` functions beside the `streams`
+  arm's; here they are `ClaimForgetContract`, in the order of the arm, for the
+  same reason, and each case keeps the `claim forget` prefix of its name.
 - **Tests are methods of a contract class** over the factory, where Rust has
   free functions generic over `F: Factory`, so the port bounds on `R` are stated
   once per class rather than once per test.

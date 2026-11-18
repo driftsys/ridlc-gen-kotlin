@@ -46,6 +46,7 @@ class SuiteTest {
         WakeableContract(Unused),
         TraceContract(Unused),
         StreamsContract(Unused),
+        ClaimForgetContract(Unused),
     )
 
     @Test
@@ -62,13 +63,14 @@ class SuiteTest {
     }
 
     @Test
-    fun `the six suites hold the 116 tests of the Rust suite`() {
+    fun `the seven suites hold the 123 tests of the Rust suite`() {
         assertEquals(50, suite(Unused).size, "the base arm")
         assertEquals(5, scannableSuite(Unused).size, "the scannable arm")
         assertEquals(2, coherentSuite(Unused).size, "the coherent arm")
         assertEquals(8, wakeableSuite(Unused).size, "the wakeable arm")
         assertEquals(18, traceSuite(Unused).size, "the trace arm")
         assertEquals(33, streamsSuite(Unused).size, "the streams arm")
-        assertTrue(contracts.sumOf { it.tests.size } == 116)
+        assertEquals(7, claimForgetSuite(Unused).size, "the claim_forget arm")
+        assertTrue(contracts.sumOf { it.tests.size } == 123)
     }
 }
