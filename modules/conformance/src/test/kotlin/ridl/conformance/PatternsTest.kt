@@ -184,10 +184,14 @@ class PatternsTest {
     /** A pattern that turns on the multi-line flag `m` in a group is refused, not translated. */
     @Test
     fun `a pattern with a multi-line group is refused`() {
-        val response = response("multiline", "type Multi : string [1..8 match /^(?m:a$)/]")
-        assertEquals(emptyList<String>(), response.filesList.map { it.path })
-        val message = response.diagnosticsList.single().message
-        assertTrue("`probe.multiline.Multi`" in message && "multi-line flag `m`" in message, message)
+        val patterns = listOf("(?m:a$)", "^(?m:a$)", "(?im:a$)", "(?i:(?m:a$))")
+        for ((i, pattern) in patterns.withIndex()) {
+            val response = response("multiline$i", "type Multi : string [1..8 match /$pattern/]")
+            assertEquals(emptyList<String>(), response.filesList.map { it.path })
+            val message = response.diagnosticsList.single().message
+            assertTrue("`probe.multiline$i.Multi`" in message && "/$pattern/" in message, message)
+            assertTrue("multi-line flag `m`" in message && "does not translate" in message, message)
+        }
     }
 
     /**

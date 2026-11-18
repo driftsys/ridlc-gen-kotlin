@@ -129,7 +129,8 @@ why, and how the rule was last checked; CI does not check it.
   plugin prefixes each pattern with `(?dU)` and rewrites each such `$` to `\z`;
   `java.util.regex` alone let `/^.$/` accept `"a\n"` and refuse `"\r"`. A
   pattern that turns on the multi-line flag `m`, as `(?m:...)`, is refused,
-  although `ridl check` accepts it (#169).
+  although `ridl check` accepts it (#169). This includes combined flags and
+  nested groups; the rewrite does not track where a multi-line flag applies.
 - **A pattern `java.util.regex` cannot compile refuses its declaration**, with
   the pattern and Java's reason (#12). `ridl check` passes a pattern ECMA-262
   and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and some of
