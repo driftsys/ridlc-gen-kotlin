@@ -19,6 +19,7 @@ dependencyResolutionManagement {
 for (module in listOf(
     "ridlc-gen-kotlin",
     "ridl-rt-kt",
+    "ridl-rt-kt-proto3",
     "ridl-rt-kt-loopback",
     "ridl-rt-kt-coroutines",
     "ridl-rt-kt-conformance",

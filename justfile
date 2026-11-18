@@ -73,20 +73,20 @@ dist:
     ./gradlew :ridlc-gen-kotlin:shadowDistZip :ridlc-gen-kotlin:shadowDistTar :ridlc-gen-kotlin:installShadowDist
     @echo "modules/ridlc-gen-kotlin/build/install/ridlc-gen-kotlin/bin/ridlc-gen-kotlin"
 
-# The five JVM libraries into the local Maven repository, for a consumer
+# The six JVM libraries into the local Maven repository, for a consumer
 # outside this repository — the Binder runtime depends on ridl-rt-kt (§6), and
 # runs ridl-rt-kt-conformance's suite over itself.
 publish-local:
     ./gradlew publishToMavenLocal
 
-# The five JVM libraries to GitHub Packages, at the version gradle.properties
+# The six JVM libraries to GitHub Packages, at the version gradle.properties
 # names. Needs the Gradle properties GitHubPackagesUsername and
 # GitHubPackagesPassword, a token with write:packages; the ci workflow's snapshot
 # job and the release workflow set them.
 publish:
     ./gradlew publishAllPublicationsToGitHubPackagesRepository
 
-# The five JVM libraries, signed, as one deployment to the Maven Central Portal,
+# The six JVM libraries, signed, as one deployment to the Maven Central Portal,
 # at the version gradle.properties names. Needs the Gradle properties
 # signingKey (ASCII-armored PGP private key) and signingPassword, and the
 # Portal user token as mavenCentralUsername and mavenCentralPassword (or the
