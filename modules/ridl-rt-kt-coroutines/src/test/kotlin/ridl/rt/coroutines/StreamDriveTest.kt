@@ -1,5 +1,8 @@
 package ridl.rt.coroutines
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -380,6 +383,60 @@ class StreamDriveTest {
     private suspend fun acknowledged(handler: HandlerHandle, claim: Claim, block: suspend () -> Unit) {
         handler.settle(claim.id, Result.success(ByteBuffer.allocate(0)))
         consumeUpload(handler, claim.id, block)
+    }
+
+    @Test
+    fun `outer cancellation racing a forget cancels upload providers and releases their slots`() = running {
+        for (query in listOf(true, false)) {
+            val rt = runtime()
+            val caller = rt.caller()
+            val handler = rt.handler()
+            handler.serve(IFACE, listOf(ORD))
+            repeat(Loopback.SLOTS * 2) {
+                val c = if (query) caller.query(IFACE, ORD, ByteBuffer.allocate(0), null)
+                else caller.command(IFACE, ORD, ByteBuffer.allocate(0), null)
+                val claim = handler.nextClaim(ByteBuffer.allocate(0))!!
+                caller.push(c, StreamNo(1u), ByteBuffer.wrap(bytes(1)))
+                if (!query) handler.settle(claim.id, Result.success(ByteBuffer.allocate(0)))
+                val started = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val stopped = AtomicInteger()
+                val cancelled = AtomicInteger()
+                val block: suspend () -> Nothing = {
+                    started.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        // Keep the provider alive until both competing actions have run.
+                        withContext(NonCancellable) { release.await() }
+                        stopped.incrementAndGet()
+                    }
+                }
+                val provider = launch {
+                    try {
+                        if (query) settleUpload(handler, claim.id, block)
+                        else consumeUpload(handler, claim.id, block)
+                        error("outer cancellation must propagate")
+                    } catch (e: CancellationException) {
+                        cancelled.incrementAndGet()
+                        throw e
+                    }
+                }
+                started.await()
+                val race = CompletableDeferred<Unit>()
+                val cancel = launch { race.await(); provider.cancel() }
+                val forget = launch { race.await(); caller.forget(c) }
+                race.complete(Unit)
+                cancel.join()
+                forget.join()
+                release.complete(Unit)
+                provider.join()
+                assertEquals(1, stopped.get())
+                assertEquals(1, cancelled.get())
+            }
+            caller.close()
+            handler.close()
+        }
     }
 
     @Test
