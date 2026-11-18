@@ -225,32 +225,39 @@ class Proto3Test {
 
     @Test
     fun buffersRespectPositionsLimitsAndByteOrder() {
-        for (out in listOf(ByteBuffer.allocate(20), ByteBuffer.allocateDirect(20))) {
-            out.order(ByteOrder.BIG_ENDIAN)
-            out.position(3)
-            out.limit(17)
-            val writer = Writer(out)
-            writer.fixed32(0x04030201u)
-            writer.fixed64(0x0807060504030201uL)
-            val source = buf(9, 97, 98, 9)
-            source.position(1)
-            source.limit(3)
-            writer.bytes(source.asReadOnlyBuffer())
-            assertEquals(1, source.position())
-            assertEquals(3, out.position())
-            assertEquals(14, writer.finish())
-            assertEquals(17, out.position())
-            assertEquals(ByteOrder.BIG_ENDIAN, out.order())
-            out.position(3)
-            assertEquals(buf(1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 97, 98), out)
+        for (sourceBuffer in listOf(ByteBuffer.allocate(4), ByteBuffer.allocateDirect(4))) {
+            for (out in listOf(ByteBuffer.allocate(20), ByteBuffer.allocateDirect(20))) {
+                out.order(ByteOrder.BIG_ENDIAN)
+                out.position(3)
+                out.limit(17)
+                val writer = Writer(out)
+                writer.fixed32(0x04030201u)
+                writer.fixed64(0x0807060504030201uL)
+                sourceBuffer.clear()
+                sourceBuffer.put(byteArrayOf(9, 97, 98, 9))
+                val source = sourceBuffer.asReadOnlyBuffer()
+                source.position(1)
+                source.limit(3)
+                writer.bytes(source)
+                assertEquals(1, source.position())
+                assertEquals(3, out.position())
+                assertEquals(14, writer.finish())
+                assertEquals(17, out.position())
+                assertEquals(ByteOrder.BIG_ENDIAN, out.order())
+                out.position(3)
+                assertEquals(buf(1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 97, 98), out)
+            }
         }
-        val input = buf(99, 8, 1, 99)
-        input.position(1)
-        input.limit(3)
-        val reader = Reader(input.asReadOnlyBuffer())
-        assertEquals(Field(1u, Value.Varint(1uL)), reader.next())
-        assertNull(reader.next())
-        assertEquals(1, input.position())
+        for (inputBuffer in listOf(ByteBuffer.allocate(4), ByteBuffer.allocateDirect(4))) {
+            inputBuffer.put(byteArrayOf(99, 8, 1, 99))
+            val input = inputBuffer.asReadOnlyBuffer()
+            input.position(1)
+            input.limit(3)
+            val reader = Reader(input)
+            assertEquals(Field(1u, Value.Varint(1uL)), reader.next())
+            assertNull(reader.next())
+            assertEquals(1, input.position())
+        }
     }
 
     @Test
