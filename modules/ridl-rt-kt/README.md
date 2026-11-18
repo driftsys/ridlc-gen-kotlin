@@ -183,8 +183,9 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
   ridl's extreme lattices, through generated code.
 - **`isWellFormedString`** is Kotlin's own, with no Rust item: whether a
   `String` holds no unpaired surrogate (typl §4.4), which a Rust `str` cannot
-  hold. A generated named string scalar's constructor and both generated
-  encoders call it, and refuse such a string with `Rule.Utf8` (#157). It is the
+  hold. A generated named string scalar's constructor, both generated encoders
+  and `ridl-rt-kt-coroutines`' `textChunks`, for a value of a `<string>` stream,
+  call it, and refuse such a string with `Rule.Utf8` (#157, #160). It is the
   TypeScript runtime's `isWellFormedString` (driftsys/ridl#1322), where
   `ConstraintError` gained the rule `utf8`; Kotlin adds no rule, as `Rule.Utf8`
   is already `ridl_rt::payload::Rule::Utf8`, the rule of a `<string>` stream's

@@ -60,6 +60,18 @@ class StreamChunksTest {
     }
 
     @Test
+    fun `text holding an unpaired surrogate is refused with the rule Utf8`() {
+        // `toByteArray` would write each as `?`, so the receiver would read another string.
+        for (value in listOf("x\uD800y", "\uDC00", "a\uD800")) {
+            assertEquals(
+                Contract.InvalidValue(Violation("string", Rule.Utf8)),
+                assertThrows<CallError> { textChunks(4).encode(value) },
+                value,
+            )
+        }
+    }
+
+    @Test
     fun `a text limit below a whole character is refused`() {
         assertThrows<IllegalArgumentException> { textChunks(3) }
     }

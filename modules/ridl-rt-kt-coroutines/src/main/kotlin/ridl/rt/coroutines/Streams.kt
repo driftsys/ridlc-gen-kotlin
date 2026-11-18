@@ -29,6 +29,7 @@ import ridl.rt.payload.Payload
 import ridl.rt.payload.Rule
 import ridl.rt.payload.VerifyError
 import ridl.rt.payload.Violation
+import ridl.rt.payload.isWellFormedString
 import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
 import ridl.rt.port.Clock
@@ -119,7 +120,9 @@ public fun byteChunks(limit: Int): StreamChunks<ByteArray> = object : StreamChun
 /**
  * A stream of text: a value is split into chunks of at most [limit] bytes, the
  * member's limit, each of them whole UTF-8 characters, because a receiver
- * checks each chunk (ADR-0032 decision 12).
+ * checks each chunk (ADR-0032 decision 12). A value holding an unpaired
+ * surrogate has no UTF-8 form and is refused with the rule `Utf8`, as the
+ * receiver refuses an ill-formed chunk, before any of it is sent.
  */
 public fun textChunks(limit: Int): StreamChunks<String> {
     require(limit >= LONGEST_UTF8_CHARACTER) { "a text stream's chunk holds a whole character: its limit is at least 4, not $limit" }
@@ -127,6 +130,8 @@ public fun textChunks(limit: Int): StreamChunks<String> {
         override val maxChunk: Int = limit
 
         override fun encode(value: String): List<ByteBuffer> {
+            // `toByteArray` would write an unpaired surrogate as `?`.
+            if (!isWellFormedString(value)) throw Contract.InvalidValue(Violation("string", Rule.Utf8))
             val bytes = value.toByteArray(Charsets.UTF_8)
             val chunks = mutableListOf<ByteBuffer>()
             var from = 0
