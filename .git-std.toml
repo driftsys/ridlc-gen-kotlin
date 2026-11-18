@@ -11,6 +11,7 @@ scopes = [
   "ridl-rt-kt-coroutines",
   "ridl-rt-kt-conformance",
   "ridl-descriptor-kt",
+  "ridl-rt-kt-proto3",
   "samples",
   "ci",
 ]
