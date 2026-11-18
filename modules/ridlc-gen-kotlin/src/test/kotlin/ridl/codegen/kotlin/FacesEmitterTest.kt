@@ -35,6 +35,9 @@ import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
 import ridl.codegen.v1.ModelOuterClass.Shape
 import ridl.codegen.v1.ModelOuterClass.SignalShape
+import ridl.codegen.v1.ModelOuterClass.StreamForm
+import ridl.codegen.v1.ModelOuterClass.StreamShape
+import ridl.codegen.v1.ModelOuterClass.StreamType
 import ridl.codegen.v1.ModelOuterClass.Timing
 import ridl.codegen.v1.ModelOuterClass.TimingMode
 import ridl.codegen.v1.ModelOuterClass.Spellings
@@ -216,6 +219,52 @@ class FacesEmitterTest {
         }
         val warning = floatClause(ComparisonOp.COMPARISON_OP_LE, "1e10001").warnings.single()
         assertTrue("the literal cannot be read as an exact decimal" in warning, warning)
+    }
+
+    /**
+     * The faces of a command `push` over `Level` that takes `limit: Level` and
+     * a stream of `Level`s, the stream first when [streamFirst], required to
+     * compare the parameter at declared index [subject] with 0.
+     */
+    private fun uploadClause(streamFirst: Boolean, subject: Int): EmittedFaces {
+        val limit = Param.newBuilder().setName(spelled("limit")).setType(Type.newBuilder().setNamed(level)).build()
+        val data = Param.newBuilder().setName(spelled("data"))
+            .setType(Type.newBuilder().setStream(StreamType.newBuilder().setNamed(level))).build()
+        val clause = Clause.newBuilder().setKind(ContractKind.CONTRACT_KIND_REQUIRE).setSource("limit > 0")
+            .setComparison(
+                Comparison.newBuilder().setOp(ComparisonOp.COMPARISON_OP_GT).setLiteral("0")
+                    .setLiteralClass(ScalarClass.SCALAR_CLASS_INTEGER).setParam(subject),
+            )
+        val command = CommandShape.newBuilder()
+            .addAllParams(if (streamFirst) listOf(data, limit) else listOf(limit, data))
+            .setRequest(levelPayload())
+            .addClauses(clause)
+        val interaction = Interaction.newBuilder().setName(spelled("push")).setCommand(command)
+            .addStreams(StreamShape.newBuilder().setNo(1).setForm(StreamForm.STREAM_FORM_ELEMENTS).setElement(level))
+        val iface = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1)
+            .addSlots(InteractionSlot.newBuilder().setOrdinal(1).setInteraction(interaction))
+        return FacesEmitter(demo().addDeclarations(scalar("Level")).addInterfaces(iface).build(), options).emit()
+    }
+
+    @Test
+    fun `a require beside a stream parameter reads the parameter at its declared index`() {
+        // ridl 0.18.0 (driftsys/ridl#1289): the subject keeps the declared index, 1 when the stream comes first.
+        for ((streamFirst, subject) in listOf(false to 0, true to 1)) {
+            val emitted = uploadClause(streamFirst, subject)
+            assertEquals(emptyList<String>(), emitted.warnings, "streamFirst=$streamFirst")
+            val text = checkNotNull(emitted.text) { "streamFirst=$streamFirst" }
+            assertTrue("Boolean = args.value > 0L\n" in text, "streamFirst=$streamFirst\n$text")
+        }
+    }
+
+    @Test
+    fun `a require whose subject is the stream parameter skips its interface with a warning`() {
+        for ((streamFirst, subject) in listOf(false to 1, true to 0)) {
+            val emitted = uploadClause(streamFirst, subject)
+            assertNull(emitted.text, "streamFirst=$streamFirst")
+            val warning = emitted.warnings.single()
+            assertTrue("cannot translate contract clause `limit > 0`: no accepted comparison" in warning, warning)
+        }
     }
 
     @Test
