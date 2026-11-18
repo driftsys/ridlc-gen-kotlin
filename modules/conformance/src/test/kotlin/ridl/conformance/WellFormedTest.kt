@@ -32,6 +32,10 @@ class WellFormedTest {
         /// A named string that checks its length and its pattern.
         type Code : string [1..3 match /^[a-z]+${'$'}/]
 
+        /// A named string without constraints.
+        type Text : string
+        const GREETING : Text = "😀"
+
         /// A named string that checks its length alone.
         type Word : string [0..8]
 
@@ -59,6 +63,8 @@ class WellFormedTest {
 
         import probe.utf8.Choice
         import probe.utf8.Code
+        import probe.utf8.Constants_
+        import probe.utf8.Text
         import probe.utf8.Texts
         import probe.utf8.TextsCodec
         import probe.utf8.TextsPodbufCodec
@@ -105,6 +111,7 @@ class WellFormedTest {
             for (bad in illFormed) {
                 val shown = bad.map { "%04X".format(it.code) }
                 for ((what, rule) in listOf(
+                    "Text.of" to refused { Text.of(bad) },
                     "Code.of" to refused { Code.of(bad) },
                     "Code.of, too long and not matching" to refused { Code.of(bad + "ZZZZ") },
                     "Word.of" to refused { Word.of(bad) },
@@ -112,8 +119,12 @@ class WellFormedTest {
                 )) {
                     if (rule != Rule.Utf8) failures += "${'$'}what(${'$'}shown) refused with ${'$'}rule, not Utf8"
                 }
+                if (Text.ofOrNull(bad) != null) failures += "Text.ofOrNull(${'$'}shown) built a value"
                 if (Code.ofOrNull(bad) != null) failures += "Code.ofOrNull(${'$'}shown) built a value"
             }
+            if (Text.ofOrNull("😀")?.value != "😀") failures += "Text.ofOrNull(😀) lost its value"
+            if (Constants_.GREETING.value != "😀") failures += "Text constant lost its value"
+            if (refused { Text.of("😀") } != null) failures += "Text.of(😀) was refused"
             if (refused { Word.of("😀") } != null) failures += "Word.of(😀) was refused"
             if (refused { Code.of("ab") } != null) failures += "Code.of(ab) was refused"
             return failures

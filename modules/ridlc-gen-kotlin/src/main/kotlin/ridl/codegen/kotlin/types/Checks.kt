@@ -174,14 +174,15 @@ internal fun javaPattern(body: String): String {
 
 /**
  * Whether this scalar's generated class checks nothing, and so has a public
- * constructor and no `of`, `violation` or `unchecked`: the model's `vacuous`,
- * or a constraint whose every bound checks nothing, such as an integer range
+ * constructor and no `of`, `violation` or `unchecked`: a non-string scalar
+ * with the model's `vacuous` or a constraint whose every bound checks nothing,
+ * such as an integer range
  * over all 64 bits. Every emitter asks this, never `vacuous` alone, so a
  * value object and its codec agree on how the value is built. Public for the
  * conformance probes, which build values the way the generated code does.
  */
 val Scalar.plain: Boolean
-    get() = scalarChecks(this, "value", "PATTERN") { CodeBlock.of("") } == null
+    get() = class_ != ScalarClass.SCALAR_CLASS_STRING && scalarChecks(this, "value", "PATTERN") { CodeBlock.of("") } == null
 
 /** Whether [scalarChecks] needs a compiled pattern for this scalar. */
 internal fun Scalar.checksPattern(): Boolean =
