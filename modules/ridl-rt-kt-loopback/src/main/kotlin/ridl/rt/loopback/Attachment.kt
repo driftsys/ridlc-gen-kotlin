@@ -40,7 +40,7 @@ import java.nio.ByteBuffer
  * `ridl_loopback::Attachment`.
  *
  * It presents the ports of the Rust attachment, over role handles of its own
- * on the catalog's store: no handle can be taken out of it. A listener can
+ * on the catalog's store: no handle can be taken out of it. While open, a listener can
  * read, subscribe and call, but cannot publish, raise, serve or take a claim:
  * `set`, `invalidate`, `touch`, `raise` and `serve` throw `NotOwner`, its
  * `commit` does nothing and its `nextClaim` is always `null`.
@@ -48,14 +48,19 @@ import java.nio.ByteBuffer
  * [close] is the Rust drop: it closes the attachment's handles, which returns
  * the claims its handler held and wakes another serving handler, and only then
  * releases the identity, so a replacement cannot overlap the ports. A second
- * close does nothing.
+ * close does nothing. Every port access after close throws [IllegalStateException].
  */
 public class Attachment internal constructor(
-    private val ports: Handles,
+    ports: Handles,
     private val reservation: Reservation,
     private val listener: Boolean,
 ) : Encoded, Clock, SignalReader, FixedReader, ScannableSignals, CoherentSignals, SignalWriter, EventSource, EventSink,
     Caller, Handler, Wakeable, AutoCloseable {
+    private var held: Handles? = ports
+
+    private val ports: Handles
+        get() = checkNotNull(held) { "this Attachment was closed" }
+
     override val catalog: CatalogRef get() = ports.reader.catalog
 
     override val encoding: Encoding get() = ports.reader.encoding
@@ -76,21 +81,25 @@ public class Attachment internal constructor(
         ports.reader.readCoherent(iface, ords, out, samples)
 
     override fun set(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer) {
+        val ports = ports
         if (listener) throw WriteError.NotOwner
         ports.writer.set(iface, ord, bytes)
     }
 
     override fun invalidate(iface: InterfaceNo, ord: Ordinal) {
+        val ports = ports
         if (listener) throw WriteError.NotOwner
         ports.writer.invalidate(iface, ord)
     }
 
     override fun touch(iface: InterfaceNo, ord: Ordinal) {
+        val ports = ports
         if (listener) throw WriteError.NotOwner
         ports.writer.touch(iface, ord)
     }
 
     override fun commit() {
+        val ports = ports
         if (!listener) ports.writer.commit()
     }
 
@@ -101,6 +110,7 @@ public class Attachment internal constructor(
     override fun next(out: ByteBuffer): RawOccurrence? = ports.source.next(out)
 
     override fun raise(iface: InterfaceNo, ord: Ordinal, bytes: ByteBuffer, trace: TraceContext?) {
+        val ports = ports
         if (listener) throw RaiseError.NotOwner
         ports.sink.raise(iface, ord, bytes, trace)
     }
@@ -118,11 +128,15 @@ public class Attachment internal constructor(
     override fun forget(c: Correlation): Unit = ports.caller.forget(c)
 
     override fun serve(iface: InterfaceNo, ords: List<Ordinal>) {
+        val ports = ports
         if (listener) throw ServeError.NotOwner
         ports.handler.serve(iface, ords)
     }
 
-    override fun nextClaim(out: ByteBuffer): Claim? = if (listener) null else ports.handler.nextClaim(out)
+    override fun nextClaim(out: ByteBuffer): Claim? {
+        val ports = ports
+        return if (listener) null else ports.handler.nextClaim(out)
+    }
 
     override fun settle(claim: ClaimId, outcome: Result<ByteBuffer>): Unit = ports.handler.settle(claim, outcome)
 
@@ -135,6 +149,8 @@ public class Attachment internal constructor(
     }
 
     override fun close() {
+        val ports = held ?: return
+        held = null
         ports.source.close()
         ports.caller.close()
         ports.handler.close()
