@@ -196,10 +196,11 @@ fn main() {
 
 
 DESCRIPTOR_MAIN = """// Verifies each buffer as a deployment or catalog descriptor with the pinned
-// ridl-descriptor (#142). Prints `ok`, or `err:` and the variant, with planus's
-// error kind for `Invalid`, and the inner verdict for `EmbeddedCatalog`.
+// ridl-descriptor (#142). Prints error payloads with strings and identifiers
+// encoded as hex; `Invalid` retains only planus's error kind.
 use std::io::BufRead;
 fn unhex(s: &str) -> Vec<u8> { (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect() }
+fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02x}")).collect() }
 fn kind(e: &planus::Error) -> String {
     let shown = format!("{:?}", e.error_kind);
     shown.split(|c: char| !c.is_alphanumeric()).next().unwrap().to_string()
@@ -207,9 +208,9 @@ fn kind(e: &planus::Error) -> String {
 fn catalog(e: &ridl_descriptor::VerifyError) -> String {
     use ridl_descriptor::VerifyError::*;
     match e {
-        TooShort(_) => "TooShort".into(),
-        WrongIdentifier(_) => "WrongIdentifier".into(),
-        WrongVersion(_) => "WrongVersion".into(),
+        TooShort(len) => format!("TooShort({len})"),
+        WrongIdentifier(id) => format!("WrongIdentifier({})", hex(id)),
+        WrongVersion(version) => format!("WrongVersion({version})"),
         Invalid(e) => format!("Invalid({})", kind(e)),
         #[allow(unreachable_patterns)]
         other => format!("?{other:?}"),
@@ -219,8 +220,16 @@ fn deployment(e: &ridl_descriptor::deployment::VerifyError) -> String {
     use ridl_descriptor::deployment::VerifyError::*;
     match e {
         Invalid(e) => format!("Invalid({})", kind(e)),
-        EmbeddedCatalog { source, .. } => format!("EmbeddedCatalog({})", catalog(source)),
-        other => format!("{other:?}").split(|c: char| !c.is_alphanumeric()).next().unwrap().to_string(),
+        TooShort(len) => format!("TooShort({len})"),
+        WrongIdentifier(id) => format!("WrongIdentifier({})", hex(id)),
+        WrongVersion(version) => format!("WrongVersion({version})"),
+        EmbeddedCatalog { catalog: name, source } => format!("EmbeddedCatalog({},{})", hex(name.as_bytes()), catalog(source)),
+        CatalogHashMismatch { catalog } => format!("CatalogHashMismatch({})", hex(catalog.as_bytes())),
+        InstanceNumber { component, instance, number } => format!("InstanceNumber({},{},{number})", hex(component.as_bytes()), hex(instance.as_bytes())),
+        DuplicateInstanceNumber { number, first_component, first_instance, second_component, second_instance } =>
+            format!("DuplicateInstanceNumber({number},{},{},{},{})", hex(first_component.as_bytes()), hex(first_instance.as_bytes()), hex(second_component.as_bytes()), hex(second_instance.as_bytes())),
+        SurfaceLink { index, link, links } => format!("SurfaceLink({index},{link},{links})"),
+        other => format!("{other:?}"),
     }
 }
 fn main() {
@@ -261,20 +270,16 @@ planus = {{ version = "=1.3.0", default-features = false }}
     return WORK / "target" / "debug" / "descriptor-verdicts"
 
 
-def lettered(output):
-    """The verdicts `DescriptorTest` compares: a legend, `<letter> <verdict>` per distinct verdict in order of
-    first appearance, then a blank line, then one letter per buffer of the corpus, 100 to a line."""
-    letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+def indexed(output):
+    """The verdicts `DescriptorTest` compares: a legend, `<index> <verdict>` per distinct verdict in order of
+    first appearance, then a blank line, then one index per buffer of the corpus, 100 to a line."""
     legend, text = {}, []
     for verdict in output.splitlines():
         if verdict not in legend:
-            if len(legend) == len(letters):
-                sys.exit("more distinct descriptor verdicts than letters")
-            legend[verdict] = letters[len(legend)]
+            legend[verdict] = str(len(legend))
         text.append(legend[verdict])
-    body = "".join(text)
-    lines = [f"{letter} {verdict}" for verdict, letter in legend.items()] + [""]
-    lines += [body[i:i + 100] for i in range(0, len(body), 100)]
+    lines = [f"{index} {verdict}" for verdict, index in legend.items()] + [""]
+    lines += [" ".join(text[i:i + 100]) for i in range(0, len(text), 100)]
     return "\n".join(lines) + "\n"
 
 
@@ -494,7 +499,7 @@ def main():
     # #142: the deployment and catalog descriptor verdicts of `DescriptorTest`.
     descriptor = descriptor_program(source)
     output = run([descriptor], input=corpus("descriptor-corpus.txt"), capture_output=True, text=True).stdout
-    agree &= compare("descriptor-rust-verdicts.txt", lettered(output), args.write, DESCRIPTOR_VERDICTS)
+    agree &= compare("descriptor-rust-verdicts.txt", indexed(output), args.write, DESCRIPTOR_VERDICTS)
 
     if args.write and not agree:
         sys.exit("a committed verdict file has no corpus package: delete it")

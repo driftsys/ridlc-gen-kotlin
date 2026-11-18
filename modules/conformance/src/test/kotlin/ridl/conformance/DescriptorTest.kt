@@ -35,7 +35,7 @@ import ridl.descriptor.verify as verifyCatalog
  * Then every truncation of both deployment descriptors and of `alpha`'s
  * catalog descriptor, and each of their bytes set to 0x00, 0xFF and one more,
  * go through `verify`; the verdicts, down to planus's error kind, must be
- * those the Rust `verify` gives, committed, one letter per verdict, as
+ * those the Rust `verify` gives, committed, one index per verdict, as
  * `resources/descriptor/descriptor-rust-verdicts.txt` by `just rust-verdicts`.
  */
 class DescriptorTest {
@@ -113,10 +113,10 @@ class DescriptorTest {
         val files = built()
         val deployment = files.getValue("alpha.bench.deployment.binfb")
         val catalog = files.getValue("alpha.catalog.binfb")
-        assertEquals("err:TooShort", deploymentVerdict(deployment.copyOf(7)))
+        assertEquals("err:TooShort(7)", deploymentVerdict(deployment.copyOf(7)))
         // `the_catalog_verifier_refuses_a_deployment_descriptor` and its converse.
-        assertEquals("err:WrongIdentifier", catalogVerdict(deployment))
-        assertEquals("err:WrongIdentifier", deploymentVerdict(catalog))
+        assertEquals("err:WrongIdentifier(52444c44)", catalogVerdict(deployment))
+        assertEquals("err:WrongIdentifier(52444c43)", deploymentVerdict(catalog))
         // `the_foreign_identifier_message_names_rdld`.
         val message = runCatching { verifyDeployment(catalog) }.exceptionOrNull()!!.message!!
         assertTrue("RDLD" in message && "RDLC" in message, message)
@@ -149,10 +149,10 @@ class DescriptorTest {
         }
         val committed = javaClass.getResource("/descriptor/descriptor-rust-verdicts.txt")?.readText()
             ?: error("no resources/descriptor/descriptor-rust-verdicts.txt: `just rust-verdicts --write` writes it from $out")
-        // A legend, `<letter> <verdict>`, a blank line, then one letter per buffer.
+        // A legend, `<index> <verdict>`, a blank line, then one index per buffer.
         val (legend, body) = committed.split("\n\n", limit = 2)
-        val verdicts = legend.lines().associate { it[0] to it.substring(2) }
-        val rust = body.filterNot { it == '\n' }.map { verdicts.getValue(it) }
+        val verdicts = legend.lines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
+        val rust = body.trim().split(Regex("\\s+")).map { verdicts.getValue(it) }
         assertEquals(rust.size, kotlin.size, "the committed verdicts are for another corpus")
         val differ = kotlin.indices.filter { kotlin[it] != rust[it] }
         assertTrue(differ.isEmpty()) {
@@ -192,7 +192,7 @@ class DescriptorTest {
             return String(chars)
         }
 
-        /** The verdict line the Rust program prints: `ok`, or `err:` and the variant, with planus's error kind for `Invalid`. */
+        /** Rust verdicts include payloads, with strings and identifiers in hex and only the kind for `Invalid`. */
         fun catalogVerdict(bytes: ByteArray): String = try {
             verifyCatalog(bytes)
             "ok"
@@ -201,8 +201,10 @@ class DescriptorTest {
         }
 
         fun catalogVariant(e: CatalogError): String = when (e) {
+            is CatalogError.TooShort -> "TooShort(${e.len})"
+            is CatalogError.WrongIdentifier -> "WrongIdentifier(${e.identifier.toHex()})"
+            is CatalogError.WrongVersion -> "WrongVersion(${e.version})"
             is CatalogError.Invalid -> "Invalid(${e.kind})"
-            else -> e::class.simpleName!!
         }
 
         fun deploymentVerdict(bytes: ByteArray): String = try {
@@ -210,8 +212,19 @@ class DescriptorTest {
             "ok"
         } catch (e: DeploymentError) {
             "err:" + when (e) {
+                is DeploymentError.TooShort -> "TooShort(${e.len})"
+                is DeploymentError.WrongIdentifier -> "WrongIdentifier(${e.identifier.toHex()})"
+                is DeploymentError.WrongVersion -> "WrongVersion(${e.version})"
+                is DeploymentError.CatalogHashMismatch -> "CatalogHashMismatch(${e.catalog.toByteArray().toHex()})"
+                is DeploymentError.InstanceNumber ->
+                    "InstanceNumber(${e.component.toByteArray().toHex()},${e.instance.toByteArray().toHex()},${e.number})"
+                is DeploymentError.DuplicateInstanceNumber ->
+                    "DuplicateInstanceNumber(${e.number},${e.firstComponent.toByteArray().toHex()}," +
+                        "${e.firstInstance.toByteArray().toHex()},${e.secondComponent.toByteArray().toHex()}," +
+                        "${e.secondInstance.toByteArray().toHex()})"
+                is DeploymentError.SurfaceLink -> "SurfaceLink(${e.index},${e.link},${e.links})"
                 is DeploymentError.Invalid -> "Invalid(${e.kind})"
-                is DeploymentError.EmbeddedCatalog -> "EmbeddedCatalog(${catalogVariant(e.source)})"
+                is DeploymentError.EmbeddedCatalog -> "EmbeddedCatalog(${e.catalog.toByteArray().toHex()},${catalogVariant(e.source)})"
                 else -> e::class.simpleName!!
             }
         }
