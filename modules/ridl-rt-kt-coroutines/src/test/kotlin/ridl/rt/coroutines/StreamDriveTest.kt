@@ -387,7 +387,7 @@ class StreamDriveTest {
 
     @Test
     fun `outer cancellation racing a forget cancels upload providers and releases their slots`() = running {
-        for (query in listOf(true, false)) {
+        for ((query, forgetFirst) in listOf(true, false).flatMap { query -> listOf(query to true, query to false) }) {
             val rt = runtime()
             val caller = rt.caller()
             val handler = rt.handler()
@@ -400,6 +400,7 @@ class StreamDriveTest {
                 if (!query) handler.settle(claim.id, Result.success(ByteBuffer.allocate(0)))
                 val started = CompletableDeferred<Unit>()
                 val release = CompletableDeferred<Unit>()
+                val stopping = CompletableDeferred<Unit>()
                 val stopped = AtomicInteger()
                 val cancelled = AtomicInteger()
                 val block: suspend () -> Nothing = {
@@ -407,7 +408,8 @@ class StreamDriveTest {
                     try {
                         awaitCancellation()
                     } finally {
-                        // Keep the provider alive until both competing actions have run.
+                        // Signal cancellation, then keep cleanup pending until both actions have run.
+                        stopping.complete(Unit)
                         withContext(NonCancellable) { release.await() }
                         stopped.incrementAndGet()
                     }
@@ -422,14 +424,21 @@ class StreamDriveTest {
                         throw e
                     }
                 }
-                started.await()
-                val race = CompletableDeferred<Unit>()
-                val cancel = launch { race.await(); provider.cancel() }
-                val forget = launch { race.await(); caller.forget(c) }
-                race.complete(Unit)
-                cancel.join()
-                forget.join()
-                release.complete(Unit)
+                try {
+                    started.await()
+                    if (forgetFirst) {
+                        caller.forget(c)
+                        // With no outer cancellation yet, only the forget watcher can stop the block.
+                        stopping.await()
+                        provider.cancel()
+                    } else {
+                        provider.cancel()
+                        stopping.await()
+                        caller.forget(c)
+                    }
+                } finally {
+                    release.complete(Unit)
+                }
                 provider.join()
                 assertEquals(1, stopped.get())
                 assertEquals(1, cancelled.get())
