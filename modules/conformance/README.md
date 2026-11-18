@@ -204,6 +204,18 @@ induced for a call of two parameters, of none, and for a tuple reply; each is
 dispatched and settled, the provider is handed each argument as it was sent, and
 the size table reserves each induced struct's codec's `maxSize`.
 
+The test of #156, `UploadRequireTest`: a `require` on the ordinary parameter of
+a call that also takes a parameter stream, which the lowering translates since
+ridl 0.18.0 (driftsys/ridl#1289) with the parameter's declared index, 1 when the
+stream comes first. Its package, written by the test after driftsys/ridl's
+`crates/ridl-backend-rust/tests/query_uploads.rs`, is built with the stream last
+and with it first: an upload query, an upload command and a query of both
+streams, beside a query with a reply stream, each `require limit > 0`. Over the
+loopback with `serveAsync`, a call with `limit` 0 is refused by the async client
+with `Send(Contract(PreconditionFailed))`, without collecting its stream or
+reaching the provider, and settled `PreconditionFailed` by the provider when
+sent past the client; a call with `limit` 1 goes through.
+
 The test of #7, `ClientsTest`: the clients and `serve` generated for `cabin`,
 over `ridl-rt-kt-loopback`, driven by the probe of `resources/clients/`. The
 call objects directly: a failing `require` sends nothing, `Busy` leaves a call
