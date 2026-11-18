@@ -12,6 +12,8 @@ import ridl.codegen.v1.ModelOuterClass.Field
 import ridl.codegen.v1.ModelOuterClass.MapType
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.PrimitiveType
+import ridl.codegen.v1.ModelOuterClass.Scalar
+import ridl.codegen.v1.ModelOuterClass.ScalarClass
 import ridl.codegen.v1.ModelOuterClass.Slot
 import ridl.codegen.v1.ModelOuterClass.Spellings
 import ridl.codegen.v1.ModelOuterClass.StreamType
@@ -69,6 +71,17 @@ class TypesEmitterTest {
         val stream = Type.newBuilder().setStream(StreamType.getDefaultInstance()).build()
         val emitted = TypesEmitter(model(struct("A", "s" to stream), struct("B", "s" to stream)).build(), options).emit()
         assertEquals(2, emitted.errors.size)
+    }
+
+    @Test
+    fun `a named string that constrains nothing still refuses an unpaired surrogate`() {
+        // ridl gives every string the typl §4.4 default `[0..256]`, so it sends no vacuous string
+        // today; the model allows one, and its constructor must still check UTF-8 (#182).
+        val name = Declaration.newBuilder().setName(spelled("Name"))
+            .setScalar(Scalar.newBuilder().setClass_(ScalarClass.SCALAR_CLASS_STRING).setVacuous(true)).build()
+        val text = TypesEmitter(model(name).build(), options).emit().text!!
+        assertTrue(text.contains("value class Name private constructor("), text)
+        assertTrue(text.contains("if (!isWellFormedString(value)) {\n        return Rule.Utf8"), text)
     }
 
     @Test

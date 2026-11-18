@@ -300,10 +300,11 @@ builds a `veh.common.Uses` from a `veh.Common`.
 The test of #157, `WellFormedTest`: a package of its own carrying both
 encodings, compiled with warnings as errors. A named string scalar's `of`
 refuses `"x\uD800y"`, a lone low surrogate and a high surrogate at the end as
-`Utf8`, also when the value breaks its length and its pattern. Each encoder
-refuses the same values in a bare field, a named field, an array element, a map
-key and a map value, an optional, a union arm, a nested table and a table in a
-vector (#182), with `EncodeError.Contract` naming the named type or the owner,
-and round-trips `"😀"` in each. A Rust `String` cannot hold such a value, so
-there are no Rust bytes to compare with. The output digests of `SelectionTest`
-were written again for it.
+`Utf8`, also when the value breaks its length and its pattern, and so does that
+of a named string with no declared bound (#182). Each encoder refuses the same
+values in a bare field, a named field, an array element, a map key and a map
+value, an optional, a union arm, a nested table and a table in a vector (#182),
+with `EncodeError.Contract` naming the named type or the owner, and round-trips
+`"😀"` in each. A Rust `String` cannot hold such a value, so there are no Rust
+bytes to compare with. The output digests of `SelectionTest` were written again
+for it.

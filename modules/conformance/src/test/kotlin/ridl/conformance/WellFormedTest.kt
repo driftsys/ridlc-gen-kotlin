@@ -35,6 +35,9 @@ class WellFormedTest {
         /// A named string that checks its length alone.
         type Word : string [0..8]
 
+        /// A named string with no declared bound: ridl gives it the default `[0..256]`.
+        type Name : string
+
         /// A union with a string arm.
         union Choice {
           word : Word
@@ -67,6 +70,7 @@ class WellFormedTest {
         import probe.utf8.Choice
         import probe.utf8.Code
         import probe.utf8.Inner
+        import probe.utf8.Name
         import probe.utf8.Texts
         import probe.utf8.TextsCodec
         import probe.utf8.TextsPodbufCodec
@@ -119,12 +123,15 @@ class WellFormedTest {
                     "Code.of, too long and not matching" to refused { Code.of(bad + "ZZZZ") },
                     "Word.of" to refused { Word.of(bad) },
                     "Word.of, too long" to refused { Word.of(bad + "123456789") },
+                    "Name.of" to refused { Name.of(bad) },
                 )) {
                     if (rule != Rule.Utf8) failures += "${'$'}what(${'$'}shown) refused with ${'$'}rule, not Utf8"
                 }
                 if (Code.ofOrNull(bad) != null) failures += "Code.ofOrNull(${'$'}shown) built a value"
+                if (Name.ofOrNull(bad) != null) failures += "Name.ofOrNull(${'$'}shown) built a value"
             }
             if (refused { Word.of("😀") } != null) failures += "Word.of(😀) was refused"
+            if (refused { Name.of("😀") } != null) failures += "Name.of(😀) was refused"
             if (refused { Code.of("ab") } != null) failures += "Code.of(ab) was refused"
             return failures
         }

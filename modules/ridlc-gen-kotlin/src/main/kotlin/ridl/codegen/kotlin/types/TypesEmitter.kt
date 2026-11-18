@@ -210,9 +210,12 @@ class TypesEmitter internal constructor(
             null
         }
         val fail = { rule: RuleName -> CodeBlock.of("return %T.%L\n", RULE, rule) }
-        // A string that checks nothing keeps its public constructor (E10.4): its encoder refuses an ill-formed value.
-        val checks = scalarChecks(scalar, "value", pattern, fail)?.let {
-            if (scalar.class_ == ScalarClass.SCALAR_CLASS_STRING) CodeBlock.builder().add(wellFormedCheck("value", fail)).add(it).build() else it
+        // A string always checks UTF-8 first, also when it constrains nothing else (#182), as the TypeScript backend's do.
+        val constraints = scalarChecks(scalar, "value", pattern, fail)
+        val checks = if (scalar.class_ == ScalarClass.SCALAR_CLASS_STRING) {
+            CodeBlock.builder().add(wellFormedCheck("value", fail)).apply { constraints?.let(::add) }.build()
+        } else {
+            constraints
         }
         val builder = if (bytes) bytesScalar(self, checks == null) else valueScalar(self, backing, checks == null)
         val unresolved = if (!scalar.constraint.hasPattern() && scalar.constraint.hasPatternConst()) {
