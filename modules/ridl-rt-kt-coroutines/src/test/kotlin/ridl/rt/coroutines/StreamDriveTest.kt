@@ -33,6 +33,8 @@ import ridl.rt.error.Transport
 import ridl.rt.loopback.CallerHandle
 import ridl.rt.loopback.HandlerHandle
 import ridl.rt.loopback.Loopback
+import ridl.rt.payload.Rule
+import ridl.rt.payload.Violation
 import ridl.rt.port.Claim
 import ridl.rt.port.ClaimForget
 import ridl.rt.port.ClaimId
@@ -53,6 +55,7 @@ import java.util.concurrent.atomic.AtomicInteger
 private val IFACE = InterfaceNo(1u)
 private val ORD = Ordinal(1u)
 private val CHUNKS = byteChunks(16)
+private val TEXT = textChunks(16)
 private const val BOUND = 5_000L
 
 /** A caller whose every waiting task a test can wake by hand, as a spurious wake of a runtime does. */
@@ -595,6 +598,37 @@ class StreamDriveTest {
             job.cancelAndJoin()
         }
         while (stopped.get() < Loopback.SLOTS * 2) delay(1)
+        server.cancelAndJoin()
+    }
+
+    @Test
+    fun `a text value holding an unpaired surrogate is refused before any of it is sent`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val received = CopyOnWriteArrayList<String>()
+        val seen = CopyOnWriteArrayList<Throwable>()
+        val server = serving(handler) { claim ->
+            acknowledged(handler, claim) {
+                try {
+                    claimStream(handler, claim.id, TEXT).collect { received += it }
+                } catch (e: Throwable) {
+                    seen += e
+                    throw e
+                }
+            }
+        }
+        val refused = Contract.InvalidValue(Violation("string", Rule.Utf8))
+        for (value in listOf("x\uD800y", "\uDC00", "a\uD800")) {
+            val thrown = runCatching { command(rt).upload(TEXT, flowOf(value)) }.exceptionOrNull()
+            assertEquals(ClientError.Call(refused), thrown, value)
+        }
+        // A pair is one character, and goes through. The consumer of a refused call sees the
+        // refusal, or never runs when the call is forgotten before its claim is taken; either
+        // way it receives no chunk, so the pair is the first value received.
+        command(rt).upload(TEXT, flowOf("\uD83D\uDE00"))
+        while (received.isEmpty()) delay(1)
+        assertEquals(listOf("\uD83D\uDE00"), received.toList(), "no chunk of a refused value is sent")
+        assertEquals(emptyList<Throwable>(), seen.filter { it != refused }, "a refused call's consumer sees the refusal")
         server.cancelAndJoin()
     }
 }
