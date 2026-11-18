@@ -41,6 +41,11 @@ class WellFormedTest {
           code : Code
         }
 
+        /// A table with a string of its own, written inside another.
+        struct Inner {
+          text : string [0..8]
+        }
+
         /// Every position a string is written at.
         struct Texts {
           bare   : string [0..8]
@@ -49,6 +54,8 @@ class WellFormedTest {
           byWord : [Word : string [0..8]; 0..2]
           maybe  : string [0..8]?
           choice : Choice
+          inner  : Inner
+          inners : [Inner; 0..2]
         }
     """.trimIndent()
 
@@ -59,6 +66,7 @@ class WellFormedTest {
 
         import probe.utf8.Choice
         import probe.utf8.Code
+        import probe.utf8.Inner
         import probe.utf8.Texts
         import probe.utf8.TextsCodec
         import probe.utf8.TextsPodbufCodec
@@ -80,7 +88,9 @@ class WellFormedTest {
             byWord: Map<Word, String> = mapOf(Word.of("😀") to "😀"),
             maybe: String? = "😀",
             choice: Choice = Choice.Word(Word.of("😀")),
-        ) = Texts(bare = bare, word = word, list = list, byWord = byWord, maybe = maybe, choice = choice)
+            inner: Inner = Inner(text = "😀"),
+            inners: List<Inner> = listOf(Inner(text = "😀")),
+        ) = Texts(bare = bare, word = word, list = list, byWord = byWord, maybe = maybe, choice = choice, inner = inner, inners = inners)
 
         /** `ok`, or `<type> <rule>` of the encoder's `Contract`; `THREW` for anything else. */
         private fun <T, V> encoded(codec: Payload<T, V>, value: T): String = try {
@@ -139,6 +149,8 @@ class WellFormedTest {
                         "a map value" to (texts(byWord = mapOf(Word.of("k") to bad)) to "Texts"),
                         "an optional" to (texts(maybe = bad) to "Texts"),
                         "a union arm" to (texts(choice = Choice.Word(Word.unchecked(bad))) to "Word"),
+                        "a nested table" to (texts(inner = Inner(text = bad)) to "Inner"),
+                        "a vector of tables" to (texts(inners = listOf(Inner(text = "ok"), Inner(text = bad))) to "Inner"),
                     )
                     for ((what, case) in cases) {
                         val (value, type) = case
