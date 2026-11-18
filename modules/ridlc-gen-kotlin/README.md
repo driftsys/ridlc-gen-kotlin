@@ -124,11 +124,12 @@ why, and how the rule was last checked; CI does not check it.
 - **A pattern matches as the Rust `regex` crate does** under its defaults on
   these points (#155): `.` is any character but `\n`, `$` outside a class is the
   end of the text only, `\d`, `\w`, `\s` and `\b` are Unicode classes, and
-  `(?i)` folds case over Unicode. `\v` and the class operators `--` and `~~`
-  still differ (#169). The plugin prefixes each pattern with `(?dU)` and
-  rewrites each such `$` to `\z`; `java.util.regex` alone let `/^.$/` accept
-  `"a\n"` and refuse `"\r"`. A pattern that turns on the multi-line flag `m`, as
-  `(?m:...)`, is refused, although `ridl check` accepts it (#169).
+  `(?i)` folds case over Unicode. The plugin refuses `\v` and the class
+  operators `--` and `~~`, whose Java meanings differ from Rust (#169). The
+  plugin prefixes each pattern with `(?dU)` and rewrites each such `$` to `\z`;
+  `java.util.regex` alone let `/^.$/` accept `"a\n"` and refuse `"\r"`. A
+  pattern that turns on the multi-line flag `m`, as `(?m:...)`, is refused,
+  although `ridl check` accepts it (#169).
 - **A pattern `java.util.regex` cannot compile refuses its declaration**, with
   the pattern and Java's reason (#12). `ridl check` passes a pattern ECMA-262
   and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and some of
