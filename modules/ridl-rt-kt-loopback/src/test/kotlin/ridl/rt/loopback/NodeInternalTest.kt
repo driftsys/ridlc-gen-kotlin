@@ -2,6 +2,7 @@ package ridl.rt.loopback
 
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -14,7 +15,9 @@ import ridl.rt.contract.DebugIdentity
 import ridl.rt.contract.InstanceNo
 import ridl.rt.contract.InterfaceNo
 import ridl.rt.contract.Ordinal
+import ridl.rt.port.Interest
 import ridl.rt.port.RawSample
+import ridl.rt.task.Waker
 import ridl.rt.sample.Duration
 import ridl.rt.sample.Envelope
 import ridl.rt.sample.Freshness
@@ -85,6 +88,40 @@ class NodeInternalTest {
             ),
             samples.toList(),
         )
+    }
+
+    @OptIn(DebugIdentity::class)
+    @Test
+    fun `closing an attachment releases all handles and its identity when wakers throw`() {
+        for (callerThrows in listOf(true, false)) {
+            val store = Loopback(catalog)
+            val n = node(1, debug = true, store = store)
+            val attachment = n.attach(id(1), catalog)
+            val iface = InterfaceNo(1u)
+            val ord = Ordinal(1u)
+            val callerFailure = IllegalStateException("caller wake failed")
+            val handlerFailure = IllegalStateException("handler wake failed")
+            val outgoing = attachment.query(iface, ord, bytes(), null)
+            attachment.wakeOn(Interest.Outcome(outgoing), Waker { if (callerThrows) throw callerFailure })
+            val caller = store.caller()
+            val incoming = caller.query(iface, ord, bytes(), null)
+            attachment.serve(iface, listOf(ord))
+            // The outgoing call is first; both claims must be released on close.
+            attachment.nextClaim(bytes())!!
+            val claim = attachment.nextClaim(bytes())!!
+            val replacement = store.handler()
+            replacement.serve(iface, listOf(ord))
+            replacement.wakeOn(Interest.Claim(iface), Waker { throw handlerFailure })
+
+            val thrown = assertThrows<IllegalStateException> { attachment.close() }
+            assertSame(if (callerThrows) callerFailure else handlerFailure, thrown)
+            attachment.close()
+            assertEquals(claim.id, replacement.nextClaim(bytes())!!.id)
+            n.attach(id(1).twin()!!, catalog).close()
+            caller.forget(incoming)
+            caller.close()
+            replacement.close()
+        }
     }
 
     /**

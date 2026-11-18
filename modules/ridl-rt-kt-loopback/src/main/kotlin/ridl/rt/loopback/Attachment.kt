@@ -151,9 +151,18 @@ public class Attachment internal constructor(
     override fun close() {
         val ports = held ?: return
         held = null
-        ports.source.close()
-        ports.caller.close()
-        ports.handler.close()
-        reservation.release()
+        var failure: Throwable? = null
+        fun cleanup(step: () -> Unit) {
+            try {
+                step()
+            } catch (e: Throwable) {
+                if (failure == null) failure = e
+            }
+        }
+        cleanup { ports.source.close() }
+        cleanup { ports.caller.close() }
+        cleanup { ports.handler.close() }
+        cleanup { reservation.release() }
+        failure?.let { throw it }
     }
 }
