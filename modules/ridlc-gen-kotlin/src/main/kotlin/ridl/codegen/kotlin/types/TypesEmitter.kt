@@ -209,7 +209,11 @@ class TypesEmitter internal constructor(
         } else {
             null
         }
-        val checks = scalarChecks(scalar, "value", pattern) { rule -> CodeBlock.of("return %T.%L\n", RULE, rule) }
+        val fail = { rule: RuleName -> CodeBlock.of("return %T.%L\n", RULE, rule) }
+        // A string that checks nothing keeps its public constructor (E10.4): its encoder refuses an ill-formed value.
+        val checks = scalarChecks(scalar, "value", pattern, fail)?.let {
+            if (scalar.class_ == ScalarClass.SCALAR_CLASS_STRING) CodeBlock.builder().add(wellFormedCheck("value", fail)).add(it).build() else it
+        }
         val builder = if (bytes) bytesScalar(self, checks == null) else valueScalar(self, backing, checks == null)
         val unresolved = if (!scalar.constraint.hasPattern() && scalar.constraint.hasPatternConst()) {
             "The pattern `${scalar.constraint.patternConst}` did not resolve, so it is not checked."

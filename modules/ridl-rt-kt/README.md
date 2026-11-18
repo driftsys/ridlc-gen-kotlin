@@ -181,6 +181,15 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
   constants it computed exactly at generation time. `StepsTest` covers it over a
   decimal lattice; the conformance module's `ConstraintsTest` covers it over
   ridl's extreme lattices, through generated code.
+- **`isWellFormedString`** is Kotlin's own, with no Rust item: whether a
+  `String` holds no unpaired surrogate (typl §4.4), which a Rust `str` cannot
+  hold. A generated named string scalar's constructor and both generated
+  encoders call it, and refuse such a string with `Rule.Utf8` (#157). It is the
+  TypeScript runtime's `isWellFormedString` (driftsys/ridl#1322), where
+  `ConstraintError` gained the rule `utf8`; Kotlin adds no rule, as `Rule.Utf8`
+  is already `ridl_rt::payload::Rule::Utf8`, the rule of a `<string>` stream's
+  ill-formed chunk. `Builder.pushString` does not check it again and would write
+  `?`: its caller checks first, as a generated encoder does.
 - **`Wakeable` is keyed** (`wakeOn(what: Interest, waker: Waker)`), where §3
   gives it one unkeyed `onChange(callback): AutoCloseable` as Kotlin's own
   extension: `ridl-rt` now has the extension itself (ADR-0021 decision 13), and

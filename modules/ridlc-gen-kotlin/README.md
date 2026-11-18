@@ -119,6 +119,14 @@ why, and how the rule was last checked; CI does not check it.
   not call it vacuous. The Rust backend gives it a checked `new` that never
   fails. Every emitter reads `Scalar.plain`, so a value object and its codec
   agree; the codec called the `unchecked` of a class that had none.
+- **A named string scalar refuses an unpaired surrogate** as `Rule.Utf8`, before
+  its length and its pattern (#157), as the TypeScript backend's constructors do
+  (driftsys/ridl#1322). A Kotlin `String` can hold one and a Rust `String`
+  cannot, so the Rust backend has no such check. A string scalar that checks
+  nothing keeps its public constructor, where the TypeScript backend gives every
+  string scalar a checking one, and a struct does not check its inline strings
+  for it, as the TypeScript backend does not: in both cases the encoder refuses
+  the value (`Codec.kt` and `PodbufCodec.kt`, below).
 - **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
   whole: the pattern's own `^` and `$` decide.
 - **A pattern matches as the Rust `regex` crate does** under its defaults on
@@ -187,6 +195,11 @@ to that over 19,023 buffers (`CodecTest`).
   (driftsys/ridl#654) the Rust verifier checks every step, every non-finite
   float and every inline constraint, so `verify` departs from it in nothing
   else.
+- **`encode` refuses an unpaired surrogate** in any string, named or not, with
+  `EncodeError.Contract` of `Rule.Utf8` naming the named type or the owner
+  (#157, driftsys/ridl#1330), where `toByteArray` would write `?` and send
+  another string. The Rust codec has nothing to refuse: a Rust `String` cannot
+  hold one. Every other value is written to the same bytes.
 - **An absent non-optional scalar or enum field reads as 0**, the FlatBuffers
   default, as the Rust codec reads it since ridl 0.5.0 (driftsys/ridl#472): 0
   itself, the enum's zero member, or the empty enum set, in a struct's, a
@@ -246,6 +259,9 @@ tuple), and a root with no finite podbuf bound.
   bound as a `uint32`, Rust's `MAX_SIZE` is a `usize`, and `Payload.maxSize` is
   an `Int`, which is not widened. As in Rust, every struct and union of the
   package gets a codec, so a type no interface sends can refuse its package.
+- **`encode` refuses an unpaired surrogate** as `Codec.kt` does, before the
+  string's length and its U+0000 check, where `encodeToByteArray` would write
+  U+FFFD (#157).
 - **podbuf alignment is the buffer's position**, not its address:
   [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-rust-and-docsdesignmd)
   says how. A buffer the face allocates starts at position 0.

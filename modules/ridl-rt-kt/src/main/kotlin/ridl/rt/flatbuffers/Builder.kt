@@ -120,7 +120,13 @@ public class Builder(private val out: ByteBuffer) {
         return position
     }
 
-    /** A string: its length, its UTF-8 bytes, and a terminating zero. */
+    /**
+     * A string: its length, its UTF-8 bytes, and a terminating zero.
+     *
+     * [value] holds no unpaired surrogate: `toByteArray` would write one as
+     * `?`. The caller checks it with `isWellFormedString`, as a generated encoder
+     * does, so the hot path scans each string once.
+     */
     public fun pushString(value: String): Pos {
         val bytes = value.toByteArray(Charsets.UTF_8)
         val (position, first) = reserve(OFFSET_SIZE + bytes.size + 1, OFFSET_SIZE)
