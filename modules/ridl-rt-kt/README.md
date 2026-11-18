@@ -137,21 +137,27 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
 `ridl-rt-kt-conformance` and the generated code of every corpus package with
 `kotlinc -no-jdk` against `android-34/android.jar`.
 
-## Where the code departs from docs/design.md
+## Where the code departs from Rust and docs/design.md
 
-- **The `debug` feature is an opt-in.** Kotlin has no compile-time features, so
-  the four debug items are always in the class and `@DebugIdentity` keeps them
-  out of reach of code that does not opt in (#138).
+- **The `debug` feature is an opt-in.** This departs from Rust, not from
+  docs/design.md, which describes the opt-in. Kotlin has no compile-time
+  features, so the four debug items are always in the class and `@DebugIdentity`
+  keeps them out of reach of code that does not opt in (#138).
 - **podbuf alignment is the buffer's position.** Rust checks that the address of
   the slice is a multiple of 8, and `Aligned` gives a byte array that address. A
   `ByteBuffer` has no address to read, so `Preamble.read` and
   `Writer.reserveHead` check `position() % 8` of the buffer they are given, and
   `Aligned` has no Kotlin spelling. A `ByteBuffer.allocate` array starts at
   position 0, so it is aligned for the codec's purposes; a buffer that begins
-  inside a larger array is aligned only when that position is. `Writer.finish`
-  returns the length and advances the output's position where Rust returns the
-  written slice, and the debug-build panic at a store outside the written bytes
-  has no JVM spelling: `finish` reports it.
+  inside a larger array is aligned only when that position is. A buffer from
+  `ByteBuffer.wrap(array, 4, n).slice()` has position 0, so it passes the check
+  although its data starts at offset 4 of the backing array. That is correct on
+  the JVM, which reads and writes it through the buffer. `Writer` writes to the
+  output, so a read-only output throws `ReadOnlyBufferException`, not an
+  `EncodeError`: Rust takes the output as `&mut [u8]` and has no such value.
+  `Writer.finish` returns the length and advances the output's position where
+  Rust returns the written slice, and the debug-build panic at a store outside
+  the written bytes has no JVM spelling: `finish` reports it.
 - **Errors are exceptions.** §3 spells the error types as `sealed interface`s
   that are thrown, and `Caller.ack` as a Kotlin `Result` carrying a `CallError`.
   Kotlin throws and carries in a `Result` only a `Throwable`, so every error

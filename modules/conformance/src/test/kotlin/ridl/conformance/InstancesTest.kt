@@ -14,6 +14,7 @@ import kotlin.io.path.copyTo
 import kotlin.io.path.createDirectories
 import kotlin.io.path.readText
 import kotlin.io.path.relativeTo
+import kotlin.io.path.writeText
 
 /**
  * #137: the instance constants of a system. The pinned `ridl` builds the
@@ -88,6 +89,24 @@ class InstancesTest {
         assertTrue(compiled.ok, compiled.messages)
         for (pkg in listOf("veh.adas", "veh.ego")) {
             assertEquals(rust, kotlinConstants(compiled.classLoader!!.loadClass("$pkg.Instances_")).toSortedMap(), pkg)
+        }
+    }
+
+    @Test
+    fun `a component named like its parent compiles with both segments`() {
+        val root = fixture()
+        for (name in listOf("adas/car.rsdl", "instances.lock")) {
+            val file = root.resolve(name)
+            file.writeText(file.readText().replace("Cruise", "Adas"))
+        }
+        val compiled = Compiler.compile(generated(root), work.resolve("compile"))
+        assertTrue(compiled.ok, compiled.messages)
+        for (pkg in listOf("veh.adas", "veh.ego")) {
+            assertEquals(
+                mapOf("veh.adas.adas.BACKUP" to 2, "veh.adas.adas.PRIMARY" to 1, "veh.ego.status.UNIT" to 3),
+                kotlinConstants(compiled.classLoader!!.loadClass("$pkg.Instances_")),
+                pkg,
+            )
         }
     }
 

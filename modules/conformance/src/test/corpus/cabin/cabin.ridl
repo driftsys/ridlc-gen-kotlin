@@ -99,3 +99,21 @@ service veh.cabin.control: Cabin, Horn
 /// A target cabin air temperature, in degrees. It takes the half degrees
 /// that [Temperature] cannot hold.
 type Setpoint: float [10.0..30.0 step 0.5]
+
+/// A fraction on a grid of tenths.
+type Tenth: float [0.0..1.0 step 0.1]
+
+/// A short tag of two to four characters.
+type Tag: string [2..4] = "ab"
+
+/// A code of capital letters.
+type Code: string [1..8 match /^[A-Z]+$/] = "A"
+
+/// A text of one character that is not a line break.
+type Glyph: string [0..4 match /^.$/] = "a"
+
+/// A text that holds a digit anywhere in it.
+type Digited: string [0..16 match /\d/] = "1"
+
+/// A block of two to four bytes.
+type Block: bytes [2..4] = "ab"

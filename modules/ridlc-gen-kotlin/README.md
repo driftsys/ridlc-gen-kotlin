@@ -121,6 +121,16 @@ why, and how the rule was last checked; CI does not check it.
   agree; the codec called the `unchecked` of a class that had none.
 - **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
   whole: the pattern's own `^` and `$` decide.
+- **A pattern matches as the Rust `regex` crate does** under its defaults on
+  these points (#155): `.` is any character but `\n`, `$` outside a class is the
+  end of the text only, `\d`, `\w`, `\s` and `\b` are Unicode classes, and
+  `(?i)` folds case over Unicode. The plugin refuses `\v` and the class
+  operators `--` and `~~`, whose Java meanings differ from Rust (#169). The
+  plugin prefixes each pattern with `(?dU)` and rewrites each such `$` to `\z`;
+  `java.util.regex` alone let `/^.$/` accept `"a\n"` and refuse `"\r"`. A
+  pattern that turns on the multi-line flag `m`, as `(?m:...)`, is refused,
+  although `ridl check` accepts it (#169). This includes combined flags and
+  nested groups; the rewrite does not track where a multi-line flag applies.
 - **A pattern `java.util.regex` cannot compile refuses its declaration**, with
   the pattern and Java's reason (#12). `ridl check` passes a pattern ECMA-262
   and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and some of
@@ -237,7 +247,7 @@ tuple), and a root with no finite podbuf bound.
   an `Int`, which is not widened. As in Rust, every struct and union of the
   package gets a codec, so a type no interface sends can refuse its package.
 - **podbuf alignment is the buffer's position**, not its address:
-  [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-docsdesignmd)
+  [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-rust-and-docsdesignmd)
   says how. A buffer the face allocates starts at position 0.
 - **A type from another package is written by that package's helpers**, as in
   `Codec.kt`, and the face names that package's `<Type>PodbufCodec`. A package

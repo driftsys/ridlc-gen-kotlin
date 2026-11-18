@@ -1259,14 +1259,19 @@ class FacesEmitter internal constructor(
         /**
          * One `require` or `ensure` method: the narrow translator of ADR-0023
          * decision 1, over the lowering's accepted comparisons. The subject is
-         * the single parameter or `result`, a same-package named scalar over
-         * an integer or a float; any other clause refuses the interface. A
-         * float literal is the directed binary64 bound of [FloatClauses].
+         * the call's one declared parameter, at its declared index beside a
+         * stream parameter (driftsys/ridl#1289), or `result`, a same-package
+         * named scalar over an integer or a float; any other clause refuses
+         * the interface. A float literal is the directed binary64 bound of
+         * [FloatClauses].
          */
         private fun clauseFun(method: String, kind: ContractKind, m: Member, arg: Named, reply: Named?): FunSpec {
             val clauses = (if (m.interaction.hasCommand()) m.interaction.command.clausesList else m.interaction.query.clausesList)
                 .filter { it.kind == kind }
-            val predicates = clauses.map { predicate(it, arg, reply) }
+            val params = if (m.interaction.hasCommand()) m.interaction.command.paramsList else m.interaction.query.paramsList
+            // A comparison names its subject by declared index, which counts a stream parameter: 1 when the stream comes first.
+            val declared = argument(m).param?.let(params::indexOf)
+            val predicates = clauses.map { predicate(it, declared, arg, reply) }
             val builder = FunSpec.builder(method).addModifiers(KModifier.OVERRIDE)
                 .addParameter("args", arg.type)
                 .returns(BOOLEAN)
@@ -1280,14 +1285,19 @@ class FacesEmitter internal constructor(
             return builder.addStatement("return %L", if (predicates.isEmpty()) CodeBlock.of("true") else predicates.joinToCode(" && ")).build()
         }
 
-        private fun predicate(clause: Clause, arg: Named, reply: Named?): CodeBlock {
+        /**
+         * One clause's predicate. [declared] is the index in the call's
+         * parameters of the one `args` holds, or `null` when `args` is an
+         * induced struct.
+         */
+        private fun predicate(clause: Clause, declared: Int?, arg: Named, reply: Named?): CodeBlock {
             fun refuseClause(reason: String): Nothing = refuse("cannot translate contract clause `${clause.source}`: $reason")
             if (clause.hasRefused()) refuseClause(clause.refused)
             if (!clause.hasComparison()) refuseClause("no accepted comparison")
             val comparison = clause.comparison
             val (subject, named) = when {
                 comparison.hasResult() -> "reply" to (reply ?: refuseClause("`result` outside a query's ensure"))
-                comparison.hasParam() && comparison.param == 0 -> "args" to arg
+                comparison.hasParam() && comparison.param == declared -> "args" to arg
                 else -> refuseClause("no accepted comparison")
             }
             val ref = named.ref ?: refuseClause("the subject is not a named integer or float scalar")

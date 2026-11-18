@@ -57,8 +57,10 @@ class InstancesEmitter(private val deployment: Deployment?, private val kotlinPa
             val existing = node.constants[name]
             when {
                 existing == null -> node.constants[name] = Constant(key, instance.number, instance.provisional)
-                // One instance placed twice by the section is one constant.
-                existing.key == key -> {}
+                // One instance placed twice by the section is one constant, if both placements have one number.
+                existing.key == key && existing.number == instance.number -> {}
+                existing.key == key -> errors += "$PLUGIN: the instance `$key` has the numbers ${existing.number} and " +
+                    "${instance.number} in the deployment section"
                 else -> errors += "$PLUGIN: the instances `${existing.key}` and `$key` both map to the constant " +
                     "`$name` of `$INSTANCES`"
             }
@@ -66,7 +68,8 @@ class InstancesEmitter(private val deployment: Deployment?, private val kotlinPa
         if (errors.isNotEmpty()) return EmittedInstances(path, null, errors)
         val instances = TypeSpec.objectBuilder(INSTANCES)
             .addKdoc(
-                "The number of every instance of system `%L`, from `instances.lock`, as deployment `%L` carries it.",
+                "The number of every instance of system `%L`, as deployment `%L` carries it. A number is the one " +
+                    "`instances.lock` holds for the instance, except a number marked provisional, which the lock does not hold yet.",
                 deployment!!.system,
                 deployment.name,
             )

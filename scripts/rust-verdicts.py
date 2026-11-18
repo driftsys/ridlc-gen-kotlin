@@ -20,6 +20,12 @@ from the pinned tag, as `docs/k1b-flatbuffers-spike.md` describes:
    `modules/conformance/build/spike/`, and its output is compared with the
    committed file, or written over it with `--write`.
 
+`DescriptorTest` compares `ridl-descriptor-kt` with the tag's
+`crates/ridl-descriptor` the same way (#142): a program over that crate, with
+the features `ridl-loopback` takes, verifies the descriptor corpus the test
+wrote to `build/spike/descriptor-corpus.txt`, and its verdicts are
+`resources/descriptor/descriptor-rust-verdicts.txt`.
+
 The packages are the corpus's, as `CodecTest` and `PodbufCodecTest` list them,
 by the encodings each `ridl.toml` selects for the Kotlin backend: a corpus
 package with no committed verdict file fails the check, and `--write` creates
@@ -44,6 +50,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONFORMANCE = ROOT / "modules" / "conformance"
 CORPUS = CONFORMANCE / "src" / "test" / "corpus"
 VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "flatbuffers"
+DESCRIPTOR_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "descriptor"
 PODBUF_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "podbuf"
 SPIKE = CONFORMANCE / "build" / "spike"
 WORK = CONFORMANCE / "build" / "rust-verdicts"
@@ -188,6 +195,94 @@ fn main() {
 """
 
 
+DESCRIPTOR_MAIN = """// Verifies each buffer as a deployment or catalog descriptor with the pinned
+// ridl-descriptor (#142). Prints error payloads with strings and identifiers
+// encoded as hex; `Invalid` retains only planus's error kind.
+use std::io::BufRead;
+fn unhex(s: &str) -> Vec<u8> { (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect() }
+fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02x}")).collect() }
+fn kind(e: &planus::Error) -> String {
+    let shown = format!("{:?}", e.error_kind);
+    shown.split(|c: char| !c.is_alphanumeric()).next().unwrap().to_string()
+}
+fn catalog(e: &ridl_descriptor::VerifyError) -> String {
+    use ridl_descriptor::VerifyError::*;
+    match e {
+        TooShort(len) => format!("TooShort({len})"),
+        WrongIdentifier(id) => format!("WrongIdentifier({})", hex(id)),
+        WrongVersion(version) => format!("WrongVersion({version})"),
+        Invalid(e) => format!("Invalid({})", kind(e)),
+        #[allow(unreachable_patterns)]
+        other => format!("?{other:?}"),
+    }
+}
+fn deployment(e: &ridl_descriptor::deployment::VerifyError) -> String {
+    use ridl_descriptor::deployment::VerifyError::*;
+    match e {
+        Invalid(e) => format!("Invalid({})", kind(e)),
+        TooShort(len) => format!("TooShort({len})"),
+        WrongIdentifier(id) => format!("WrongIdentifier({})", hex(id)),
+        WrongVersion(version) => format!("WrongVersion({version})"),
+        EmbeddedCatalog { catalog: name, source } => format!("EmbeddedCatalog({},{})", hex(name.as_bytes()), catalog(source)),
+        CatalogHashMismatch { catalog } => format!("CatalogHashMismatch({})", hex(catalog.as_bytes())),
+        InstanceNumber { component, instance, number } => format!("InstanceNumber({},{},{number})", hex(component.as_bytes()), hex(instance.as_bytes())),
+        DuplicateInstanceNumber { number, first_component, first_instance, second_component, second_instance } =>
+            format!("DuplicateInstanceNumber({number},{},{},{},{})", hex(first_component.as_bytes()), hex(first_instance.as_bytes()), hex(second_component.as_bytes()), hex(second_instance.as_bytes())),
+        SurfaceLink { index, link, links } => format!("SurfaceLink({index},{link},{links})"),
+        other => format!("{other:?}"),
+    }
+}
+fn main() {
+    for line in std::io::stdin().lock().lines() {
+        let line = line.unwrap();
+        let (which, h) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+        let b = unhex(h);
+        let verdict = match which {
+            "deployment" => ridl_descriptor::deployment::verify(&b).map(|_| ()).map_err(|e| deployment(&e)),
+            "catalog" => ridl_descriptor::verify(&b).map(|_| ()).map_err(|e| catalog(&e)),
+            _ => Err("unknown-kind".into()),
+        };
+        match verdict {
+            Ok(()) => println!("ok"),
+            Err(e) => println!("err:{e}"),
+        }
+    }
+}
+"""
+
+
+def descriptor_program(ridl_checkout):
+    """The descriptor verdict program, over the tag's `ridl-descriptor` with the features `ridl-loopback` takes."""
+    prog = WORK / "descriptor-verdicts"
+    (prog / "src").mkdir(parents=True, exist_ok=True)
+    (prog / "Cargo.toml").write_text(f"""[package]
+name = "descriptor-verdicts"
+version = "0.0.0"
+edition = "2024"
+[dependencies]
+ridl-descriptor = {{ path = "{ridl_checkout}/crates/ridl-descriptor", default-features = false }}
+planus = {{ version = "=1.3.0", default-features = false }}
+[workspace]
+""")
+    (prog / "src" / "main.rs").write_text(DESCRIPTOR_MAIN)
+    run(["cargo", "build", "--quiet", "--manifest-path", prog / "Cargo.toml"],
+        env={**os.environ, "CARGO_TARGET_DIR": str(WORK / "target"), "RUSTFLAGS": "-Awarnings"})
+    return WORK / "target" / "debug" / "descriptor-verdicts"
+
+
+def indexed(output):
+    """The verdicts `DescriptorTest` compares: a legend, `<index> <verdict>` per distinct verdict in order of
+    first appearance, then a blank line, then one index per buffer of the corpus, 100 to a line."""
+    legend, text = {}, []
+    for verdict in output.splitlines():
+        if verdict not in legend:
+            legend[verdict] = str(len(legend))
+        text.append(legend[verdict])
+    lines = [f"{index} {verdict}" for verdict, index in legend.items()] + [""]
+    lines += [" ".join(text[i:i + 100]) for i in range(0, len(text), 100)]
+    return "\n".join(lines) + "\n"
+
+
 def run(command, **kwargs):
     """Runs [command], and on a failure prints the standard error a capture kept, such as a Rust panic (#53)."""
     try:
@@ -327,7 +422,7 @@ def compare(name, regenerated, write, directory=VERDICTS):
     """Compares one regenerated file with the committed one, or writes it. Returns whether they agree."""
     committed = directory / name
     if write:
-        directory.mkdir(parents=True, exist_ok=True)
+        committed.parent.mkdir(parents=True, exist_ok=True)
         committed.write_text(regenerated)
         return True
     if not committed.exists():
@@ -400,6 +495,11 @@ def main():
     agree &= compare("cabin-golden.txt", golden, args.write)
     verdicts = run([spike, "verify"], input=corpus("cabin-corpus.txt"), capture_output=True, text=True).stdout
     agree &= compare("cabin-rust-verdicts.txt", verdicts, args.write)
+
+    # #142: the deployment and catalog descriptor verdicts of `DescriptorTest`.
+    descriptor = descriptor_program(source)
+    output = run([descriptor], input=corpus("descriptor-corpus.txt"), capture_output=True, text=True).stdout
+    agree &= compare("descriptor-rust-verdicts.txt", indexed(output), args.write, DESCRIPTOR_VERDICTS)
 
     if args.write and not agree:
         sys.exit("a committed verdict file has no corpus package: delete it")

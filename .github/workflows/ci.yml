@@ -120,7 +120,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: just lint-commits ${{ github.base_ref }}
 
-  # Each push to main that passes the jvm job publishes the four JVM libraries,
+  # Each push to main that passes the jvm job publishes the five JVM libraries,
   # `ridl-rt-kt-conformance` among them, to GitHub Packages at the -SNAPSHOT
   # version gradle.properties names, so a runtime in another repository can
   # build against main with no `just publish-local`. A release version is

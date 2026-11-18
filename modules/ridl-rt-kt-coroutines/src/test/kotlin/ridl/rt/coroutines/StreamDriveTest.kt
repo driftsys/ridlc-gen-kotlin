@@ -1,5 +1,8 @@
 package ridl.rt.coroutines
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -380,6 +383,69 @@ class StreamDriveTest {
     private suspend fun acknowledged(handler: HandlerHandle, claim: Claim, block: suspend () -> Unit) {
         handler.settle(claim.id, Result.success(ByteBuffer.allocate(0)))
         consumeUpload(handler, claim.id, block)
+    }
+
+    @Test
+    fun `outer cancellation racing a forget cancels upload providers and releases their slots`() = running {
+        for ((query, forgetFirst) in listOf(true, false).flatMap { query -> listOf(query to true, query to false) }) {
+            val rt = runtime()
+            val caller = rt.caller()
+            val handler = rt.handler()
+            handler.serve(IFACE, listOf(ORD))
+            repeat(Loopback.SLOTS * 2) {
+                val c = if (query) caller.query(IFACE, ORD, ByteBuffer.allocate(0), null)
+                else caller.command(IFACE, ORD, ByteBuffer.allocate(0), null)
+                val claim = handler.nextClaim(ByteBuffer.allocate(0))!!
+                caller.push(c, StreamNo(1u), ByteBuffer.wrap(bytes(1)))
+                if (!query) handler.settle(claim.id, Result.success(ByteBuffer.allocate(0)))
+                val started = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val stopping = CompletableDeferred<Unit>()
+                val stopped = AtomicInteger()
+                val cancelled = AtomicInteger()
+                val block: suspend () -> Nothing = {
+                    started.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        // Signal cancellation, then keep cleanup pending until both actions have run.
+                        stopping.complete(Unit)
+                        withContext(NonCancellable) { release.await() }
+                        stopped.incrementAndGet()
+                    }
+                }
+                val provider = launch {
+                    try {
+                        if (query) settleUpload(handler, claim.id, block)
+                        else consumeUpload(handler, claim.id, block)
+                        error("outer cancellation must propagate")
+                    } catch (e: CancellationException) {
+                        cancelled.incrementAndGet()
+                        throw e
+                    }
+                }
+                try {
+                    started.await()
+                    if (forgetFirst) {
+                        caller.forget(c)
+                        // With no outer cancellation yet, only the forget watcher can stop the block.
+                        stopping.await()
+                        provider.cancel()
+                    } else {
+                        provider.cancel()
+                        stopping.await()
+                        caller.forget(c)
+                    }
+                } finally {
+                    release.complete(Unit)
+                }
+                provider.join()
+                assertEquals(1, stopped.get())
+                assertEquals(1, cancelled.get())
+            }
+            caller.close()
+            handler.close()
+        }
     }
 
     @Test
