@@ -32,6 +32,10 @@ class WellFormedTest {
         /// A named string that checks its length and its pattern.
         type Code : string [1..3 match /^[a-z]+${'$'}/]
 
+        /// A named string without constraints.
+        type Text : string
+        const GREETING : Text = "😀"
+
         /// A named string that checks its length alone.
         type Word : string [0..8]
 
@@ -39,6 +43,11 @@ class WellFormedTest {
         union Choice {
           word : Word
           code : Code
+        }
+
+        /// A table containing a bare string.
+        struct Nested {
+          text : string [0..8]
         }
 
         /// Every position a string is written at.
@@ -49,6 +58,8 @@ class WellFormedTest {
           byWord : [Word : string [0..8]; 0..2]
           maybe  : string [0..8]?
           choice : Choice
+          nested : Nested
+          tables : [Nested; 0..2]
         }
     """.trimIndent()
 
@@ -59,6 +70,9 @@ class WellFormedTest {
 
         import probe.utf8.Choice
         import probe.utf8.Code
+        import probe.utf8.Constants_
+        import probe.utf8.Nested
+        import probe.utf8.Text
         import probe.utf8.Texts
         import probe.utf8.TextsCodec
         import probe.utf8.TextsPodbufCodec
@@ -80,7 +94,9 @@ class WellFormedTest {
             byWord: Map<Word, String> = mapOf(Word.of("😀") to "😀"),
             maybe: String? = "😀",
             choice: Choice = Choice.Word(Word.of("😀")),
-        ) = Texts(bare = bare, word = word, list = list, byWord = byWord, maybe = maybe, choice = choice)
+            nested: Nested = Nested(text = "😀"),
+            tables: List<Nested> = listOf(Nested(text = "😀")),
+        ) = Texts(bare = bare, word = word, list = list, byWord = byWord, maybe = maybe, choice = choice, nested = nested, tables = tables)
 
         /** `ok`, or `<type> <rule>` of the encoder's `Contract`; `THREW` for anything else. */
         private fun <T, V> encoded(codec: Payload<T, V>, value: T): String = try {
@@ -105,6 +121,7 @@ class WellFormedTest {
             for (bad in illFormed) {
                 val shown = bad.map { "%04X".format(it.code) }
                 for ((what, rule) in listOf(
+                    "Text.of" to refused { Text.of(bad) },
                     "Code.of" to refused { Code.of(bad) },
                     "Code.of, too long and not matching" to refused { Code.of(bad + "ZZZZ") },
                     "Word.of" to refused { Word.of(bad) },
@@ -112,8 +129,12 @@ class WellFormedTest {
                 )) {
                     if (rule != Rule.Utf8) failures += "${'$'}what(${'$'}shown) refused with ${'$'}rule, not Utf8"
                 }
+                if (Text.ofOrNull(bad) != null) failures += "Text.ofOrNull(${'$'}shown) built a value"
                 if (Code.ofOrNull(bad) != null) failures += "Code.ofOrNull(${'$'}shown) built a value"
             }
+            if (Text.ofOrNull("😀")?.value != "😀") failures += "Text.ofOrNull(😀) lost its value"
+            if (Constants_.GREETING.value != "😀") failures += "Text constant lost its value"
+            if (refused { Text.of("😀") } != null) failures += "Text.of(😀) was refused"
             if (refused { Word.of("😀") } != null) failures += "Word.of(😀) was refused"
             if (refused { Code.of("ab") } != null) failures += "Code.of(ab) was refused"
             return failures
@@ -132,6 +153,8 @@ class WellFormedTest {
                 for (bad in illFormed) {
                     val shown = bad.map { "%04X".format(it.code) }
                     val cases = listOf(
+                        "a nested table field" to (texts(nested = Nested(text = bad)) to "Nested"),
+                        "a vector of tables field" to (texts(tables = listOf(Nested(text = "ok"), Nested(text = bad))) to "Nested"),
                         "a bare field" to (texts(bare = bad) to "Texts"),
                         "a named field" to (texts(word = Word.unchecked(bad)) to "Word"),
                         "an array element" to (texts(list = listOf("ok", bad)) to "Texts"),

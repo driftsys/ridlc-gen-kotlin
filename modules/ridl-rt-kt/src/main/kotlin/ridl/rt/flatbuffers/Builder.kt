@@ -125,7 +125,7 @@ public class Builder(private val out: ByteBuffer) {
      *
      * [value] holds no unpaired surrogate: `toByteArray` would write one as
      * `?`. The caller checks it with `isWellFormedString`, as a generated encoder
-     * does, so the hot path scans each string once.
+     * does, so the well-formedness check runs once per string.
      */
     public fun pushString(value: String): Pos {
         val bytes = value.toByteArray(Charsets.UTF_8)

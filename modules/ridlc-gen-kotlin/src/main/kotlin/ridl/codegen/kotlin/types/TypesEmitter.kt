@@ -190,7 +190,7 @@ class TypesEmitter internal constructor(
      * A named scalar: an inline value class over its backing, whose `of`
      * checks every constraint and throws `ConstraintViolation`, whose
      * `ofOrNull` answers `null` instead, and whose `internal unchecked` is
-     * the decoder's. A vacuous scalar constrains nothing and has a public
+     * the decoder's. A non-string vacuous scalar constrains nothing and has a public
      * constructor instead (E10.4). Bytes, which a value class cannot compare
      * by content, are a final class holding a private copy.
      */
@@ -210,9 +210,13 @@ class TypesEmitter internal constructor(
             null
         }
         val fail = { rule: RuleName -> CodeBlock.of("return %T.%L\n", RULE, rule) }
-        // A string that checks nothing keeps its public constructor (E10.4): its encoder refuses an ill-formed value.
-        val checks = scalarChecks(scalar, "value", pattern, fail)?.let {
-            if (scalar.class_ == ScalarClass.SCALAR_CLASS_STRING) CodeBlock.builder().add(wellFormedCheck("value", fail)).add(it).build() else it
+        val constraints = scalarChecks(scalar, "value", pattern, fail)
+        val checks = if (scalar.class_ == ScalarClass.SCALAR_CLASS_STRING) {
+            CodeBlock.builder().add(wellFormedCheck("value", fail)).apply {
+                if (constraints != null) add(constraints)
+            }.build()
+        } else {
+            constraints
         }
         val builder = if (bytes) bytesScalar(self, checks == null) else valueScalar(self, backing, checks == null)
         val unresolved = if (!scalar.constraint.hasPattern() && scalar.constraint.hasPatternConst()) {
