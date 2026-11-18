@@ -8,6 +8,7 @@ root_dir="$(cd -- "$script_dir/.." && pwd)"
 required_readmes=(
   "modules/ridlc-gen-kotlin/README.md"
   "modules/ridl-rt-kt/README.md"
+  "modules/ridl-rt-kt-proto3/README.md"
   "modules/ridl-rt-kt-loopback/README.md"
   "modules/ridl-rt-kt-coroutines/README.md"
   "modules/ridl-rt-kt-conformance/README.md"

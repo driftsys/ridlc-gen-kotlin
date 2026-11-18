@@ -485,6 +485,7 @@ Gradle, Kotlin DSL, one settings file, every module under `modules/`, all JVM:
 | -------------------------------- | ------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `modules/ridlc-gen-kotlin`       | JVM application, `shadow` | `protobuf-kotlin`, `protobuf-java-util`, `kotlinpoet`        | the reader (§2), the generators (§4, §5), the AIDL templates, the `main`; builds the `ridlc-gen-kotlin` executable                                                                                   |
 | `modules/ridl-rt-kt`             | JVM library               | nothing                                                      | §3                                                                                                                                                                                                   |
+| `modules/ridl-rt-kt-proto3`      | JVM library               | `ridl-rt-kt`                                                 | the shared proto3 reader and writer, a hand-written port of `ridl_rt::proto3`; no codec generation or faces yet                                                                                      |
 | `modules/ridl-rt-kt-loopback`    | JVM library               | `ridl-rt-kt`, `ridl-descriptor-kt`                           | the in-process runtime: every port over a queue and a map, no IO; the mirror of `crates/ridl-loopback` and the runtime every test runs over; `Node`, a machine's stores from a deployment descriptor |
 | `modules/ridl-rt-kt-coroutines`  | JVM library               | `ridl-rt-kt`, `kotlinx-coroutines-core`                      | §5's adapter, O-K3                                                                                                                                                                                   |
 | `modules/ridl-rt-kt-conformance` | JVM library               | `ridl-rt-kt`, `junit-jupiter-api`                            | the port contract suite, which any Kotlin runtime, the loopback and the Binder runtime included, runs from its own tests                                                                             |
@@ -630,7 +631,7 @@ Each decision names the alternative it rejected.
   as source.** Rejected: a git submodule of `driftsys/ridl`, because the plugin
   must prove it works against what a user installs, and a submodule drifts to a
   commit no release carries.
-- **D-K10. The five JVM libraries publish to Maven Central under
+- **D-K10. The six JVM libraries publish to Maven Central under
   `org.driftsys.ridl`, and to GitHub Packages.** Central needs no token to
   consume, which a runtime in another repository (§6) would otherwise have to
   hold even for a public package. The namespace is `org.driftsys` because
