@@ -38,7 +38,7 @@ class CatalogTest {
     private fun catalogs(name: String): Map<String, Pair<Catalog, Set<Catalog>>> =
         Harness.capturedRequests(name, work.resolve(name)).values.map(Wire::readRequest).associate { request ->
             val model = request.model
-            val response = Generator.generate(Harness.faceEncodings(request))
+            val response = Generator.generate(request)
             assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message }, model.name.dotted)
             val faces = response.filesList.singleOrNull { it.path.endsWith("/Faces.kt") }?.text.orEmpty()
             val generated = literal.findAll(faces).map { Catalog(it.groupValues[1], bytes(it.groupValues[2])) }.toSet()

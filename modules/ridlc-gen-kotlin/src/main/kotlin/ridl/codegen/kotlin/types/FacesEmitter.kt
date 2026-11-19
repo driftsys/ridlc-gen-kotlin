@@ -28,6 +28,7 @@ import com.squareup.kotlinpoet.joinToCode
 import ridl.codegen.kotlin.Options
 import ridl.codegen.kotlin.PLUGIN
 import ridl.codegen.kotlin.WireEncoding
+import ridl.codegen.v1.ModelOuterClass.AbsentCause
 import ridl.codegen.v1.ModelOuterClass.Clause
 import ridl.codegen.v1.ModelOuterClass.ComparisonOp
 import ridl.codegen.v1.ModelOuterClass.ContractKind
@@ -197,8 +198,9 @@ class FacesEmitter internal constructor(
     private val warnings = mutableListOf<String>()
 
     /**
-     * The encodings the package carries a codec for, FlatBuffers first as the
-     * Rust backend orders its size tables, whatever the manifest's order.
+     * The encodings the package carries a codec for, FlatBuffers, proto3 then
+     * podbuf, as the Rust backend orders its size tables, whatever the
+     * manifest's order.
      */
     private val carried = WireEncoding.entries.filter { it in options.encodings }
 
@@ -209,6 +211,13 @@ class FacesEmitter internal constructor(
      * port's encoding (docs/design.md §5).
      */
     private val single = carried.size == 1
+
+    /**
+     * Whether the package carries every encoding: a `when` over the port's
+     * encoding then has an arm per entry of the runtime's `Encoding`, which
+     * `WireEncoding` mirrors, and no `else`, which Kotlin warns is redundant.
+     */
+    private val every = carried.size == WireEncoding.entries.size
 
     /** Whether any interface has a face, not its descriptors alone: the file then needs the shared helpers. */
     private var faces = false
@@ -577,7 +586,7 @@ class FacesEmitter internal constructor(
      * `PayloadInfo` names, the reference as written or the induced name.
      */
     private class Named(val type: ClassName, val typeName: String, val ref: TypeRef?) {
-        /** Its codec object in [encoding], in the package that declares it: `<Type>Codec` or `<Type>PodbufCodec`. */
+        /** Its codec object in [encoding], in the package that declares it: `<Type>Codec`, `<Type>Proto3Codec` or `<Type>PodbufCodec`. */
         fun codec(encoding: WireEncoding): ClassName = ClassName(type.packageName, type.simpleName + codecSuffix(encoding))
     }
 
@@ -590,7 +599,8 @@ class FacesEmitter internal constructor(
      * The struct induced at `Model.tuples[index]`, whose payload states are
      * [sizes]. Each carried encoding's codec gives it a codec only when it is
      * bounded there, so an interface that sends it unbounded in one is
-     * skipped, in the words of Rust's `induced_name`.
+     * skipped, in the words of Rust's `induced_name` and in its order:
+     * FlatBuffers, proto3, podbuf.
      */
     private fun induced(index: Int, sizes: PayloadSizes): Named {
         val name = model.getTuples(index).name.rust
@@ -599,6 +609,10 @@ class FacesEmitter internal constructor(
             val bounded = model.flatbuffers.rootsList.any { it.hasTuple() && it.tuple == index && it.hasMaxSize() }
             if (!bounded) refuse("`${model.name.dotted}.$name` has no finite FlatBuffers bound")
         }
+        if (WireEncoding.Proto3 in carried) {
+            proto3Unbounded(if (sizes.hasProto3()) sizes.proto3 else null)
+                ?.let { refuse("`${model.name.dotted}.$name` has no finite proto3 bound: $it") }
+        }
         if (WireEncoding.Podbuf in carried && !(sizes.hasPodbuf() && sizes.podbuf.stateCase == SizeState.StateCase.BOUNDED)) {
             refuse(
                 "`${model.name.dotted}.$name` has no finite podbuf bound: its largest buffer does not fit a u32 offset, " +
@@ -606,6 +620,34 @@ class FacesEmitter internal constructor(
             )
         }
         return Named(ClassName(pkg, name), name, null)
+    }
+
+    /**
+     * Why [state] gives no proto3 codec, or `null` when it is bounded: the
+     * causes of the Rust backend's `codec_proto3::bound_state`, word for word,
+     * since `induced_name` writes them into the interface's note.
+     */
+    private fun proto3Unbounded(state: SizeState?): String? = when (state?.stateCase) {
+        SizeState.StateCase.BOUNDED -> null
+        SizeState.StateCase.ABSENT -> when (state.absent.cause) {
+            AbsentCause.ABSENT_CAUSE_NO_BOUND ->
+                "a member of it has no finite bound (NoBound): a string or bytes with no length bound; declare the bound in the type"
+            AbsentCause.ABSENT_CAUSE_OVERFLOW ->
+                "its bound does not fit a u32 (Overflow): a bound past u32::MAX, a sum or product of bounds that does not fit, or a " +
+                    "nesting past the sizer's depth limit; lower the bounds in the type"
+            AbsentCause.ABSENT_CAUSE_REFUSED_MEMBER ->
+                "a member of it is one proto3 cannot represent (RefusedMember): an optional array or map, an array of arrays or of " +
+                    "maps, a map whose value is a collection, a map key outside the integral and string scalars, a field number " +
+                    "proto3 reserves or exceeds, a name that does not resolve, a live enum value outside int32 in hand-built IR " +
+                    "(TYPL-225 rejects it in source), or a retired value outside int32 (legal in source)"
+            AbsentCause.ABSENT_CAUSE_UNRESOLVED -> "it names a declaration the sizer did not resolve (Unresolved)"
+            AbsentCause.ABSENT_CAUSE_NO_MESSAGE -> "no proto3 message defines it (NoMessage)"
+            AbsentCause.ABSENT_CAUSE_ENCODING_UNDEFINED -> "no proto3 message defines it (EncodingUndefined)"
+            // Rust reads a cause it does not know as `Unspecified`.
+            else -> "no proto3 message defines it (Unspecified)"
+        }
+        SizeState.StateCase.UNBOUNDED -> "no finite bound exists for it"
+        else -> "the lowered model carries no proto3 size state for it"
     }
 
     /**
@@ -662,21 +704,23 @@ class FacesEmitter internal constructor(
             if (descriptor != null) return CodeBlock.of("%T.%N(%L)", descriptor, function, encoding)
             val choice = CodeBlock.builder().add("when (%L) {\n", encoding).indent()
             for (e in carried) choice.add("%T.%L -> %T\n", ENCODING, e.name, payload.codec(e))
-            return choice.add("else -> throw IllegalArgumentException(%P)\n", noCodec(encoding)).unindent().add("}").build()
+            if (!every) choice.add("else -> throw IllegalArgumentException(%P)\n", noCodec(encoding))
+            return choice.unindent().add("}").build()
         }
 
-        /** The descriptor's private size table in [encoding]: `FLATBUFFERS_SIZES`, `PODBUF_SIZES`. */
+        /** The descriptor's private size table in [encoding]: `FLATBUFFERS_SIZES`, `PROTO3_SIZES`, `PODBUF_SIZES`. */
         private fun sizesName(encoding: WireEncoding): String = "${encoding.name.uppercase()}_SIZES"
 
         /**
          * The body of a function that returns, for the encoding [subject]
          * names, the one of [values] at that encoding's place in [carried],
-         * and throws `IllegalArgumentException` for any other.
+         * and throws `IllegalArgumentException` for any other there is.
          */
         private fun pick(subject: String, values: List<CodeBlock>): CodeBlock {
             val code = CodeBlock.builder().beginControlFlow("return when (%L)", subject)
             carried.zip(values).forEach { (encoding, value) -> code.addStatement("%T.%L -> %L", ENCODING, encoding.name, value) }
-            return code.addStatement("else -> throw IllegalArgumentException(%P)", noCodec(subject)).endControlFlow().build()
+            if (!every) code.addStatement("else -> throw IllegalArgumentException(%P)", noCodec(subject))
+            return code.endControlFlow().build()
         }
 
         private fun named(payload: Payload?, what: String): Named {
@@ -684,9 +728,13 @@ class FacesEmitter internal constructor(
             if (WireEncoding.FlatBuffers in carried && !payload.hasFlatbuffersMaxSize()) {
                 refuse("$what `${payload.type.reference}` has no FlatBuffers bound")
             }
-            // Kotlin's own: the Rust face checks only an induced tuple's podbuf
-            // bound. For a type of this package the podbuf codec has already
-            // refused the package, so only a payload from another package gets here.
+            // Kotlin's own: the Rust face checks only an induced tuple's proto3
+            // and podbuf bounds. For a type of this package that encoding's codec
+            // has already refused the package, so only a payload from another
+            // package gets here.
+            if (WireEncoding.Proto3 in carried && proto3Unbounded(if (payload.sizes.hasProto3()) payload.sizes.proto3 else null) != null) {
+                refuse("$what `${payload.type.reference}` has no proto3 bound")
+            }
             val podbuf = payload.sizes.podbuf
             if (WireEncoding.Podbuf in carried && !(payload.sizes.hasPodbuf() && podbuf.stateCase == SizeState.StateCase.BOUNDED)) {
                 refuse("$what `${payload.type.reference}` has no podbuf bound")
@@ -800,10 +848,6 @@ class FacesEmitter internal constructor(
         }
 
         fun emit() {
-            // The face has no proto3 arm yet (#133, task 6): its size tables, codec choice and stream elements name
-            // FlatBuffers and podbuf alone. The interface is skipped with a warning, as one the face cannot carry is,
-            // and the package's codecs are still generated.
-            if (WireEncoding.Proto3 in carried) refuse("the Kotlin face does not carry the proto3 encoding yet (#133)")
             val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty() || streamed.isNotEmpty()
             val of = "interface `${iface.declared.declared}`"
             add(descriptor(), "the descriptor of $of")
@@ -870,7 +914,7 @@ class FacesEmitter internal constructor(
                     PropertySpec.builder("members", LIST.parameterizedBy(MEMBER), KModifier.OVERRIDE)
                         .initializer("listOf(\n%L,\n)", rows).build(),
                 )
-            // One size table per encoding the package carries, FlatBuffers first, as the Rust backend's `Sizes<E>`.
+            // One size table per encoding the package carries, FlatBuffers, proto3 then podbuf, as the Rust backend's `Sizes<E>`.
             for (encoding in carried) {
                 val callCodecs = calls.flatMap { callPayloads(it) }.map { it.codec(encoding) }.distinct()
                 val eventCodecs = events.map { eventPayload(it).codec(encoding) }.distinct()
@@ -1218,7 +1262,7 @@ class FacesEmitter internal constructor(
          * The codecs of an interaction's [payload], or of a query's reply when
          * [reply]: `codec` or `replyCodec`, the one codec object, when the
          * package carries one encoding; with several, one property per
-         * encoding, `flatBuffersCodec` and `podbufCodec`, and `codec(encoding)`,
+         * encoding, `flatBuffersCodec`, `proto3Codec` and `podbufCodec`, and `codec(encoding)`,
          * which picks one (docs/design.md §5).
          */
         private fun TypeSpec.Builder.codecs(payload: Named, reply: Boolean = false): TypeSpec.Builder = apply {

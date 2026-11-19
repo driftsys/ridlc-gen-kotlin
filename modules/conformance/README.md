@@ -134,9 +134,9 @@ with no exception: the Rust crate checks a pattern too, under its
 FlatBuffers and podbuf. A test checks each reader case's own verdict, and one
 walks the projection and fails on a wire kind the corpus does not reach; the
 proto3 `INT64` scalar has no source, since an enum is projected as an enum. A
-package of its own declares an interface: its face is skipped with the warning
-of #133, and the codec of the struct its call induces compiles and writes
-`0803120261 62` for `(3, "ab")`. Writing `-0.0` as the default, reading no
+package of its own selects proto3 alone and declares an interface: it gets its
+face with no warning, and the codec of the struct its call induces compiles and
+writes `0803120261 62` for `(3, "ab")`. Writing `-0.0` as the default, reading no
 `Duplicate`, or writing a packed array one record per element each turns it red.
 
 `Proto3EmitterRunTest` compiles regressions for nested messages with no valid
