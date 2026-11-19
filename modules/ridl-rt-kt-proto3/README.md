@@ -32,8 +32,9 @@ fixed-width values, large lengths, invalid UTF-8 sequences and the absence of a
 dependency from the core runtime to this module.
 
 The Android vendor package declares this module as the optional Soong library
-`ridl-rt-kt-proto3` (see `packaging/android/README.md`). This module does not
-add generated codecs or faces.
+`ridl-rt-kt-proto3` (see `packaging/android/README.md`). The plugin's generated
+`Proto3Codec.kt` reads and writes through this module, which a package needs
+only when it selects proto3 (#133); the module holds no codec or face itself.
 
 ## Where the code departs from Rust and docs/design.md
 

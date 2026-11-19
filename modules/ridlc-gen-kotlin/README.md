@@ -238,22 +238,22 @@ to that over 19,023 buffers (`CodecTest`).
 
 ### `Proto3Codec.kt`
 
-`Proto3Codec.kt` is the Rust proto3 codec (`codec_proto3.rs` of ridl `main`,
-driftsys/ridl#1420) spelled in Kotlin, over `ridl-rt-kt-proto3`'s
-`ridl.rt.proto3`: one `<Type>Proto3Codec` object implementing `Payload` per
-struct, union and root box of the projection (a named scalar, an enum or an enum
-set as `<Name>Box { value = 1 }`) and per tuple a call sends on its own, and
-`internal` length, encode, verify and decode helpers per message, which another
-package's codec calls for a message it nests. Its view is the runtime's
-`Verified`. The codec computes no layout: every field number, wire type, packing
-and `default_is_legal` is read from the model's `Proto3Projection`, and
-`Proto3WireType` is mapped to the runtime's `WireType` by name, never shifted
-into a tag. Its writer writes Rust's canonical form, its reader reaches Rust's
-verdicts in Rust's order, and `encode` sizes the value first and throws
-`EncodeError.Capacity` with the exact `needed` before any byte is written. The
-conformance module holds it to that over 11,481 buffers (`Proto3CodecTest`).
-Only a package that names `proto3` depends on `ridl.rt.proto3`; a
-FlatBuffers-only package's output names neither.
+`Proto3Codec.kt` is the Rust proto3 codec (`codec_proto3.rs` of
+`editor-v0.21.0`, driftsys/ridl#1420 and #1423) spelled in Kotlin, over
+`ridl-rt-kt-proto3`'s `ridl.rt.proto3`: one `<Type>Proto3Codec` object
+implementing `Payload` per struct, union and root box of the projection (a named
+scalar, an enum or an enum set as `<Name>Box { value = 1 }`) and per tuple a
+call sends on its own, and `internal` length, encode, verify and decode helpers
+per message, which another package's codec calls for a message it nests. Its
+view is the runtime's `Verified`. The codec computes no layout: every field
+number, wire type, packing and `default_is_legal` is read from the model's
+`Proto3Projection`, and `Proto3WireType` is mapped to the runtime's `WireType`
+by name, never shifted into a tag. Its writer writes Rust's canonical form, its
+reader reaches Rust's verdicts in Rust's order, and `encode` sizes the value
+first and throws `EncodeError.Capacity` with the exact `needed` before any byte
+is written. The conformance module holds it to that over 11,481 buffers
+(`Proto3CodecTest`). Only a package that names `proto3` depends on
+`ridl.rt.proto3`; a FlatBuffers-only package's output names neither.
 
 A package is refused, with no file written, as the Rust codec refuses it: a
 model with no proto3 projection, a declaration the projection refuses
