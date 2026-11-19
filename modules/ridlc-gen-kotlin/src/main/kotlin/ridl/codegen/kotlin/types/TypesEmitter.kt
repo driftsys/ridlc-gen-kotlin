@@ -200,12 +200,15 @@ class TypesEmitter internal constructor(
         val backing = backing(scalar)
         val bytes = backing == BYTE_ARRAY
         val companion = TypeSpec.companionObjectBuilder()
+        var clauses = 0
         val pattern = if (scalar.checksPattern()) {
-            companion.addProperty(
-                PropertySpec.builder("PATTERN", REGEX, KModifier.PRIVATE)
-                    .initializer("%T(%S)", REGEX, javaPattern(scalar.constraint.pattern)).build(),
-            )
-            "PATTERN"
+            { body: String ->
+                val name = "PATTERN_${clauses++}"
+                companion.addProperty(
+                    PropertySpec.builder(name, REGEX, KModifier.PRIVATE).initializer("%T(%S)", REGEX, javaPattern(body)).build(),
+                )
+                name
+            }
         } else {
             null
         }
@@ -219,11 +222,9 @@ class TypesEmitter internal constructor(
             constraints
         }
         val builder = if (bytes) bytesScalar(self, checks == null) else valueScalar(self, backing, checks == null)
-        val unresolved = if (!scalar.constraint.hasPattern() && scalar.constraint.hasPatternConst()) {
-            "The pattern `${scalar.constraint.patternConst}` did not resolve, so it is not checked."
-        } else {
-            null
-        }
+        val unresolved = scalar.constraint.matchesList.filter { !it.hasPattern() && it.hasPatternConst() }
+            .joinToString(" ") { "The pattern `${it.patternConst}` did not resolve, so it is not checked." }
+            .ifEmpty { null }
         builder.header(declaration, unresolved)
         if (checks != null) {
             val construct = if (bytes) "%T(value.copyOf())" else "%T(value)"
@@ -763,7 +764,7 @@ class TypesEmitter internal constructor(
         val fail = { rule: String, value: String -> CodeBlock.of("throw %T(%S, %T.%L, %L)\n", CONSTRAINT_VIOLATION, owner, RULE, rule, value) }
         return when (type.kindCase) {
             Type.KindCase.INLINE -> {
-                val pattern = if (type.inline.checksPattern()) patterns.of(type.inline.constraint.pattern) else null
+                val pattern = if (type.inline.checksPattern()) patterns::of else null
                 val shown = if (type.inline.class_ == ScalarClass.SCALAR_CLASS_BYTES) "$expr.contentToString()" else expr
                 scalarChecks(type.inline, expr, pattern) { rule -> fail(rule.name, shown) }
             }

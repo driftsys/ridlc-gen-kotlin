@@ -267,7 +267,8 @@ object RoundTrip {
                     val sample = key?.let { TEXT_SAMPLES[it]?.let { values -> values[i % values.size] } ?: Probe.SAMPLES[it] }
                     val text = when {
                         sample != null -> sample
-                        c.hasPattern() -> Probe.PATTERN_SAMPLES[c.pattern] ?: error("no sample for the patterned $key")
+                        c.matchesCount > 0 -> Probe.PATTERN_SAMPLES[c.matchesList.joinToString(" ") { it.pattern }]
+                            ?: error("no sample for the patterned $key")
                         else -> {
                             // A non-ASCII letter, so a sample carries multibyte UTF-8.
                             val length = maxOf(c.lenMin.toInt(), minOf(c.lenMax.toInt(), 2))

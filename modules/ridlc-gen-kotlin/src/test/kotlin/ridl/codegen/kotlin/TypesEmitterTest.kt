@@ -6,12 +6,16 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import ridl.codegen.kotlin.types.TypesEmitter
 import ridl.codegen.v1.ModelOuterClass.ArrayType
+import ridl.codegen.v1.ModelOuterClass.Constraint
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.DottedName
 import ridl.codegen.v1.ModelOuterClass.Field
 import ridl.codegen.v1.ModelOuterClass.MapType
+import ridl.codegen.v1.ModelOuterClass.Match
 import ridl.codegen.v1.ModelOuterClass.Model
 import ridl.codegen.v1.ModelOuterClass.PrimitiveType
+import ridl.codegen.v1.ModelOuterClass.Scalar
+import ridl.codegen.v1.ModelOuterClass.ScalarClass
 import ridl.codegen.v1.ModelOuterClass.Slot
 import ridl.codegen.v1.ModelOuterClass.Spellings
 import ridl.codegen.v1.ModelOuterClass.StreamType
@@ -69,6 +73,37 @@ class TypesEmitterTest {
         val stream = Type.newBuilder().setStream(StreamType.getDefaultInstance()).build()
         val emitted = TypesEmitter(model(struct("A", "s" to stream), struct("B", "s" to stream)).build(), options).emit()
         assertEquals(2, emitted.errors.size)
+    }
+
+    /** An inline string of at most 8 scalar values, with one `match` clause per pattern. */
+    private fun matching(vararg patterns: String): Type = Type.newBuilder().setInline(
+        Scalar.newBuilder().setClass_(ScalarClass.SCALAR_CLASS_STRING).setConstraint(
+            Constraint.newBuilder().setLenMax(8).addAllMatches(patterns.map { Match.newBuilder().setPattern(it).build() }),
+        ),
+    ).build()
+
+    @Test
+    fun `every match clause is checked against the whole value, in source order`() {
+        val emitted = TypesEmitter(model(struct("Token", "text" to matching("[a-z]+", ".*x.*"))).build(), options).emit()
+        val text = emitted.text!!
+        val first = text.indexOf("PATTERN_0.matches(this.text)")
+        val second = text.indexOf("PATTERN_1.matches(this.text)")
+        assertTrue(first in 0 until second, text)
+        assertTrue("Regex(\"[a-z]+\")" in text && "Regex(\".*x.*\")" in text, text)
+        assertTrue("containsMatchIn" !in text, text)
+    }
+
+    @Test
+    fun `a clause java util regex cannot compile refuses its declaration`() {
+        val emitted = TypesEmitter(model(struct("Broken", "text" to matching("[a-z]+", "(a"))).build(), options).emit()
+        assertNull(emitted.text)
+        assertEquals(
+            listOf(
+                "$PLUGIN: `kt.demo.Broken` cannot be generated: its pattern `(a` does not compile under java.util.regex: " +
+                    "Unclosed group",
+            ),
+            emitted.errors,
+        )
     }
 
     @Test

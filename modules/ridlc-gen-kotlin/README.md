@@ -126,26 +126,20 @@ why, and how the rule was last checked; CI does not check it.
   checks this, including one without constraints (#182). A struct does not check
   its inline strings for it, as the TypeScript backend does not: the encoder
   refuses the value (`Codec.kt` and `PodbufCodec.kt`, below).
-- **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
-  whole: the pattern's own `^` and `$` decide.
-- **A pattern matches as the Rust `regex` crate does** under its defaults on
-  these points (#155): `.` is any character but `\n`, `$` outside a class is the
-  end of the text only, `\d`, `\w`, `\s` and `\b` are Unicode classes, and
-  `(?i)` folds case over Unicode. The plugin refuses `\v` and the class
-  operators `--` and `~~`, whose Java meanings differ from Rust (#169). The
-  plugin prefixes each pattern with `(?dU)` and rewrites each such `$` to `\z`;
-  `java.util.regex` alone let `/^.$/` accept `"a\n"` and refuse `"\r"`. A
-  pattern that turns on the multi-line flag `m`, as `(?m:...)`, is refused,
-  although `ridl check` accepts it (#169). This includes combined flags and
-  nested groups; the rewrite does not track where a multi-line flag applies.
+- **A pattern is the normalised I-Regexp ridl sends, matched whole** (#186,
+  driftsys/ridl#597). `ridl check` refuses every pattern outside the typl subset
+  of RFC 9485, and writes each `.` as `[^\n\r]`, so `java.util.regex` reads the
+  pattern as the Rust `regex` crate does. The plugin compiles it unchanged and
+  calls `Regex.matches`, as Rust wraps it in `\A(?:…)\z`. A string checks each
+  of its `match` clauses in source order, and the first one that refuses the
+  value is the `Rule.Pattern` violation, as in Rust. ridl's agreement table
+  (`resources/patterns/pattern-agreement.json`) is run through the generated
+  code.
 - **A pattern `java.util.regex` cannot compile refuses its declaration**, with
-  the pattern and Java's reason (#12). `ridl check` passes a pattern ECMA-262
-  and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and some of
-  those are not Java syntax: a script or a long property name such as
-  `\p{Greek}`, `\p{Letter}` or `\p{Emoji}`, and `\u{41}`. The generated
-  `Regex(…)` threw `PatternSyntaxException` when its class loaded; the plugin
-  now compiles each pattern as it generates it. The check is the JVM the plugin
-  runs on: Android's `java.util.regex` is ICU's, and is not checked.
+  the pattern and Java's reason (#12). No I-Regexp ridl accepts is known to do
+  so; the check stays because the generated `Regex(…)` would otherwise throw
+  when its class loads. The check is the JVM the plugin runs on: Android's
+  `java.util.regex` is ICU's, and is not checked.
 - **Every integer is a `Long` and every float a `Double`**, as every Rust
   backing is `i64` or `f64`; the declared widths are the codec's.
 - **An enum's discriminant is a `Long`**, not the `Int` of §4, because the

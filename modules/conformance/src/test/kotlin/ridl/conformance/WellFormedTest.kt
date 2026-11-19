@@ -30,7 +30,7 @@ class WellFormedTest {
         package probe.utf8
 
         /// A named string that checks its length and its pattern.
-        type Code : string [1..3 match /^[a-z]+${'$'}/]
+        type Code : string [1..3 match /[a-z]+/]
 
         /// A named string without constraints.
         type Text : string
