@@ -12,8 +12,12 @@ FlatBuffers, and the cabin spike's `cabin-golden.txt` and
 one per corpus package that selects podbuf (#134), and `Proto3CodecTest` the
 proto3 codecs through
 `modules/conformance/src/test/resources/proto3/<package>-codec-rust-verdicts.txt`,
-one per corpus package that selects proto3 (#133). This script makes them again
-from the pinned tag, as `docs/k1b-flatbuffers-spike.md` describes:
+one per corpus package that selects proto3 (#133). `TranscodeTest` compares the
+transcode functions through
+`modules/conformance/src/test/resources/transcode/<package>-transcode-rust-verdicts.txt`,
+one per corpus package that sets `transcode = true` for the Kotlin backend
+(#136). This script makes them again from the pinned tag, as
+`docs/k1b-flatbuffers-spike.md` describes:
 
 1. `ridl build --emit rust` writes each corpus package's crate;
 2. a round-trip program per package, and the cabin spike's program, are written
@@ -36,8 +40,8 @@ wrote to `build/spike/descriptor-corpus.txt`, and its verdicts are
 `resources/descriptor/descriptor-rust-verdicts.txt`.
 
 The packages are the corpus's, as `CodecTest`, `PodbufCodecTest` and
-`Proto3CodecTest` list them,
-by the encodings each `ridl.toml` selects for the Kotlin backend: a corpus
+`Proto3CodecTest` and `TranscodeTest` list them, by the encodings and the
+`transcode` each `ridl.toml` selects for the Kotlin backend: a corpus
 package with no committed verdict file fails the check, and `--write` creates
 it. A verdict file with no corpus package fails both.
 
@@ -64,6 +68,7 @@ DESCRIPTOR_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "descriptor"
 PODBUF_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "podbuf"
 PROTO3_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "proto3"
 SIZES = CONFORMANCE / "src" / "test" / "resources" / "sizes"
+TRANSCODE_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "transcode"
 SPIKE = CONFORMANCE / "build" / "spike"
 WORK = CONFORMANCE / "build" / "rust-verdicts"
 
@@ -142,6 +147,45 @@ fn main() {
         let out = match ty {
 ARMS
         _ => "unknown-type".to_string(),
+        };
+        println!("{ty} {label} {out}");
+    }
+}
+"""
+
+TRANSCODE_MAIN = """// Runs each line through the Rust transcode function of its type and pair (#136),
+// into an output of the line's capacity. Input and output are 8-aligned, as a
+// podbuf buffer must be.
+use ridl_rt::podbuf::Aligned;
+use std::io::BufRead;
+
+const CAPACITY: usize = 1 << 16;
+
+fn hex(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02x}")).collect() }
+fn unhex(s: &str) -> Vec<u8> { (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect() }
+
+macro_rules! transcode {
+    ($f:path, $b:expr, $cap:expr) => {{
+        let mut input: Box<Aligned<[u8; CAPACITY]>> = Box::new(Aligned::zeroed());
+        input.0[..$b.len()].copy_from_slice(&$b);
+        let mut out: Box<Aligned<[u8; CAPACITY]>> = Box::new(Aligned::zeroed());
+        match $f(&input.0[..$b.len()], &mut out.0[..$cap]) {
+            Ok(r) => format!("ok {}", hex(r.bytes())),
+            Err(e) => format!("err {e:?}"),
+        }
+    }};
+}
+
+fn main() {
+    for line in std::io::stdin().lock().lines() {
+        let line = line.unwrap();
+        let mut parts = line.split_whitespace();
+        let (ty, label, source, target) = (parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap());
+        let cap: usize = parts.next().unwrap().parse().unwrap();
+        let b = unhex(parts.next().unwrap_or(""));
+        let out = match (ty, source, target) {
+ARMS
+        _ => "unknown-function".to_string(),
         };
         println!("{ty} {label} {out}");
     }
@@ -447,6 +491,38 @@ def roundtrip_main(crate_dir, encoding="FlatBuffers"):
     return main.replace("ARMS", "\n".join(arms))
 
 
+def transcode_functions(crate_dir):
+    """The public transcode functions of the crate, `(pkg.Type, source, target)` with their Rust paths, in source order."""
+    functions = []
+    for f in sorted(crate_dir.glob("*.rs")):
+        if f.name == "lib.rs":
+            continue
+        pkg = f.stem
+        path = "::".join(pkg.split("."))
+        text = f.read_text()
+        for block in re.finditer(r"^impl ([A-Za-z0-9_]+) \{\n(.*?)^\}", text, re.M | re.S):
+            t = block.group(1)
+            # An internal declaration is `pub(crate)`: unreachable from the program.
+            if re.search(r"pub\(crate\) (struct|enum) " + t + r"\b", text):
+                continue
+            for source, target in re.findall(r"pub fn transcode_([a-z0-9]+)_to_([a-z0-9]+)<", block.group(2)):
+                functions.append(((f"{pkg}.{t}", source, target), f"veh_crate::{path}::{t}::transcode_{source}_to_{target}"))
+    return functions
+
+
+def transcode_main(crate_dir):
+    """The transcode program's `main.rs`: one arm per public transcode function of the crate."""
+    arms = [f'        ("{t}", "{s}", "{d}") => transcode!({path}, b, cap),' for (t, s, d), path in transcode_functions(crate_dir)]
+    return TRANSCODE_MAIN.replace("ARMS", "\n".join(arms))
+
+
+def transcodes(package):
+    """Whether the corpus package's `ridl.toml` sets `transcode = true` for the Kotlin backend, as `Harness.transcode` reads it."""
+    manifest = (CORPUS / package / "ridl.toml").read_text()
+    kotlin = manifest.partition("[backend.kotlin]")[2].split("\n[")[0]
+    return re.search(r"^transcode\s*=\s*true\s*$", kotlin, re.M) is not None
+
+
 def compact(output):
     """The verdicts `CodecTest` compares: `ok:<first 16 hex of SHA-256 of the re-encoded hex>` or `err:<error>`."""
     lines = []
@@ -542,9 +618,11 @@ def main():
     flatbuffers = [p for p in every if "flatbuffers" in selected[p]]
     podbuf = [p for p in every if "podbuf" in selected[p]]
     proto3 = [p for p in every if "proto3" in selected[p]]
-    for directory, packages in ((VERDICTS, flatbuffers), (PODBUF_VERDICTS, podbuf), (PROTO3_VERDICTS, proto3)):
-        for stray in sorted(directory.glob("*-codec-rust-verdicts.txt")):
-            if stray.name.removesuffix("-codec-rust-verdicts.txt") not in packages:
+    transcode = [p for p in every if transcodes(p)]
+    for directory, packages, suffix in ((VERDICTS, flatbuffers, "codec"), (PODBUF_VERDICTS, podbuf, "codec"),
+                                        (PROTO3_VERDICTS, proto3, "codec"), (TRANSCODE_VERDICTS, transcode, "transcode")):
+        for stray in sorted(directory.glob(f"*-{suffix}-rust-verdicts.txt")):
+            if stray.name.removesuffix(f"-{suffix}-rust-verdicts.txt") not in packages:
                 print(f"  {directory.name}/{stray.name}: no corpus package selects {directory.name}; delete it")
                 agree = False
     tabled = set()
@@ -567,6 +645,18 @@ def main():
             agree &= sampled_verdicts(package, crate_dir, rt_version, source, "Proto3", PROTO3_VERDICTS, args.write)
         if package in podbuf:
             agree &= sampled_verdicts(package, crate_dir, rt_version, source, "Podbuf", PODBUF_VERDICTS, args.write)
+        if package in transcode:
+            binary = program(f"transcode-{package}", crate_dir, rt_version, source, transcode_main(crate_dir))
+            lines = corpus(f"{package}-transcode-corpus.txt")
+            # Every transcode function Rust has is sampled: a pair the Kotlin
+            # plugin lacks would otherwise go unseen.
+            sampled = {tuple(line.split(" ")[0:1] + line.split(" ")[2:4]) for line in lines.splitlines() if line}
+            for function, _ in transcode_functions(crate_dir):
+                if function not in sampled:
+                    print(f"  transcode/{package}: the Rust function {function[0]}::transcode_{function[1]}_to_{function[2]} has no line in the corpus")
+                    agree = False
+            output = run([binary], input=lines, capture_output=True, text=True).stdout
+            agree &= compare(f"{package}-transcode-rust-verdicts.txt", compact(output), args.write, TRANSCODE_VERDICTS)
 
     for stray in sorted(SIZES.glob("*-rust-sizes.txt")):
         if stray.name.removesuffix("-rust-sizes.txt") not in tabled:
