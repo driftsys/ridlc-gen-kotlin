@@ -9,7 +9,8 @@ import java.nio.file.Path
 
 /**
  * Compiles generated Kotlin as a consumer's build would: against
- * `ridl-rt-kt` on the class path, with warnings as errors (docs/design.md §7,
+ * `ridl-rt-kt` on the class path, and `ridl-rt-kt-proto3` for a package that
+ * selects proto3, the test class path's, with warnings as errors (docs/design.md §7,
  * "The output compiles"). Each source keeps its own path and file name, so a
  * file's JVM facade is the one a consumer's build gives it.
  */

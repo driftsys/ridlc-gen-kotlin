@@ -7,6 +7,7 @@ plugins {
 dependencies {
     testImplementation(project(":ridlc-gen-kotlin"))
     testImplementation(project(":ridl-rt-kt"))
+    testImplementation(project(":ridl-rt-kt-proto3"))
     testImplementation(project(":ridl-rt-kt-loopback"))
     testImplementation(project(":ridl-rt-kt-coroutines"))
     testImplementation(project(":ridl-descriptor-kt"))

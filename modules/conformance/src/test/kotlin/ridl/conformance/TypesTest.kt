@@ -38,9 +38,14 @@ class TypesTest {
     fun `the generated Types kt, Codec kt and Faces kt compile`(): List<DynamicTest> = Harness.packages().map { name ->
         DynamicTest.dynamicTest(name) {
             val generated = generate(name)
-            // A codec file per encoding the unit's manifest selects: `Codec.kt` for FlatBuffers, `PodbufCodec.kt` for podbuf.
+            // A codec file per encoding the unit's manifest selects: `Codec.kt` for FlatBuffers, `Proto3Codec.kt` for
+            // proto3, `PodbufCodec.kt` for podbuf.
             val encodings = Harness.encodings(name)
-            val codecs = listOfNotNull("Codec.kt".takeIf { "flatbuffers" in encodings }, "PodbufCodec.kt".takeIf { "podbuf" in encodings })
+            val codecs = listOfNotNull(
+                "Codec.kt".takeIf { "flatbuffers" in encodings },
+                "Proto3Codec.kt".takeIf { "proto3" in encodings },
+                "PodbufCodec.kt".takeIf { "podbuf" in encodings },
+            )
             for (model in generated.models) {
                 val dir = model.name.dotted.replace('.', '/')
                 val expected = setOf("Types.kt") + codecs + if (model.interfacesCount > 0) setOf("Faces.kt") else emptySet()

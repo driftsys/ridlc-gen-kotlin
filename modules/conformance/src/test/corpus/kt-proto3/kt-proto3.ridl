@@ -1,0 +1,157 @@
+// The Kotlin plugin's proto3 corpus package (#133): every wire kind of the
+// proto3 projection, in a package that selects proto3 alone, so its codec is
+// held to the Rust proto3 codec by Proto3CodecTest. It declares no interface:
+// the face carries no proto3 encoding yet (#133), and would be skipped.
+package kt.proto3
+
+import kt.proto3.parts.Corner
+import kt.proto3.parts.Pick
+
+/// A sint32: a signed range inside 32 bits.
+type Tiny : integer [-100..100]
+/// A uint32 from a u8.
+type Octet : integer [0..200]
+/// A uint32 at its own width.
+type Count : integer [0..4000000000]
+/// A uint64: a range from 0 past u32.
+type Serial : integer [0..9223372036854775807]
+/// A range that excludes 0: an absent field is malformed.
+type Level : integer [1..10]
+
+/// A float (f32): a step, and both bounds binary32.
+type Ratio : float [0.0..1.0 step 0.125]
+/// A double.
+type Gain : float [-2.0..2.0]
+
+/// A string of at least one scalar value: an absent one is malformed.
+type Name : string [1..8]
+/// A string whose pattern refuses the empty string its length admits, so an
+/// absent one is refused by the pattern. Both codecs check it: the Rust
+/// crate's `validate-pattern` feature is a default one.
+type Code : string [0..4 match /[A-Z]+/]
+/// Bytes.
+type Blob : bytes [0..6]
+
+/// A strict enum with a zero member.
+enum Gear {
+  PARK    = 0
+  DRIVE   = 1
+  REVERSE = 2
+}
+
+/// A strict enum with no zero member, at the negative int32 boundary.
+enum Phase {
+  BEFORE = -2147483648
+  AFTER  = 1
+}
+
+/// An open enum.
+open enum Mood {
+  LOW  = -1
+  HIGH = 1
+}
+
+/// A strict enum set, a uint32.
+enumset Lights {
+  HEAD = 0
+  TAIL = 1
+}
+
+/// A strict enum set, a uint64.
+enumset Banks {
+  LOW  = 0
+  HIGH = 40
+}
+
+/// An open enum set, a uint32 on the wire and a u16 in typl.
+open enumset Faults {
+  A = 0
+  B = 9
+}
+
+/// An open enum set, a uint64.
+open enumset Alarms {
+  A = 0
+  B = 33
+}
+
+/// A nested struct.
+struct Point {
+  x : Tiny
+  y : Tiny
+}
+
+/// A struct with no field: an empty message.
+struct Empty {}
+
+/// Every scalar: each scalar type of the wire, strict and open enums and enum
+/// sets, a nested struct, a tuple, a foreign struct and union, a fixed-length
+/// array, optionals, and fields whose default is not legal.
+struct Scalars {
+  flag   : boolean
+  tiny   : Tiny
+  octet  : Octet
+  count  : Count
+  serial : Serial
+  total  : integer
+  level  : Level
+  ratio  : Ratio
+  narrow : float [0.0..2.0 step 0.5]
+  gain   : Gain
+  real   : float
+  gear   : Gear
+  phase  : Phase
+  mood   : Mood
+  lights : Lights
+  banks  : Banks
+  faults : Faults
+  alarms : Alarms
+  point  : Point
+  pair   : (left: Tiny, right: Octet)
+  corner : Corner
+  pick   : Pick
+  triple : [Tiny; 3]
+  maybe  : Ratio?
+  spot   : Point?
+  odd    : Gain?
+  note   : Name?
+}
+
+/// A union with an empty struct arm, a struct arm, a string arm, an enum arm
+/// and a scalar arm.
+union Shape {
+  none  : Empty
+  dot   : Point
+  label : Name
+  gear  : Gear
+  gain  : Gain
+}
+
+/// Every length-delimited and repeated form: strings and bytes, packed
+/// arrays of varints, of fixed 32- and 64-bit values, of enums and enum
+/// sets, unpacked arrays of messages, strings and bytes, maps keyed by a
+/// string, a sint32, a uint64 and a boolean with scalar and message values,
+/// a union, and a count lower bound above 0.
+struct Tails {
+  name    : Name
+  label   : string [0..6]
+  code    : Code
+  blob    : Blob
+  data    : bytes [0..4]
+  flags   : [boolean; 0..3]
+  grades  : [Octet; 0..3]
+  deltas  : [Tiny; 0..3]
+  ratios  : [Ratio; 0..3]
+  gains   : [Gain; 0..2]
+  gears   : [Gear; 0..3]
+  sets    : [Lights; 0..2]
+  points  : [Point; 0..2]
+  words   : [Name; 0..2]
+  blobs   : [Blob; 0..2]
+  some    : [Octet; 1..3]
+  byName  : [Name : Tiny; 0..2]
+  byTiny  : [integer [-100..100] : Octet; 0..2]
+  byBig   : [integer [0..9223372036854775807] : Point; 0..2]
+  byFlag  : [boolean : Name; 0..2]
+  shape   : Shape
+}

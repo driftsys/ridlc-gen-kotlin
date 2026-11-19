@@ -22,6 +22,7 @@ import java.math.BigDecimal
 object Probe {
     val SAMPLES: Map<String, String> = mapOf(
         "kt.values.Code" to "ABC",
+        "kt.proto3.Code" to "ABC",
         "veh.cabin.Code" to "ABC",
         "veh.cabin.Glyph" to "\uD83D\uDE00",
         "veh.cabin.Digited" to "1",

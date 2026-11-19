@@ -111,13 +111,39 @@ and every truncation, the tail's placement order, map key order over UTF-8 bytes
 and over -0.0 and 0.0, a string holding U+0000, a stride, a length checked
 before its data, a deprecated field and an empty union arm.
 
+The test of #133, `Proto3CodecTest`, holds the proto3 codec to the Rust proto3
+codec of ridl `main` in the same way, for every corpus package that selects
+proto3: `kt-proto3`, which selects it alone and reaches every wire kind of the
+projection. The generated `Proto3Codec.kt` encodes the samples `RoundTrip`
+writes from the model, in its proto3 mode; the corpus is `CodecTest`'s, plus 200
+random mutants of every sample from seed 133, plus, for each full sample and
+union arm, the reader cases of the Rust codec's header: its fields in reverse
+number order, each packed field unpacked and mixed, and an unknown field, each
+read as the sample is; a singular field twice (`Duplicate`), one under another
+wire type (`WireType`), a 32-bit field's varint past u32 (`Varint`), a
+fixed-width packed run one byte long (`OutOfBounds`), a map's second key made
+its first's (`Unique`), and a double set to `-0.0`, which is written again. That
+is 11,481 buffers, each run through `verify`, `decode` and `encode` in Kotlin at
+position 0 and at position 8, which must agree, and once in Rust, whose verdicts
+are checked in as `resources/proto3/<package>-codec-rust-verdicts.txt`. Every
+verdict is Rust's, with no exception: the Rust crate checks a pattern too, under
+its `validate-pattern` feature, a default one the verdict program keeps, as for
+FlatBuffers and podbuf. A test checks each reader case's own verdict, and one
+walks the projection and fails on a wire kind the corpus does not reach; the
+proto3 `INT64` scalar has no source, since an enum is projected as an enum. A
+package of its own declares an interface: its face is skipped with the warning
+of #133, and the codec of the struct its call induces compiles and writes
+`0803120261 62` for `(3, "ab")`. Writing `-0.0` as the default, reading no
+`Duplicate`, or writing a packed array one record per element each turns it red.
+
 `SelectionTest` holds the selection rule (docs/design.md §4): the output of
 every corpus package, and of every package its build reaches, generated with
 `encodings` set to `flatbuffers` alone, has the digests in
-`resources/flatbuffers/output-digests.txt`, one line per file, 43 in all. The
+`resources/flatbuffers/output-digests.txt`, one line per file, 47 in all. The
 lines of every package older than #134 were taken from `main`'s output before
-podbuf, so podbuf changed no byte of a FlatBuffers-only package. That output
-also names no podbuf item.
+podbuf, so podbuf changed no byte of a FlatBuffers-only package, and the proto3
+codec added the lines of `kt-proto3` alone. That output also names no podbuf
+item, and neither `proto3` nor `ridl.rt.proto3`.
 
 Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
 `ridl.toml`, and every catalog hash changed. `UnitTest` builds the corpus
