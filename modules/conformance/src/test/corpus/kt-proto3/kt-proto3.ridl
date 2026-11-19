@@ -1,7 +1,8 @@
 // The Kotlin plugin's proto3 corpus package (#133): every wire kind of the
 // proto3 projection, in a package that selects proto3 alone, so its codec is
-// held to the Rust proto3 codec by Proto3CodecTest. It declares no interface:
-// the face carries no proto3 encoding yet (#133), and would be skipped.
+// held to the Rust proto3 codec by Proto3CodecTest. Its interface sends the
+// structs the lowering induces for a call and a tuple reply, which are proto3
+// roots of their own.
 package kt.proto3
 
 import kt.proto3.parts.Corner
@@ -179,4 +180,21 @@ struct OptionalDefaults {
   spot : float [0.0..1.0 step 0.125]?
   odd : float?
   note : string [0..8]?
+}
+
+/// One member of each kind. A call of several parameters or of none, and a
+/// tuple reply, each send the struct the lowering induces, a root of its own.
+interface Meter {
+  /// The level.
+  signal  level   : Level @10ms
+  /// A trip at a point.
+  event   tripped : Point @[100ms..1s]
+  /// Sets a grade and a name.
+  command set(grade: Octet, name: Name) @[..50ms]
+  /// Resets.
+  command reset() @[..50ms]
+  /// Reads the count and the gear of a serial.
+  query   read(serial: Serial): (count: Count, gear: Gear, note: Name?) @[..200ms]
+  /// The tails of a code.
+  query   tails(code: Code, mood: Mood): Tails @[..200ms]
 }

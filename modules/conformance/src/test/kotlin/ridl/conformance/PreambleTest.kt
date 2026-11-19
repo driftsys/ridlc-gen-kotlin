@@ -34,8 +34,8 @@ class PreambleTest {
     fun `every file starts with the marker`() {
         val out = Harness.build(Harness.copyOf("cabin", work), work.resolve("out"), "--plugin", "kotlin=${Harness.plugin}")
         val files = kotlinFiles(out)
-        // Types.kt, Codec.kt, PodbufCodec.kt and Faces.kt: cabin carries both encodings.
-        assertEquals(4, files.size, files.keys.toString())
+        // Types.kt, Codec.kt, Proto3Codec.kt, PodbufCodec.kt and Faces.kt: cabin carries all three encodings.
+        assertEquals(5, files.size, files.keys.toString())
         for ((path, text) in files) {
             assertTrue(text.startsWith("// $marker\n\n"), "$path starts:\n${text.take(200)}")
         }
@@ -48,8 +48,8 @@ class PreambleTest {
         pkg.resolve("ridl.toml").appendText("\n[codegen]\nheader-file = \"HEADER.txt\"\n")
         val out = Harness.build(pkg, work.resolve("out"), "--plugin", "kotlin=${Harness.plugin}")
         val files = kotlinFiles(out)
-        // Types.kt, Codec.kt, PodbufCodec.kt and Faces.kt: cabin carries both encodings.
-        assertEquals(4, files.size, files.keys.toString())
+        // Types.kt, Codec.kt, Proto3Codec.kt, PodbufCodec.kt and Faces.kt: cabin carries all three encodings.
+        assertEquals(5, files.size, files.keys.toString())
         val expected = "// $marker\n// Copyright 2026 Example\n//\n// SPDX-License-Identifier: MIT\n\n"
         for ((path, text) in files) {
             assertTrue(text.startsWith(expected), "$path starts:\n${text.take(300)}")

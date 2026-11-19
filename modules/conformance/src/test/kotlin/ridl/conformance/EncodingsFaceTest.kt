@@ -12,17 +12,18 @@ import kotlin.io.path.writeText
 
 /**
  * The face over each encoding its package carries (docs/design.md §5): one
- * package selecting `flatbuffers` and `podbuf`, compiled with warnings as
- * errors, drives a signal, an event, a command and a query whose arguments
- * are an induced struct over a FlatBuffers loopback and over a podbuf one,
- * and checks the bytes on each port are that encoding's. A query whose reply
- * is a stream is served by `serveAsync`, whose `drive` writes each element,
- * and collected by the async client, which reads each one: the element codec
- * is the one use of the face no descriptor holds, chosen inline from the
- * port's encoding on each side. A port of an encoding the package does not
- * carry is refused when the face is bound. The same package selecting
- * `podbuf` alone is driven over a podbuf port. The corpus package `cabin`,
- * which carries both encodings, is driven the same way over each.
+ * package selecting `flatbuffers`, `proto3` and `podbuf`, compiled with
+ * warnings as errors, drives a signal, an event, a command and a query whose
+ * arguments are an induced struct over a loopback of each encoding, and
+ * checks the bytes on each port are that encoding's. A query whose reply is a
+ * stream is served by `serveAsync`, whose `drive` writes each element, and
+ * collected by the async client, which reads each one: the element codec is
+ * the one use of the face no descriptor holds, chosen inline from the port's
+ * encoding on each side. A port of an encoding the package does not carry is
+ * refused when the face is bound. The same package selecting `flatbuffers`
+ * and `podbuf`, `proto3` alone and `podbuf` alone is driven over each port it
+ * carries and refuses the others. The corpus package `cabin`, which carries
+ * all three encodings, is driven the same way over each.
  */
 class EncodingsFaceTest {
     @TempDir
@@ -55,13 +56,17 @@ class EncodingsFaceTest {
         }
     """.trimIndent()
 
-    private fun probe(both: Boolean): String = """
+    /**
+     * The probe over a package carrying [carried], `Encoding` entry names in
+     * the Rust order: each is driven, each other entry is refused.
+     */
+    private fun probe(carried: List<String>): String = """
         @file:JvmName("EncodingsProbe")
 
         package probe.both.check
 
         import probe.both.Level
-        import probe.both.LevelPodbufCodec
+        ${carried.joinToString("\n        ") { "import probe.both.Level${codecSuffix(it)}" }}
         import probe.both.Reading
         import probe.both.Tank
         import probe.both.TankAsyncClient
@@ -71,7 +76,6 @@ class EncodingsFaceTest {
         import probe.both.commit
         import probe.both.subscribeSpilled
         import probe.both.nextEvent
-        ${if (both) "import probe.both.LevelCodec" else ""}
         import kotlinx.coroutines.CoroutineScope
         import kotlinx.coroutines.Dispatchers
         import kotlinx.coroutines.cancelAndJoin
@@ -113,7 +117,7 @@ class EncodingsFaceTest {
             fun <T> expectEqual(label: String, expected: T, actual: T) {
                 if (expected != actual) failures += "${'$'}label: expected ${'$'}expected, got ${'$'}actual"
             }
-            val carried = ${if (both) "listOf(Encoding.FlatBuffers to LevelCodec, Encoding.Podbuf to LevelPodbufCodec)" else "listOf(Encoding.Podbuf to LevelPodbufCodec)"}
+            val carried = listOf(${carried.joinToString { "Encoding.$it to Level${codecSuffix(it)}" }})
             for ((encoding, levelCodec) in carried) {
                 val rt = Loopback(Tank.catalog, encoding)
                 val client = TankPollClient(rt)
@@ -163,27 +167,40 @@ class EncodingsFaceTest {
                 }
                 expectEqual("${'$'}encoding: the reply stream", (1L..3L).map { Reading(level = Level.of(it), note = "r${'$'}it") }, readings)
             }
-            val refused = ${if (both) "listOf(Encoding.Proto3)" else "listOf(Encoding.Proto3, Encoding.FlatBuffers)"}
+            val refused = Encoding.entries - carried.map { it.first }
+            expectEqual("the encodings refused", ${ENCODINGS.size - carried.size}, refused.size)
             for (encoding in refused) {
                 try {
                     TankPollClient(Loopback(Tank.catalog, encoding))
                     failures += "a ${'$'}encoding port is refused"
                 } catch (e: IllegalArgumentException) {
-                    val carries = ${if (both) "\"flatbuffers and podbuf\"" else "\"podbuf only\""}
+                    val carries = "${carries(carried)}"
                     expectEqual(
                         "the refusal of a ${'$'}encoding port",
                         "interface `Tank` has no ${'$'}{encoding.encodingName} codec: its package carries ${'$'}carries",
                         e.message,
                     )
                 }
+                val foreign = Loopback(Tank.catalog, encoding)
+                try {
+                    TankPublisher(foreign)
+                    failures += "a publisher over a ${'$'}encoding port is built"
+                } catch (_: IllegalArgumentException) {
+                }
+                try {
+                    Tank.dispatch(foreign, Mixer(), ByteBuffer.allocate(64), CoroutineScope(Dispatchers.Unconfined))
+                    failures += "dispatch over a ${'$'}encoding handler runs"
+                } catch (_: IllegalArgumentException) {
+                }
             }
             return failures
         }
     """.trimIndent()
 
-    /** Generates package `probe.both` selecting [encodings], compiles it with the probe, and runs the probe. */
-    private fun run(name: String, encodings: String, both: Boolean) {
+    /** Generates package `probe.both` selecting [carried], compiles it with the probe, and runs the probe. */
+    private fun run(name: String, carried: List<String>) {
         val pkg = work.resolve("src-$name").createDirectories()
+        val encodings = carried.joinToString { "\"${it.lowercase()}\"" }
         pkg.resolve("ridl.toml").writeText(
             "[package]\nname = \"probe.both\"\nversion = \"1.0.0\"\n\n[backend.kotlin]\nencodings = [$encodings]\n",
         )
@@ -195,7 +212,7 @@ class EncodingsFaceTest {
             response.filesList.map { it.path to it.text }
         }.toMap()
         assertTrue("probe/both/Faces.kt" in sources, sources.keys.toString())
-        val compiled = Compiler.compile(sources + ("probe/both/check/Probe.kt" to probe(both)), work.resolve("compile-$name"))
+        val compiled = Compiler.compile(sources + ("probe/both/check/Probe.kt" to probe(carried)), work.resolve("compile-$name"))
         assertTrue(compiled.ok, compiled.messages + "\n" + sources["probe/both/Faces.kt"])
         @Suppress("UNCHECKED_CAST")
         val failures = compiled.classLoader!!.loadClass("probe.both.check.EncodingsProbe").getMethod("probe").invoke(null) as List<String>
@@ -203,13 +220,23 @@ class EncodingsFaceTest {
     }
 
     @Test
-    fun `a two-encoding face serves a FlatBuffers port and a podbuf port`() {
-        run("both", "\"flatbuffers\", \"podbuf\"", both = true)
+    fun `a three-encoding face serves a FlatBuffers, a proto3 and a podbuf port`() {
+        run("all", ENCODINGS)
     }
 
     @Test
-    fun `a podbuf-only face serves a podbuf port and refuses a FlatBuffers one`() {
-        run("podbuf", "\"podbuf\"", both = false)
+    fun `a two-encoding face serves a FlatBuffers port and a podbuf port and refuses a proto3 one`() {
+        run("both", listOf("FlatBuffers", "Podbuf"))
+    }
+
+    @Test
+    fun `a proto3-only face serves a proto3 port and refuses the others`() {
+        run("proto3", listOf("Proto3"))
+    }
+
+    @Test
+    fun `a podbuf-only face serves a podbuf port and refuses the others`() {
+        run("podbuf", listOf("Podbuf"))
     }
 
     private val cabinProbe = """
@@ -233,6 +260,7 @@ class EncodingsFaceTest {
         import veh.cabin.Temperature
         import veh.cabin.TemperatureCodec
         import veh.cabin.TemperaturePodbufCodec
+        import veh.cabin.TemperatureProto3Codec
         import veh.cabin.Warning
         import veh.cabin.Window
         import veh.cabin.commit
@@ -261,7 +289,12 @@ class EncodingsFaceTest {
             fun <T> expectEqual(label: String, expected: T, actual: T) {
                 if (expected != actual) failures += "${'$'}label: expected ${'$'}expected, got ${'$'}actual"
             }
-            for ((encoding, codec) in listOf(Encoding.FlatBuffers to TemperatureCodec, Encoding.Podbuf to TemperaturePodbufCodec)) {
+            val carried = listOf(
+                Encoding.FlatBuffers to TemperatureCodec,
+                Encoding.Proto3 to TemperatureProto3Codec,
+                Encoding.Podbuf to TemperaturePodbufCodec,
+            )
+            for ((encoding, codec) in carried) {
                 val rt = Loopback(Cabin.catalog, encoding)
                 val client = CabinPollClient(rt)
                 val publisher = CabinPublisher(rt)
@@ -300,18 +333,32 @@ class EncodingsFaceTest {
     """.trimIndent()
 
     @Test
-    fun `cabin, which carries both encodings, serves a FlatBuffers port and a podbuf port`() {
+    fun `cabin, which carries all three encodings, serves a port of each`() {
         val requests = Harness.capturedRequests("cabin", work.resolve("requests-cabin")).values
         val sources = requests.flatMap { request ->
             val response = Generator.generate(Wire.readRequest(request))
             assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
             response.filesList.map { it.path to it.text }
         }.toMap()
-        assertTrue("veh/cabin/PodbufCodec.kt" in sources && "veh/cabin/Codec.kt" in sources, sources.keys.toString())
+        for (codec in listOf("Codec.kt", "Proto3Codec.kt", "PodbufCodec.kt")) assertTrue("veh/cabin/$codec" in sources, sources.keys.toString())
         val compiled = Compiler.compile(sources + ("probe/cabin/check/Probe.kt" to cabinProbe), work.resolve("compile-cabin"))
         assertTrue(compiled.ok, compiled.messages)
         @Suppress("UNCHECKED_CAST")
         val failures = compiled.classLoader!!.loadClass("probe.cabin.check.CabinEncodingsProbe").getMethod("probe").invoke(null) as List<String>
         assertEquals(emptyList<String>(), failures)
+    }
+
+    private companion object {
+        /** The `Encoding` entries, in the Rust order the face sorts what it carries by. */
+        val ENCODINGS = listOf("FlatBuffers", "Proto3", "Podbuf")
+
+        /** What a codec object's name adds to its type's in [encoding]. */
+        fun codecSuffix(encoding: String): String = if (encoding == "FlatBuffers") "Codec" else "${encoding}Codec"
+
+        /** How a refusal names what the package carries. */
+        fun carries(carried: List<String>): String {
+            val keys = carried.map { it.lowercase() }
+            return if (keys.size == 1) "${keys.single()} only" else keys.joinToString(" and ")
+        }
     }
 }

@@ -86,8 +86,8 @@ writes no file, and a corpus package with no system gets none.
 The test of #134, `PodbufCodecTest`, holds the podbuf codec to the Rust podbuf
 codec of the pinned release in the same way, for every corpus package that
 selects podbuf: `kt-podbuf`, which selects it alone and reaches every form of
-the layout law, and `cabin` and `kt-values`, which select both encodings. The
-generated `PodbufCodec.kt` encodes the samples `RoundTrip` writes from the
+the layout law, and `cabin` and `kt-values`, which select all three encodings.
+The generated `PodbufCodec.kt` encodes the samples `RoundTrip` writes from the
 model, in its podbuf mode; the corpus is `CodecTest`'s, plus 200 random mutants
 of every sample from seed 134, and for each map of a full sample its first two
 entries swapped, its second key made the first, and for a float key a NaN key
@@ -101,20 +101,24 @@ models and fails on a form, an integer or float width, a descriptor kind or an
 interaction kind the corpus does not reach. A field read one byte off its
 offset, a string length read before its bound is checked, or map entries written
 unsorted each turns it red. `EncodingsFaceTest` drives `cabin`'s face over a
-FlatBuffers and a podbuf loopback, and a package of its own over both with a
-reply stream served by `serveAsync` and read by the async client, whose element
-codec is chosen from the port's encoding on each side; a podbuf-only face serves
-a podbuf port and refuses a FlatBuffers one. `PodbufEmitterRunTest` compiles
-packages of its own with warnings as errors and runs what the corpus cannot pin
-by verdict: a u64 at 2^63, every byte of a buffer replaced by six hostile values
-and every truncation, the tail's placement order, map key order over UTF-8 bytes
-and over -0.0 and 0.0, a string holding U+0000, a stride, a length checked
-before its data, a deprecated field and an empty union arm.
+FlatBuffers, a proto3 and a podbuf loopback, and a package of its own over all
+three with a reply stream served by `serveAsync` and read by the async client,
+whose element codec is chosen from the port's encoding on each side; the same
+package selecting FlatBuffers and podbuf, proto3 alone, and podbuf alone serves
+each port it carries, and its client, publisher and `dispatch` refuse a port of
+any other encoding. `PodbufEmitterRunTest` compiles packages of its own with
+warnings as errors and runs what the corpus cannot pin by verdict: a u64 at
+2^63, every byte of a buffer replaced by six hostile values and every
+truncation, the tail's placement order, map key order over UTF-8 bytes and over
+-0.0 and 0.0, a string holding U+0000, a stride, a length checked before its
+data, a deprecated field and an empty union arm.
 
 The test of #133, `Proto3CodecTest`, holds the proto3 codec to the Rust proto3
 codec of the pinned release in the same way, for every corpus package that
-selects proto3: `kt-proto3`, which selects it alone and reaches every wire kind
-of the projection, and `kt-values`, which selects all three encodings. The
+selects proto3: `kt-proto3`, which selects it alone, reaches every wire kind of
+the projection, and whose interface sends the structs the lowering induces for a
+call of two parameters, a call of none and a tuple reply, each a proto3 root of
+its own, and `cabin` and `kt-values`, which select all three encodings. The
 generated `Proto3Codec.kt` encodes the samples `RoundTrip` writes from the
 model, in its proto3 mode; the corpus is `CodecTest`'s, plus 200 random mutants
 of every sample from seed 133, plus, for each full sample and union arm, the
@@ -136,8 +140,9 @@ walks the projection and fails on a wire kind the corpus does not reach; the
 proto3 `INT64` scalar has no source, since an enum is projected as an enum. A
 package of its own selects proto3 alone and declares an interface: it gets its
 face with no warning, and the codec of the struct its call induces compiles and
-writes `0803120261 62` for `(3, "ab")`. Writing `-0.0` as the default, reading no
-`Duplicate`, or writing a packed array one record per element each turns it red.
+writes `0803120261 62` for `(3, "ab")`. Writing `-0.0` as the default, reading
+no `Duplicate`, or writing a packed array one record per element each turns it
+red.
 
 `Proto3EmitterRunTest` compiles regressions for nested messages with no valid
 empty default, present optional defaults, map count ordering, and encode
@@ -148,11 +153,12 @@ input when the projection selects an unpacked writer.
 `SelectionTest` holds the selection rule (docs/design.md §4): the output of
 every corpus package, and of every package its build reaches, generated with
 `encodings` set to `flatbuffers` alone, has the digests in
-`resources/flatbuffers/output-digests.txt`, one line per file, 47 in all. The
+`resources/flatbuffers/output-digests.txt`, one line per file, 48 in all. The
 lines of every package older than #134 were taken from `main`'s output before
 podbuf, so podbuf changed no byte of a FlatBuffers-only package, and the proto3
-codec added the lines of `kt-proto3` alone. That output also names no podbuf
-item, and neither `proto3` nor `ridl.rt.proto3`.
+codec added the lines of `kt-proto3` alone. The proto3 face (#133) changed only
+`kt-proto3`'s lines, through the interface the corpus gave it. That output also
+names no podbuf item, and neither `proto3` nor `ridl.rt.proto3`.
 
 Since ridl 0.7.0 (#55), a catalog is one unit, the source packages under one
 `ridl.toml`, and every catalog hash changed. `UnitTest` builds the corpus
