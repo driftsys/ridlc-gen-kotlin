@@ -102,8 +102,8 @@ for module in ridl-rt-kt ridl-rt-kt-proto3 ridl-rt-kt-coroutines ridl-rt-kt-loop
 done
 
 # ridl-rt-kt-proto3 depends only on ridl-rt-kt.
-proto3_libs=$(awk '/name: "ridl-rt-kt-proto3"/{f=1} f&&/static_libs:/{print; exit}' "$root_dir/packaging/android/Android.bp")
-if [[ "$proto3_libs" != *'static_libs: ["ridl-rt-kt"],'* ]]; then
+proto3_libs=$(awk '/name: "ridl-rt-kt-proto3"/{f=1} f&&/^}/{exit} f&&/^[[:space:]]*static_libs:/{print}' "$root_dir/packaging/android/Android.bp")
+if [[ "$proto3_libs" != '    static_libs: ["ridl-rt-kt"],' ]]; then
   printf 'Android.bp: ridl-rt-kt-proto3 must have static_libs: ["ridl-rt-kt"]\n' >&2
   exit 1
 fi
