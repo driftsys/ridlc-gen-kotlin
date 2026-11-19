@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DynamicTest
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import org.junit.jupiter.api.io.TempDir
 import ridl.codegen.kotlin.Generator
@@ -18,6 +19,8 @@ import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import kotlin.io.path.createDirectories
+import kotlin.io.path.writeText
 
 /**
  * The transcode functions (#136): every corpus package whose `ridl.toml` sets
@@ -202,5 +205,42 @@ class TranscodeTest {
 
     private companion object {
         const val CAPACITY = 1 shl 16
+    }
+
+    /**
+     * Rust puts `#[allow(deprecated)]` on each transcode `impl`. A deprecated
+     * struct, and a struct with a deprecated field, must still give a
+     * `Transcode.kt` that compiles with warnings as errors.
+     */
+    @Test
+    fun `a deprecated type's transcode object compiles with warnings as errors`() {
+        val pkg = work.resolve("src-deprecated").createDirectories()
+        pkg.resolve("ridl.toml").writeText(
+            "[package]\nname = \"probe.deprecated\"\nversion = \"1.0.0\"\n\n" +
+                "[backend.kotlin]\nencodings = [\"flatbuffers\", \"podbuf\"]\ntranscode = true\n",
+        )
+        pkg.resolve("deprecated.ridl").writeText(
+            """
+            package probe.deprecated
+
+            /// @deprecated "use Fresh"
+            struct Stale {
+              level : integer [0..9]
+            }
+
+            struct Fresh {
+              /// @deprecated "no longer read"
+              legacy : integer [1..9] = 5
+              level : integer [0..9]
+            }
+            """.trimIndent(),
+        )
+        val request = Harness.capturedRequests(pkg, "deprecated", work).values.single().let(Wire::readRequest)
+        val response = Generator.generate(request)
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        val sources = response.filesList.associate { it.path to it.text }
+        assertTrue(sources.keys.any { it.endsWith("/Transcode.kt") }, sources.keys.toString())
+        val compiled = Compiler.compile(sources, work.resolve("compile-deprecated"))
+        assertTrue(compiled.ok, compiled.messages)
     }
 }
