@@ -10,6 +10,8 @@ import ridl.codegen.kotlin.Generator
 import ridl.codegen.kotlin.Wire
 import ridl.codegen.v1.ModelOuterClass.Model
 import java.nio.file.Path
+import kotlin.io.path.createDirectories
+import kotlin.io.path.writeText
 
 /**
  * docs/design.md §7 for `Types.kt`: for every corpus package, what the plugin
@@ -63,6 +65,46 @@ class TypesTest {
         val generated = generate("kt-values", facesOnly = true)
         assertTrue("kt/values/Faces.kt" in generated.sources, "kt-values faces must be compiled")
         val compiled = Compiler.compile(generated.sources, work.resolve("compile-kt-values-faces"))
+        assertTrue(compiled.ok, compiled.messages)
+    }
+
+    /**
+     * A deprecated declaration, field or enum value is still encoded, as Rust
+     * does under `#[allow(deprecated)]`: every generated file that names one
+     * compiles with warnings as errors, in each encoding and in the face.
+     */
+    @Test
+    fun `deprecated declarations and fields compile with warnings as errors`() {
+        val pkg = work.resolve("src-deprecated").createDirectories()
+        pkg.resolve("ridl.toml").writeText(
+            "[package]\nname = \"probe.deprecated\"\nversion = \"1.0.0\"\n\n" +
+                "[backend.kotlin]\nencodings = [\"flatbuffers\", \"podbuf\"]\n",
+        )
+        pkg.resolve("deprecated.ridl").writeText(
+            """
+            package probe.deprecated
+
+            /// @deprecated "use Fresh"
+            struct Stale {
+              level : integer [0..9]
+            }
+
+            struct Fresh {
+              /// @deprecated "no longer read"
+              legacy : integer [1..9] = 5
+              level : integer [0..9]
+            }
+
+            interface Pump {
+              command push(stale: Stale) @[..50ms]
+              command refresh(fresh: Fresh) @[..50ms]
+            }
+            """.trimIndent(),
+        )
+        val request = Harness.capturedRequests(pkg, "deprecated", work).values.single().let(Wire::readRequest)
+        val response = Generator.generate(request)
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        val compiled = Compiler.compile(response.filesList.associate { it.path to it.text }, work.resolve("compile-deprecated"))
         assertTrue(compiled.ok, compiled.messages)
     }
 
