@@ -1,0 +1,1 @@
+kt.proto3.Meter Proto3 reservations=[6, 12, 40, 0, 53, 626] maxBuffer=597 eventBuffer=12

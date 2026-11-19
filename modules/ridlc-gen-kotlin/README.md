@@ -57,7 +57,8 @@ keeps writing, equal to the bounded FlatBuffers state; a proto3 or a podbuf
 codec's is that encoding's size state of its declaration or its call. The proto3
 and podbuf states of `Payload.sizes`, `request_sizes` and `reply_sizes` are read
 only to skip an interface whose payload has no finite bound in that encoding,
-below.
+below. The conformance module holds every table to the Rust backend's
+(`FaceSizesTest`).
 
 ## Generated code on Android
 

@@ -150,6 +150,15 @@ refusals for range, UTF-8 and length. It also checks enum and enum-set map keys
 in hand-built models, since source syntax refuses those keys, and packed numeric
 input when the projection selects an unpacked writer.
 
+`FaceSizesTest` (#133) holds each face's size tables to the Rust backend's: for
+every public interface of every corpus package that selects an encoding, the
+compiled descriptor's `sizes(encoding)` in each encoding the package carries is
+the Rust descriptor's `Sizes<E>`, its `RESERVATIONS`, `MAX_BUFFER_SIZE` and
+`EVENT_SOURCE_BUFFER_SIZE`, which `just rust-verdicts` prints from the package's
+crate into `resources/sizes/<package>-rust-sizes.txt`: 27 tables over nine
+packages, the three encodings of `cabin` and `kt-values` among them. A proto3
+table built from the podbuf codecs turns it red.
+
 `SelectionTest` holds the selection rule (docs/design.md §4): the output of
 every corpus package, and of every package its build reaches, generated with
 `encodings` set to `flatbuffers` alone, has the digests in

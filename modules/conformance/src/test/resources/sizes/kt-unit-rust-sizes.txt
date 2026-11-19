@@ -1,0 +1,2 @@
+kt.unit.Climate FlatBuffers reservations=[43] maxBuffer=43 eventBuffer=0
+kt.unit.cluster.SpeedDisplay FlatBuffers reservations=[44] maxBuffer=0 eventBuffer=0

@@ -23,6 +23,12 @@ from the pinned tag, as `docs/k1b-flatbuffers-spike.md` describes:
    `modules/conformance/build/spike/`, and its output is compared with the
    committed file, or written over it with `--write`.
 
+`FaceSizesTest` compares each face's size tables with the Rust descriptors'
+`Sizes<E>` through
+`modules/conformance/src/test/resources/sizes/<package>-rust-sizes.txt`, one per
+corpus package with a public interface: a program over the package's crate
+prints each table, in every encoding the package selects.
+
 `DescriptorTest` compares `ridl-descriptor-kt` with the tag's
 `crates/ridl-descriptor` the same way (#142): a program over that crate, with
 the features `ridl-loopback` takes, verifies the descriptor corpus the test
@@ -57,6 +63,7 @@ VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "flatbuffers"
 DESCRIPTOR_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "descriptor"
 PODBUF_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "podbuf"
 PROTO3_VERDICTS = CONFORMANCE / "src" / "test" / "resources" / "proto3"
+SIZES = CONFORMANCE / "src" / "test" / "resources" / "sizes"
 SPIKE = CONFORMANCE / "build" / "spike"
 WORK = CONFORMANCE / "build" / "rust-verdicts"
 
@@ -255,6 +262,24 @@ fn main() {
 }
 """
 
+SIZES_MAIN = """// Prints the `Sizes<E>` table of each public interface descriptor of the
+// crate, in each encoding it has one for, as `FaceSizesTest` prints the
+// Kotlin face's.
+use ridl_rt::contract::Sizes;
+use ridl_rt::encoding::Encoding;
+
+fn table<I: Sizes<E>, E: Encoding>(name: &str, encoding: &str) {
+    println!(
+        "{name} {encoding} reservations={:?} maxBuffer={} eventBuffer={}",
+        I::RESERVATIONS, I::MAX_BUFFER_SIZE, I::EVENT_SOURCE_BUFFER_SIZE,
+    );
+}
+
+fn main() {
+TABLES
+}
+"""
+
 
 def descriptor_program(ridl_checkout):
     """The descriptor verdict program, over the tag's `ridl-descriptor` with the features `ridl-loopback` takes."""
@@ -388,6 +413,29 @@ def payload_types(crate_dir, encoding="FlatBuffers"):
     return types
 
 
+def size_tables(crate_dir):
+    """The public interface descriptors of the crate with a `Sizes<E>` table, as (`pkg.Iface`, encoding, Rust path)."""
+    tables = []
+    for f in sorted(crate_dir.glob("*.rs")):
+        if f.name == "lib.rs":
+            continue
+        pkg = f.stem
+        path = "::".join(pkg.split("."))
+        text = f.read_text()
+        for encoding, iface in re.findall(r"impl ::ridl_rt::contract::Sizes<::ridl_rt::encoding::(\w+)> for (\w+)", text):
+            # An internal interface's descriptor is `pub(crate)`: unreachable from the program.
+            if re.search(r"pub\(crate\) struct " + iface + r"\b", text):
+                continue
+            tables.append((f"{pkg}.{iface}", encoding, f"veh_crate::{path}::{iface}"))
+    return tables
+
+
+def sizes_main(tables):
+    """The size table program's `main.rs`: one line per table of [tables]."""
+    lines = [f'    table::<{path}, ridl_rt::encoding::{encoding}>("{name}", "{encoding}");' for name, encoding, path in tables]
+    return SIZES_MAIN.replace("TABLES", "\n".join(lines))
+
+
 def roundtrip_main(crate_dir, encoding="FlatBuffers"):
     """The round trip's `main.rs`: one arm per public payload of the crate under [encoding]."""
     arms = [f'        "{name}" => roundtrip::<{path}>(&b),' for name, path in payload_types(crate_dir, encoding)]
@@ -499,10 +547,18 @@ def main():
             if stray.name.removesuffix("-codec-rust-verdicts.txt") not in packages:
                 print(f"  {directory.name}/{stray.name}: no corpus package selects {directory.name}; delete it")
                 agree = False
+    tabled = set()
     for package in every:
         if package not in flatbuffers and package not in podbuf and package not in proto3:
             continue
         crate_dir = crate(ridl, package)
+        # The face's size tables in every encoding the package carries, which `FaceSizesTest` compares.
+        tables = size_tables(crate_dir)
+        if tables:
+            tabled.add(package)
+            binary = program(f"sizes-{package}", crate_dir, rt_version, source, sizes_main(tables))
+            output = run([binary], capture_output=True, text=True).stdout
+            agree &= compare(f"{package}-rust-sizes.txt", "".join(sorted(output.splitlines(keepends=True))), args.write, SIZES)
         if package in flatbuffers:
             binary = program(f"roundtrip-{package}", crate_dir, rt_version, source, roundtrip_main(crate_dir))
             output = run([binary], input=corpus(f"{package}-codec-corpus.txt"), capture_output=True, text=True).stdout
@@ -511,6 +567,11 @@ def main():
             agree &= sampled_verdicts(package, crate_dir, rt_version, source, "Proto3", PROTO3_VERDICTS, args.write)
         if package in podbuf:
             agree &= sampled_verdicts(package, crate_dir, rt_version, source, "Podbuf", PODBUF_VERDICTS, args.write)
+
+    for stray in sorted(SIZES.glob("*-rust-sizes.txt")):
+        if stray.name.removesuffix("-rust-sizes.txt") not in tabled:
+            print(f"  {SIZES.name}/{stray.name}: no corpus package has a public interface; delete it")
+            agree = False
 
     spike = program("cabin-vectors", WORK / "crate-cabin", rt_version, source, SPIKE_MAIN)
     golden = run([spike, "encode"], capture_output=True, text=True).stdout

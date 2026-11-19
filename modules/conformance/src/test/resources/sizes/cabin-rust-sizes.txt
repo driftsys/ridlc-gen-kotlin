@@ -1,0 +1,6 @@
+veh.cabin.Cabin FlatBuffers reservations=[43, 56, 43, 90] maxBuffer=46 eventBuffer=56
+veh.cabin.Cabin Podbuf reservations=[16, 16, 16, 32] maxBuffer=16 eventBuffer=16
+veh.cabin.Cabin Proto3 reservations=[6, 8, 6, 12] maxBuffer=6 eventBuffer=8
+veh.cabin.Horn FlatBuffers reservations=[46] maxBuffer=0 eventBuffer=0
+veh.cabin.Horn Podbuf reservations=[16] maxBuffer=0 eventBuffer=0
+veh.cabin.Horn Proto3 reservations=[2] maxBuffer=0 eventBuffer=0
