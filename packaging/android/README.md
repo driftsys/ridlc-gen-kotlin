@@ -6,15 +6,20 @@ The files that turn the runtime sources into a directory an Android source tree
 builds with Soong: `Android.bp`, `METADATA`, and this README. Each release
 attaches `ridl-rt-kt-<version>-android.tar.gz`, which `just vendor-package`
 builds from these files, the `src/main` sources of `ridl-rt-kt`,
-`ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback` and `ridl-descriptor-kt`, the
-root `LICENSE`, and an empty `MODULE_LICENSE_MIT`. The version and the date in
-`Android.bp` and `METADATA` are filled in from `gradle.properties` and the
-commit.
+`ridl-rt-kt-proto3`, `ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback` and
+`ridl-descriptor-kt`, the root `LICENSE`, and an empty `MODULE_LICENSE_MIT`. The
+version and the date in `Android.bp` and `METADATA` are filled in from
+`gradle.properties` and the commit.
 
 The package unpacks to one directory, `ridl-rt-kt-<version>/`. Put its contents
 at a path of the tree such as `external/ridl-rt-kt`, and depend on the libraries
 by name: `ridl-rt-kt`, `ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback` for tests,
-and `ridl-descriptor-kt`, which the loopback depends on.
+`ridl-descriptor-kt`, which the loopback depends on, and `ridl-rt-kt-proto3`.
+
+`ridl-rt-kt-proto3` provides the `ridl.rt.proto3` package and depends only on
+`ridl-rt-kt`. The plugin does not generate proto3 codecs yet, because it refuses
+a manifest that selects `proto3`, so no generated code uses this library today.
+An app does not need to list it.
 
 Two things are left to the tree:
 

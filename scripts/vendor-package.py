@@ -2,7 +2,7 @@
 """Builds build/vendor/ridl-rt-kt-<version>-android.tar.gz.
 
 The runtime sources as an Android tree vendors them (packaging/android/README.md):
-the committed sources of ridl-rt-kt, ridl-rt-kt-coroutines,
+the committed sources of ridl-rt-kt, ridl-rt-kt-proto3, ridl-rt-kt-coroutines,
 ridl-rt-kt-loopback and ridl-descriptor-kt, which the loopback's `Node` reads
 descriptors with, read with `git archive`, with the Android.bp, METADATA and
 README of packaging/android filled in, LICENSE, and an empty MODULE_LICENSE_MIT.
@@ -21,7 +21,7 @@ import tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "build" / "vendor"
-MODULES = ["ridl-rt-kt", "ridl-rt-kt-coroutines", "ridl-rt-kt-loopback", "ridl-descriptor-kt"]
+MODULES = ["ridl-rt-kt", "ridl-rt-kt-proto3", "ridl-rt-kt-coroutines", "ridl-rt-kt-loopback", "ridl-descriptor-kt"]
 TEMPLATES = ["Android.bp", "METADATA", "README.md"]
 
 
