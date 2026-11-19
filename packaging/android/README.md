@@ -34,5 +34,10 @@ it from a Gradle build, from the Maven artifact.
 
 ## Status
 
-`Android.bp` has not been built in an AOSP tree yet. The package itself is built
-and checked by `just vendor-package` in every run of the `jvm` CI job.
+`Android.bp` has not been built in an AOSP tree yet. `scripts/check-repo.sh`
+checks it with `scripts/check-vendor-package.py`. There must be one target per
+module that `MODULES` of `scripts/vendor-package.py` lists, building that
+module's sources. Its `static_libs` must be the module's Gradle `api` and
+`implementation` dependencies. Every run of the `jvm` CI job builds the package
+with `just vendor-package`, which reads the archive back and requires every
+source the packed `Android.bp` builds, and nothing else.

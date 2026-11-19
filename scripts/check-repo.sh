@@ -87,25 +87,8 @@ if [[ ! "$release" =~ ^editor-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-# Every Android library must be included in the vendor package.
-for module in ridl-rt-kt ridl-rt-kt-proto3 ridl-rt-kt-coroutines ridl-rt-kt-loopback ridl-descriptor-kt; do
-  if ! grep -Eq "^MODULES = \[.*\"$module\"" "$root_dir/scripts/vendor-package.py"; then
-    printf 'vendor package is missing module: %s\n' "$module" >&2
-    exit 1
-  fi
-  if ! grep -Fq "name: \"$module\"" "$root_dir/packaging/android/Android.bp" ||
-    ! grep -Fq "srcs: [\"$module/src/main/kotlin/**/*.kt\"]" "$root_dir/packaging/android/Android.bp"; then
-    printf 'Android.bp is missing module or sources: %s\n' "$module" >&2
-    exit 1
-  fi
-  printf 'checked vendor module: %s\n' "$module"
-done
-
-# ridl-rt-kt-proto3 depends only on ridl-rt-kt.
-proto3_libs=$(awk '/name: "ridl-rt-kt-proto3"/{f=1} f&&/^}/{exit} f&&/^[[:space:]]*static_libs:/{print}' "$root_dir/packaging/android/Android.bp")
-if [[ "$proto3_libs" != '    static_libs: ["ridl-rt-kt"],' ]]; then
-  printf 'Android.bp: ridl-rt-kt-proto3 must have static_libs: ["ridl-rt-kt"]\n' >&2
-  exit 1
-fi
+# The vendor package's modules, its Android.bp targets and their Gradle
+# dependencies agree (#189).
+python3 "$script_dir/check-vendor-package.py"
 
 printf 'repository check passed\n'

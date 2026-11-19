@@ -26,6 +26,7 @@ bench threads="1" filter="":
 # (packaging/android/README.md): build/vendor/ridl-rt-kt-<version>-android.tar.gz.
 vendor-package:
     python3 scripts/vendor-package.py
+    python3 scripts/check-vendor-package.py --package
 
 # install.sh end to end against a fixture release on the local disk: a fake
 # distribution and its SHA256SUMS, then a second install over the first, then
