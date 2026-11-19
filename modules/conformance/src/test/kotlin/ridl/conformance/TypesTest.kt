@@ -48,9 +48,11 @@ class TypesTest {
                 "Proto3Codec.kt".takeIf { "proto3" in encodings },
                 "PodbufCodec.kt".takeIf { "podbuf" in encodings },
             )
+            // `Transcode.kt` when it asks for it beside two encodings (#136).
+            val transcode = listOfNotNull("Transcode.kt".takeIf { Harness.transcode(name) && codecs.size > 1 })
             for (model in generated.models) {
                 val dir = model.name.dotted.replace('.', '/')
-                val expected = setOf("Types.kt") + codecs + if (model.interfacesCount > 0) setOf("Faces.kt") else emptySet()
+                val expected = setOf("Types.kt") + codecs + transcode + if (model.interfacesCount > 0) setOf("Faces.kt") else emptySet()
                 val kinds = generated.sources.keys.filter { it.substringBeforeLast('/') == dir }.map { it.substringAfterLast('/') }.toSet()
                 assertEquals(expected, kinds, "${model.name.dotted}: ${generated.sources.keys}")
             }

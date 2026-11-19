@@ -83,6 +83,12 @@ object Harness {
         return Regex(""""([^"]+)"""").findAll(list).map { it.groupValues[1] }.toList()
     }
 
+    /** Whether a corpus package's `ridl.toml` sets `transcode = true` for this plugin, in `[backend.kotlin]`. */
+    fun transcode(name: String): Boolean {
+        val kotlin = corpus.resolve(name).resolve("ridl.toml").readText().substringAfter("[backend.kotlin]", "").substringBefore("\n[")
+        return Regex("""(?m)^transcode\s*=\s*true\s*$""").containsMatchIn(kotlin)
+    }
+
     /**
      * Every request the pinned `ridl` writes to a plugin for the corpus
      * package, byte for byte, by the package each is for: the package itself

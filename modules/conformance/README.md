@@ -158,6 +158,22 @@ crate into `resources/sizes/<package>-rust-sizes.txt`, including the three
 encodings of `cabin` and `kt-values`. A proto3 table built from the podbuf
 codecs turns it red.
 
+The test of #136, `TranscodeTest`, holds the generated transcode functions to
+the Rust transcode functions of the pinned release, for every corpus package
+that sets `transcode = true`: `kt-values`, whose 10 public types with both codecs
+give 20 functions, `flatbuffersToPodbuf` and `podbufToFlatbuffers`. Each
+function transcodes `RoundTrip`'s samples of its source encoding, which must
+succeed; each sample cut to nothing, to half and to one byte short, and with
+each byte set to 0xFF, which `verify` may refuse; and each sample into an output
+of no byte, of half and of one byte short of what it wrote, which must be
+`Capacity`, and of exactly that, which must not. The 1,678 lines go through the
+Kotlin function and once through the Rust one, whose verdicts are checked in as
+`resources/transcode/<package>-transcode-rust-verdicts.txt`, and every verdict
+is Rust's: the same bytes, the same `Verify` error, and the same `Capacity` with
+the same `needed`. The script fails on a Rust transcode function the corpus does
+not reach. With `transcode` absent or `false`, no file of the package names a
+transcode function.
+
 `SelectionTest` holds the selection rule (docs/design.md §4): the output of
 every corpus package, and of every package its build reaches, generated with
 `encodings` set to `flatbuffers` alone, has the digests in
