@@ -4,10 +4,8 @@
 [RIDL](https://driftsys.github.io/ridl/) toolchain. `ridl build --plugin kotlin`
 runs it on each package and it writes Kotlin value objects, their FlatBuffers,
 proto3 or podbuf codecs, and the faces of each interface: the clients, the
-provider interface and the publisher. A package selecting proto3 gets no faces
-until [#133](https://github.com/driftsys/ridlc-gen-kotlin/issues/133) adds them.
-The generated code runs over `ridl-rt-kt`, the Kotlin runtime contract, and any
-runtime that implements it.
+provider interface and the publisher. The generated code runs over `ridl-rt-kt`,
+the Kotlin runtime contract, and any runtime that implements it.
 
 This book takes a `.ridl` package to a running Kotlin client and provider. It
 uses the cabin sample (`samples/cabin`) throughout:

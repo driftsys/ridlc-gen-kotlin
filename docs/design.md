@@ -225,8 +225,7 @@ is one `class ConstraintViolation(type, rule, value)` in `ridl-rt-kt`, mirroring
 **The codec, one per encoding the package selects.** The manifest's
 `[backend.kotlin] encodings` chooses the codecs, and the plugin generates
 exactly those: a codec for each encoding named and none for another, a face that
-serves those encodings (§5), except that a package naming proto3 gets no face
-until #133 adds proto3 faces. With no encoding named, it generates `Types.kt`
+serves those encodings (§5). With no encoding named, it generates `Types.kt`
 alone. FlatBuffers, proto3 and podbuf are supported: ridl projects proto3 into
 `Model.proto3` and podbuf into `Model.podbuf`. For every payload type of every
 interaction, and for every named type a payload reaches, the plugin emits one
@@ -388,23 +387,21 @@ and each binding checks it once, beside the catalog, throwing
 own: it reads the port's, and a face built over a port of an encoding its
 package does not carry is refused.
 
-**A face serves every encoding its package carries, except proto3** (#134,
-#133). A package naming proto3 gets no face and a warning until #133 adds proto3
-faces. With one supported face encoding, each use names that encoding's codec
-object, as the face did when FlatBuffers was the only codec. With several, each
-interaction's descriptor carries one codec per encoding, `flatBuffersCodec` and
-`podbufCodec`, and a query's descriptor one reply codec per encoding, and
-`codec(encoding)` and `replyCodec(encoding)` pick among them; every use picks
-the codec of its own port's encoding, and a stream's element, which no
-descriptor holds, picks it with a `when` over the carried encodings.
-`sizes(encoding)` gives the table of each carried encoding, built from that
-encoding's codecs' `maxSize`, and throws `IllegalArgumentException` for any
-other, so a binding's check accepts exactly the carried set. An interface with a
-call struct that the lowering induced, bounded in one carried encoding and not
-in another, is skipped with a warning, as the Rust backend skips it. Kotlin also
-skips an interface whose declared payload has no finite bound in a carried
-encoding, which the Rust backend does not check; the departure is recorded in
-`modules/ridlc-gen-kotlin/README.md`.
+**A face serves every encoding its package carries** (#134). With one encoding,
+each use names that encoding's codec object, as the face did when FlatBuffers
+was the only codec. With several, each interaction's descriptor carries one
+codec per encoding, `flatBuffersCodec`, `proto3Codec` and `podbufCodec`, and a
+query's descriptor one reply codec per encoding, and `codec(encoding)` and
+`replyCodec(encoding)` pick among them; every use picks the codec of its own
+port's encoding, and a stream's element, which no descriptor holds, picks it
+with a `when` over the carried encodings. `sizes(encoding)` gives the table of
+each carried encoding, built from that encoding's codecs' `maxSize`, and throws
+`IllegalArgumentException` for any other, so a binding's check accepts exactly
+the carried set. An interface with a call struct that the lowering induced,
+bounded in one carried encoding and not in another, is skipped with a warning,
+as the Rust backend skips it. Kotlin also skips an interface whose declared
+payload has no finite bound in a carried encoding, which the Rust backend does
+not check; the departure is recorded in `modules/ridlc-gen-kotlin/README.md`.
 
 **A call sends one named type** (driftsys/ridl#713, ADR-0023 decisions 2 and 6
 as amended 2026-10-13). A command or query with exactly one parameter of a named
@@ -495,7 +492,7 @@ Gradle, Kotlin DSL, one settings file, every module under `modules/`, all JVM:
 | -------------------------------- | ------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `modules/ridlc-gen-kotlin`       | JVM application, `shadow` | `protobuf-kotlin`, `protobuf-java-util`, `kotlinpoet`        | the reader (§2), the generators (§4, §5), the AIDL templates, the `main`; builds the `ridlc-gen-kotlin` executable                                                                                   |
 | `modules/ridl-rt-kt`             | JVM library               | nothing                                                      | §3                                                                                                                                                                                                   |
-| `modules/ridl-rt-kt-proto3`      | JVM library               | `ridl-rt-kt`                                                 | the shared proto3 reader and writer, a hand-written port of `ridl_rt::proto3`, under the generated proto3 codec; no face yet                                                                         |
+| `modules/ridl-rt-kt-proto3`      | JVM library               | `ridl-rt-kt`                                                 | the shared proto3 reader and writer, a hand-written port of `ridl_rt::proto3`, under the generated proto3 codec                                                                                      |
 | `modules/ridl-rt-kt-loopback`    | JVM library               | `ridl-rt-kt`, `ridl-descriptor-kt`                           | the in-process runtime: every port over a queue and a map, no IO; the mirror of `crates/ridl-loopback` and the runtime every test runs over; `Node`, a machine's stores from a deployment descriptor |
 | `modules/ridl-rt-kt-coroutines`  | JVM library               | `ridl-rt-kt`, `kotlinx-coroutines-core`                      | §5's adapter, O-K3                                                                                                                                                                                   |
 | `modules/ridl-rt-kt-conformance` | JVM library               | `ridl-rt-kt`, `junit-jupiter-api`                            | the port contract suite, which any Kotlin runtime, the loopback and the Binder runtime included, runs from its own tests                                                                             |
@@ -660,8 +657,7 @@ Each decision names the alternative it rejected.
   Disposed: FlatBuffers with a verifier in `ridl-rt-kt` (§4), after K1b's spike
   ([`k1b-flatbuffers-spike.md`](k1b-flatbuffers-spike.md);
   driftsys/ridlc-gen-kotlin#65). K6 adds podbuf beside it (#134), and proto3
-  since ridl projects it into `Model.proto3` (#133); the face does not carry
-  proto3 yet.
+  since ridl projects it into `Model.proto3` (#133).
 - **O-K2. The `kotlin-package` default.** The ridl package's dotted name
   (`veh.cabin`) is a legal Kotlin package and the natural default, but a
   consumer who already owns `veh.*` on the JVM may want a prefix. The option
