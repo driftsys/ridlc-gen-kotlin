@@ -656,6 +656,21 @@ class FacesEmitterTest {
     }
 
     @Test
+    fun `an interface of a package that carries proto3 is skipped with a warning`() {
+        // #133: the face's proto3 arms are task 6; until then the interface is skipped, whatever else the package carries.
+        for (encodings in listOf(listOf(WireEncoding.Proto3), listOf(WireEncoding.FlatBuffers, WireEncoding.Proto3))) {
+            val declared = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
+            declared.getSlotsBuilder(0).interactionBuilder.commandBuilder.setRequest(levelPayload())
+            val emitted = FacesEmitter(demo().addDeclarations(scalar("Level")).addInterfaces(declared).build(), Options("kt.demo", encodings)).emit()
+            assertNull(emitted.text, "$encodings")
+            assertEquals(
+                listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: the Kotlin face does not carry the proto3 encoding yet (#133)"),
+                emitted.warnings,
+            )
+        }
+    }
+
+    @Test
     fun `a podbuf-only package with an interface gets its face`() {
         val request = Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA)
             .addOptions(Plugin.BackendOption.newBuilder().setKey("encodings").setValue("podbuf"))

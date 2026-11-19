@@ -2,9 +2,16 @@ package ridl.codegen.kotlin
 
 import ridl.codegen.v1.Plugin.CodegenRequest
 
-/** The encodings a codec can be generated for (docs/design.md §4, O-K1). */
+/**
+ * The encodings a codec can be generated for (docs/design.md §4, O-K1), in
+ * the Rust backend's order: its `WireEncoding`, the order it emits codecs and
+ * `Sizes<E>` tables in (`descriptors.rs`), and the encoding tags 1, 2 and 3.
+ * The face sorts the encodings it carries by this order, so its size tables
+ * follow Rust's whatever the manifest's order (#133).
+ */
 enum class WireEncoding(val key: String) {
     FlatBuffers("flatbuffers"),
+    Proto3("proto3"),
     Podbuf("podbuf"),
 }
 
@@ -36,7 +43,7 @@ data class Options(
 
         private val IDENTIFIER = Regex("[\\p{L}_][\\p{L}\\p{Nd}_]*")
 
-        /** The encoding names the family knows (ADR-0020), whether or not this plugin has a codec for one. */
+        /** The encoding names the family knows (ADR-0020), each one this plugin has a codec for. */
         private const val ENCODING_NAMES: String = "`flatbuffers`, `proto3` and `podbuf`"
 
         fun parse(request: CodegenRequest): Parsed {
@@ -64,8 +71,7 @@ data class Options(
         /**
          * The `encodings` value as the host sends it, the manifest's names
          * joined by `,`, read as the Rust backend reads it: an empty element,
-         * a name given twice, an encoding with no Kotlin codec, and a name
-         * that is no encoding are each refused.
+         * a name given twice and a name that is no encoding are each refused.
          */
         private fun parseEncodings(value: String, messages: MutableList<String>): List<WireEncoding> {
             val encodings = mutableListOf<WireEncoding>()
@@ -77,7 +83,6 @@ data class Options(
                     encoding in encodings -> messages +=
                         "$PLUGIN: `$ENCODINGS` names `$name` twice; each encoding is named once"
                     encoding != null -> encodings += encoding
-                    name == "proto3" -> messages += "$PLUGIN: the Kotlin plugin has no `$name` codec"
                     else -> messages +=
                         "$PLUGIN: `$ENCODINGS` names `$name`, which is not an encoding; the names are $ENCODING_NAMES"
                 }

@@ -7,6 +7,7 @@ import ridl.codegen.kotlin.types.FacesEmitter
 import ridl.codegen.kotlin.types.InstancesEmitter
 import ridl.codegen.kotlin.types.Links
 import ridl.codegen.kotlin.types.PodbufCodecEmitter
+import ridl.codegen.kotlin.types.Proto3CodecEmitter
 import ridl.codegen.kotlin.types.TypesEmitter
 import ridl.codegen.kotlin.types.collisions
 import ridl.codegen.v1.Plugin.Diagnostic
@@ -60,6 +61,7 @@ object Generator {
         // One codec per encoding the package names (docs/design.md §4).
         val codecs = listOfNotNull(
             if (WireEncoding.FlatBuffers in options.encodings) CodecEmitter(request.model, options).emit() else null,
+            if (WireEncoding.Proto3 in options.encodings) Proto3CodecEmitter(request.model, options).emit() else null,
             if (WireEncoding.Podbuf in options.encodings) PodbufCodecEmitter(request.model, options).emit() else null,
         )
         val faces = FacesEmitter(request.model, options, links).emit()

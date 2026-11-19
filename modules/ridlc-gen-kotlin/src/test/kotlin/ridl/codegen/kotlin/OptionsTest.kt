@@ -63,10 +63,25 @@ class OptionsTest {
     }
 
     @Test
-    fun `proto3 is still refused, naming it`() {
-        assertEquals(listOf("$PLUGIN: the Kotlin plugin has no `proto3` codec"), refused(Options.parse(request("encodings" to "proto3"))))
-        assertTrue("no `proto3` codec" in refused(Options.parse(request("encodings" to "flatbuffers,proto3")))[0])
-        assertTrue("no `proto3` codec" in refused(Options.parse(request("encodings" to "podbuf,proto3")))[0])
+    fun `proto3 is accepted, alone and beside the others, in manifest order`() {
+        assertEquals(
+            Options.Parsed.Ok(Options("veh.cabin", listOf(WireEncoding.Proto3))),
+            Options.parse(request("encodings" to "proto3")),
+        )
+        assertEquals(
+            listOf(WireEncoding.Podbuf, WireEncoding.Proto3, WireEncoding.FlatBuffers),
+            (Options.parse(request("encodings" to "podbuf,proto3,flatbuffers")) as Options.Parsed.Ok).options.encodings,
+        )
+    }
+
+    @Test
+    fun `the encodings are ordered as Rust orders its codecs and size tables`() {
+        assertEquals(listOf(WireEncoding.FlatBuffers, WireEncoding.Proto3, WireEncoding.Podbuf), WireEncoding.entries)
+    }
+
+    @Test
+    fun `proto3 named twice is refused`() {
+        assertTrue("names `proto3` twice" in refused(Options.parse(request("encodings" to "proto3,proto3")))[0])
     }
 
     @Test

@@ -13,15 +13,16 @@ licensed under the root [MIT License](../../LICENSE).
 ## Status
 
 Stages K2a to K3a and K6: the reader, the launcher, the schema refusal, the
-option parsing, and up to five files per package in its `kotlin-package`,
-emitted with KotlinPoet from the request's model: `Types.kt`, the value objects
-of §4; `Codec.kt`, their FlatBuffers codec, and `PodbufCodec.kt`, their podbuf
-codec (#134), each when the package's `encodings` names its encoding; and
-`Faces.kt`, the interaction face of §5 for every declared interface, with its
-clients and `serve`, over every encoding the package carries. With a deployment
-section in the request, one more file, `Instances.kt`, holds the system's
-instance numbers (#137). No AIDL is generated; the last section below says why.
-`just dist` builds the distribution, and
+option parsing, and up to six files per package in its `kotlin-package`, emitted
+with KotlinPoet from the request's model: `Types.kt`, the value objects of §4;
+`Codec.kt`, their FlatBuffers codec, `Proto3Codec.kt`, their proto3 codec
+(#133), and `PodbufCodec.kt`, their podbuf codec (#134), each when the package's
+`encodings` names its encoding; and `Faces.kt`, the interaction face of §5 for
+every declared interface, with its clients and `serve`, over every encoding the
+package carries, proto3 not yet (below). With a deployment section in the
+request, one more file, `Instances.kt`, holds the system's instance numbers
+(#137). No AIDL is generated; the last section below says why. `just dist`
+builds the distribution, and
 `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 
 A declaration the plugin cannot spell in Kotlin is refused with one error
@@ -47,17 +48,16 @@ release (`modules/conformance/ridl-release`). It refuses a model from an older
 ridl that carries only the deprecated pattern fields; it does not interpret
 those fields as match clauses.
 
-The plugin ignores three parts of ridl's schema (#31, #133). The request's
+The plugin ignores two parts of ridl's schema (#31). The request's
 deployment section (`CodegenRequest.deployment`) is for a backend that lays out
 memory for one deployment, and this one lays out none. The model's `reservation`
 and `table_budget` are not read either: a descriptor's size table is built from
 its codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
 `MAX_SIZE`. A FlatBuffers codec's is `Payload.flatbuffers_max_size`, which ridl
-keeps writing, equal to the bounded FlatBuffers state; a podbuf codec's is the
-podbuf size state of its declaration or its call. The podbuf states of
-`Payload.sizes`, `request_sizes` and `reply_sizes` are read only to skip an
-interface whose payload has no finite podbuf bound, below. The third part is
-`Model.proto3` (`Proto3Projection`), which is ignored until #133 reads it.
+keeps writing, equal to the bounded FlatBuffers state; a proto3 or a podbuf
+codec's is that encoding's size state of its declaration or its call. The podbuf
+states of `Payload.sizes`, `request_sizes` and `reply_sizes` are read only to
+skip an interface whose payload has no finite podbuf bound, below.
 
 ## Generated code on Android
 
@@ -81,15 +81,20 @@ why, and how the rule was last checked; CI does not check it.
 - **`-classpath`, not `-jar`.** The Shadow start script runs the main class with
   the fat jar as the class path rather than `java -jar`; the effect is the same,
   and the script still ends in `exec "$JAVACMD" "$@"`.
-- **`encodings`** accepts `flatbuffers` and `podbuf`, alone or together, in
-  either order: O-K1 is disposed on FlatBuffers with a verifier (#65), and
-  podbuf joins it (#134). `proto3` is refused, naming it, until #133 reads the
-  model's `Proto3Projection`. The plugin generates a codec for exactly the
-  encodings named, and the face serves exactly those (docs/design.md §4, §5).
-  With no `encodings` option the package is `Types.kt` alone, with no codec and
-  no face, as every backend of the family generates it since ridl 0.9 (#83); the
-  cabin sample names `flatbuffers` in `[backend.kotlin]`. ridl 0.9 sends
-  `encodings` and never `wire-encoding`, which the plugin no longer reads.
+- **`encodings`** accepts `flatbuffers`, `proto3` and `podbuf`, alone or
+  together, in any order: O-K1 is disposed on FlatBuffers with a verifier (#65),
+  podbuf joins it (#134), and proto3 since ridl projects it into `Model.proto3`
+  (#133). The plugin generates a codec for exactly the encodings named, and the
+  face serves exactly those (docs/design.md §4, §5), except proto3, which the
+  face does not carry yet: an interface of a package that names `proto3` gets no
+  face, with a warning (`Faces.kt`, below). `WireEncoding` lists the three in
+  the Rust backend's order — FlatBuffers, proto3, podbuf, its codec and
+  `Sizes<E>` order and the encoding tags 1, 2 and 3 — which is the order the
+  face sorts what it carries by. With no `encodings` option the package is
+  `Types.kt` alone, with no codec and no face, as every backend of the family
+  generates it since ridl 0.9 (#83); the cabin sample names `flatbuffers` in
+  `[backend.kotlin]`. ridl 0.9 sends `encodings` and never `wire-encoding`,
+  which the plugin no longer reads.
 - **Every reference goes through `Model.declarationOf`** (`Refs.kt`), which
   refuses a reference whose `TypeRef.foreign` disagrees with its package, or
   whose index is past its table, with a diagnostic naming the reference, where
@@ -231,6 +236,46 @@ to that over 19,023 buffers (`CodecTest`).
   it cannot judge — gets no codec, and the file's header names it, as the Rust
   codec writes a `__RIDL_FB_NO_CODEC_*` note.
 
+### `Proto3Codec.kt`
+
+`Proto3Codec.kt` is the Rust proto3 codec (`codec_proto3.rs` of ridl `main`,
+driftsys/ridl#1420) spelled in Kotlin, over `ridl-rt-kt-proto3`'s
+`ridl.rt.proto3`: one `<Type>Proto3Codec` object implementing `Payload` per
+struct, union and root box of the projection (a named scalar, an enum or an enum
+set as `<Name>Box { value = 1 }`) and per tuple a call sends on its own, and
+`internal` length, encode, verify and decode helpers per message, which another
+package's codec calls for a message it nests. Its view is the runtime's
+`Verified`. The codec computes no layout: every field number, wire type, packing
+and `default_is_legal` is read from the model's `Proto3Projection`, and
+`Proto3WireType` is mapped to the runtime's `WireType` by name, never shifted
+into a tag. Its writer writes Rust's canonical form, its reader reaches Rust's
+verdicts in Rust's order, and `encode` sizes the value first and throws
+`EncodeError.Capacity` with the exact `needed` before any byte is written. The
+conformance module holds it to that over 11,481 buffers (`Proto3CodecTest`).
+Only a package that names `proto3` depends on `ridl.rt.proto3`; a
+FlatBuffers-only package's output names neither.
+
+A package is refused, with no file written, as the Rust codec refuses it: a
+model with no proto3 projection, a declaration the projection refuses
+("`<pkg>.<Name>` has no proto3 codec: <the projection's message>"), and a
+declaration whose `Declaration.proto3` size state is not bounded, since every
+struct, union and root box gets a codec.
+
+- **A proto3 bound of 2^31 bytes or more refuses the package**, as in
+  `PodbufCodec.kt`: `Payload.maxSize` is an `Int`, Rust's `MAX_SIZE` a `usize`.
+  The length helpers count in a `Long`, and `encode` reports a length past
+  `Int.MAX_VALUE` as that, where Rust saturates at `usize::MAX`.
+- **`encode` refuses an unpaired surrogate** as `Codec.kt` does, as `Utf8`,
+  before an anonymous string's length check.
+- **`encode` checks no map key twice.** The Rust encoder refuses a map value
+  holding one key twice; a Kotlin `Map` holds each key once, and two keys are
+  equal in Kotlin exactly when their wire values are, so no map can. `verify`
+  refuses a repeated key with `Unique`, as Rust's does.
+- **An open enum set's range is its proto3 scalar's.** `encode` refuses an open
+  enum set's bits outside the `uint32` or `sint32` its width maps to, as the
+  Rust `encode_check` does, not outside its FlatBuffers width, which `wireBits`
+  checks for the other codecs.
+
 ### `PodbufCodec.kt`
 
 `PodbufCodec.kt` is the Rust podbuf codec (`codec_podbuf.rs` of
@@ -312,6 +357,14 @@ encodings. The tables are `FLATBUFFERS_SIZES` and `PODBUF_SIZES`, in that order
 whatever the manifest's, as Rust orders its `Sizes<E>` implementations. A
 `SignalReader` states no encoding, so with several encodings `bindChecks` takes
 the client's port's as a second argument.
+
+- **No face for an interface of a package that names `proto3`** (#133, task 6).
+  Its size tables, its codec choice and its stream elements name FlatBuffers and
+  podbuf alone, so the interface is skipped with the warning "interface
+  `<pkg>.<Iface>` has no generated face: the Kotlin face does not carry the
+  proto3 encoding yet (#133)", as an interface the face cannot carry is,
+  whatever else the package names. The package's codecs, the proto3 codec of the
+  struct a call induces among them, are still generated.
 
 Since ridl 0.6.0 (driftsys/ridl#752) every `command`, `query` and `raise` the
 face sends passes `null` as its trace context, as the Rust face passes `None`;
