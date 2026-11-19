@@ -68,10 +68,14 @@ and adds `Rule.Utf8`, `Transport.Interrupted`, `EncodeError.Contract`,
 `StreamNo`, `StreamForm`, `StreamInfo`, `Member.streams`, `REPLY_STREAM`, the
 `Stream` and `ClaimStream` interests, and the `rateFloor` and `stalenessBound`
 accessors. The variants of an encoding Kotlin has no codec for are mirrored all
-the same, so a `when` over them stays the Rust one. `TranscodeError` has no
-Kotlin item: nothing here transcodes. `ridl_rt::proto3` has a Kotlin port in the
-optional `ridl-rt-kt-proto3` module. `ridl_rt::podbuf` is `ridl.rt.podbuf` since
-stage K6, below.
+the same, so a `when` over them stays the Rust one. `ridl_rt::proto3` has a
+Kotlin port in the optional `ridl-rt-kt-proto3` module. `ridl_rt::podbuf` is
+`ridl.rt.podbuf` since stage K6, below.
+
+`TranscodeError` and `transcode`, the domain-mediated re-encoding a generated
+`<Type>Transcode` object calls (driftsys/ridlc-gen-kotlin#136), are in
+`ridl.rt.payload`: verify under the source codec, decode, encode under the
+target codec. `TranscodeTest` is `payload.rs`'s transcode tests, case for case.
 
 ridl 0.15 adds the stream ports (driftsys/ridl#1154), `StreamCaller` and
 `StreamHandler` with `Pull` and `PushError`, and `Table`'s stream wakers,
@@ -173,6 +177,15 @@ check compiled this module, `ridl-rt-kt-loopback`, `ridl-rt-kt-coroutines`,
   `decode` takes, and an `encoding` property. Taking the view is how a value is
   decoded only from checked bytes, the guarantee Rust's `Ref` proof gives; `Ref`
   and `Encoded` have no Kotlin spelling.
+- **`transcode(source, target, bytes, out)`** takes the two codecs as values,
+  where Rust names the type and the two encodings as type parameters
+  (`transcode::<T, S, D>`), and returns the number of bytes written, as
+  `Payload.encode` does, where Rust returns a `Ref` over them: Kotlin has no
+  `Ref`, and the bytes are those from `out`'s position before the call. It
+  throws `TranscodeError` where Rust returns it, and `TranscodeError` has no
+  `From` conversions, as `ClientError` has none. Rust's enum is
+  `non_exhaustive`; a Kotlin sealed class cannot say so, and a variant added
+  later breaks a `when` that names both.
 - **`Command.require`, `Query.require` and `Query.ensure` return `Boolean`**
   where Rust returns `Result<(), ()>`.
 - **`ConstraintViolation`** (§4) is Kotlin's own, with no Rust item.

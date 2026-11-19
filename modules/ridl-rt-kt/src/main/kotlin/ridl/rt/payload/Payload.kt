@@ -23,6 +23,35 @@ public fun <T, V> check(codec: Payload<T, V>, bytes: ByteBuffer) {
 }
 
 /**
+ * Re-encodes the payload [bytes] from the [source] codec's encoding into the
+ * [target] codec's: verifies the bytes from [bytes]' position to its limit
+ * under [source], decodes the value, and encodes it under [target] into [out]
+ * from its position, which advances past the bytes written. Returns their
+ * number, as [Payload.encode] does. `ridl_rt::payload::transcode`.
+ *
+ * This is the domain-mediated reference path; a generated function that calls
+ * it may later replace its body with a faster one that gives the same result.
+ * The input has verified under [source] when the encode runs, so an
+ * [EncodeError.Contract] means the two codecs disagree on a typl constraint.
+ *
+ * @throws TranscodeError.Verify when [bytes] do not verify under [source].
+ * @throws TranscodeError.Encode when the value does not encode under [target],
+ *   [EncodeError.Capacity] when [out] has too few bytes remaining.
+ */
+public fun <T, V> transcode(source: Payload<T, V>, target: Payload<T, *>, bytes: ByteBuffer, out: ByteBuffer): Int {
+    val value = try {
+        source.decode(source.verify(bytes))
+    } catch (e: VerifyError) {
+        throw TranscodeError.Verify(e)
+    }
+    return try {
+        target.encode(value, out)
+    } catch (e: EncodeError) {
+        throw TranscodeError.Encode(e)
+    }
+}
+
+/**
  * The codec of one payload type [T] in one [encoding].
  * `ridl_rt::payload::Payload<E>`.
  *
@@ -102,6 +131,15 @@ public sealed class VerifyError(message: String) : RidlError(message) {
      * constraint: `INVALID_VALUE`, ridl §10.2.
      */
     public data class Contract(public val violation: Violation) : VerifyError("INVALID_VALUE: $violation")
+}
+
+/** Why a [transcode] failed. `ridl_rt::payload::TranscodeError`. */
+public sealed class TranscodeError(message: String) : RidlError(message) {
+    /** The input bytes did not verify under the source encoding. */
+    public data class Verify(public val error: VerifyError) : TranscodeError("the input did not verify: ${error.message}")
+
+    /** The decoded value did not encode under the target encoding. */
+    public data class Encode(public val error: EncodeError) : TranscodeError("the value did not encode: ${error.message}")
 }
 
 /** How the bytes of an encoding are malformed. `ridl_rt::payload::Malformed`. */
