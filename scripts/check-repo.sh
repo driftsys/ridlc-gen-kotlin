@@ -87,4 +87,18 @@ if [[ ! "$release" =~ ^editor-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
+# Every Android library must be included in the vendor package.
+for module in ridl-rt-kt ridl-rt-kt-proto3 ridl-rt-kt-coroutines ridl-rt-kt-loopback ridl-descriptor-kt; do
+  if ! grep -Fq "\"$module\"" "$root_dir/scripts/vendor-package.py"; then
+    printf 'vendor package is missing module: %s\n' "$module" >&2
+    exit 1
+  fi
+  if ! grep -Fq "name: \"$module\"" "$root_dir/packaging/android/Android.bp" ||
+    ! grep -Fq "srcs: [\"$module/src/main/kotlin/**/*.kt\"]" "$root_dir/packaging/android/Android.bp"; then
+    printf 'Android.bp is missing module or sources: %s\n' "$module" >&2
+    exit 1
+  fi
+  printf 'checked vendor module: %s\n' "$module"
+done
+
 printf 'repository check passed\n'
