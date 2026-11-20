@@ -45,8 +45,18 @@ private val VIOLATION = ClassName("ridl.rt.payload", "Violation")
 private val CONSTRAINT_VIOLATION = ClassName("ridl.rt.payload", "ConstraintViolation")
 private val REGEX = ClassName("kotlin.text", "Regex")
 
-/** What [TypesEmitter.emit] produced: the file, or the refusals that replace it; and the package-level names it takes. */
-class EmittedTypes(val path: String, val text: String?, val errors: List<String>, val claims: List<Claim> = emptyList())
+/**
+ * What [TypesEmitter.emit] produced: the file, or the refusals that replace
+ * it; the package-level names it takes; and, for a codec emitter, the types
+ * it wrote a `Payload` object for, in the order it wrote them.
+ */
+class EmittedTypes(
+    val path: String,
+    val text: String?,
+    val errors: List<String>,
+    val claims: List<Claim> = emptyList(),
+    val owners: List<PayloadOwner> = emptyList(),
+)
 
 /**
  * `Types.kt`: the value objects of one package (docs/design.md §4), written

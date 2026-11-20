@@ -34,6 +34,7 @@ import ridl.rt.payload.EncodeError
 import ridl.rt.payload.Malformed
 import ridl.rt.payload.Payload
 import ridl.rt.payload.Rule
+import ridl.rt.payload.TranscodeError
 import ridl.rt.payload.VerifyError
 import ridl.rt.payload.Violation
 import ridl.rt.port.Attached
@@ -214,6 +215,7 @@ class CorrespondenceTest {
         ),
         Row("ridl_rt::payload::Violation", Violation::class, members = listOf("type_name", "rule")),
         Row("ridl_rt::payload::Rule", Rule::class, variants = listOf("Range", "Step", "Length", "Pattern", "Variant", "Unique", "Utf8")),
+        Row("ridl_rt::payload::TranscodeError", TranscodeError::class, variants = listOf("Verify", "Encode")),
         // flatbuffers: the free reading functions are `Reader`'s methods, Kotlin's own.
         Row(
             "ridl_rt::flatbuffers::Builder", ridl.rt.flatbuffers.Builder::class,

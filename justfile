@@ -104,15 +104,15 @@ compliance:
     ./gradlew :conformance:test :ridl-rt-kt-conformance:test :ridl-rt-kt-loopback:test
     python3 scripts/compliance-report.py
 
-# The Rust codec and descriptor verdicts of the conformance module, regenerated
-# from the pinned ridl release and compared with the committed files (#39,
-# #142, #133); needs cargo,
+# The Rust codec, transcode and descriptor verdicts of the conformance module,
+# regenerated from the pinned ridl release and compared with the committed files
+# (#39, #136, #142, #133); needs cargo,
 # git and python3. `just rust-verdicts --write` writes them instead. The test
 # run writes the corpus the Rust programs read; its own verdict is the jvm job's.
 rust-verdicts *args:
     rm -f modules/conformance/build/spike/*.txt
     ./gradlew -q :conformance:installRidl
-    -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.PodbufCodecTest --tests ridl.conformance.Proto3CodecTest --tests ridl.conformance.SpikeTest --tests ridl.conformance.DescriptorTest
+    -./gradlew -q :conformance:test --rerun --tests ridl.conformance.CodecTest --tests ridl.conformance.PodbufCodecTest --tests ridl.conformance.Proto3CodecTest --tests ridl.conformance.TranscodeTest --tests ridl.conformance.SpikeTest --tests ridl.conformance.DescriptorTest
     python3 scripts/rust-verdicts.py {{args}}
 
 # Serve the book (docs/book) locally, rebuilding on each change.

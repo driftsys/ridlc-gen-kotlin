@@ -17,7 +17,16 @@ the output directory, `veh/cabin/` for package `veh.cabin`:
 | `Codec.kt`       | the FlatBuffers codec of each payload: `encode`, `verify` and `decode`                          |
 | `Proto3Codec.kt` | the proto3 codec of each payload, the same three functions                                      |
 | `PodbufCodec.kt` | the podbuf codec of each payload, the same three functions                                      |
+| `Transcode.kt`   | functions that transcode payloads between selected encodings                                    |
+| `Instances.kt`   | instance numbers from the deployment section                                                    |
 | `Faces.kt`       | per interface: its descriptor, the clients, the provider interface, the publisher, `serve`      |
+
+`Instances.kt` is written when the request's deployment section gives at least
+one instance a nonzero number. Setting `transcode = true` under
+`[backend.kotlin]` enables `Transcode.kt`; it needs two or more encodings and a
+payload type with codecs in at least two of them. The option accepts `true` or
+`false`, defaults to `false`, and the last value wins. Each object has one
+function per ordered pair of its codecs.
 
 The manifest chooses the codecs: `encodings` under `[backend.kotlin]` in
 `ridl.toml` names `flatbuffers`, `proto3` and `podbuf`, in any combination, and

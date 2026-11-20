@@ -16,9 +16,9 @@ enum class WireEncoding(val key: String) {
 }
 
 /**
- * The backend options this plugin reads (docs/design.md §2, step 3). Two keys
- * are known; any other key is an error diagnostic, as every in-tree backend
- * answers one.
+ * The backend options this plugin reads (docs/design.md §2, step 3). Three
+ * keys are known; any other key is an error diagnostic, as every in-tree
+ * backend answers one.
  */
 data class Options(
     /** `kotlin-package`: where the generated files are placed. Default: the ridl package's dotted name (O-K2). */
@@ -30,6 +30,12 @@ data class Options(
      * generates it (#83, driftsys/ridl#851).
      */
     val encodings: List<WireEncoding>,
+    /**
+     * `transcode`: whether `Transcode.kt` is generated, as the manifest's
+     * `[backend.kotlin] transcode = true` asks (#136). Default: `false`, and
+     * no transcode object is generated.
+     */
+    val transcode: Boolean = false,
 ) {
     sealed interface Parsed {
         data class Ok(val options: Options) : Parsed
@@ -40,6 +46,7 @@ data class Options(
     companion object {
         const val KOTLIN_PACKAGE: String = "kotlin-package"
         const val ENCODINGS: String = "encodings"
+        const val TRANSCODE: String = "transcode"
 
         private val IDENTIFIER = Regex("[\\p{L}_][\\p{L}\\p{Nd}_]*")
 
@@ -50,6 +57,7 @@ data class Options(
             val messages = mutableListOf<String>()
             var kotlinPackage = request.model.name.dotted
             var encodings: List<WireEncoding>? = null
+            var transcode = false
             for (option in request.optionsList) {
                 when (option.key) {
                     KOTLIN_PACKAGE ->
@@ -60,11 +68,17 @@ data class Options(
                                 "which is not a Kotlin package name"
                         }
                     ENCODINGS -> encodings = parseEncodings(option.value, messages)
+                    // The Rust backend's reading: `true` or `false`, the last one given wins.
+                    TRANSCODE -> when (option.value) {
+                        "true" -> transcode = true
+                        "false" -> transcode = false
+                        else -> messages += "$PLUGIN: `$TRANSCODE` is `${option.value}`; the value is `true` or `false`"
+                    }
                     else -> messages += "$PLUGIN: unknown option `${option.key}`; " +
-                        "the known options are `$KOTLIN_PACKAGE` and `$ENCODINGS`"
+                        "the known options are `$KOTLIN_PACKAGE`, `$ENCODINGS` and `$TRANSCODE`"
                 }
             }
-            val options = Options(kotlinPackage, encodings ?: emptyList())
+            val options = Options(kotlinPackage, encodings ?: emptyList(), transcode)
             return if (messages.isEmpty()) Parsed.Ok(options) else Parsed.Refused(messages)
         }
 

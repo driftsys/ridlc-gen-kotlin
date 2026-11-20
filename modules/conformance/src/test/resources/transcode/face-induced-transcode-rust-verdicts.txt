@@ -1,0 +1,2236 @@
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:d7fd6bfa574fd1ba
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Encode(Capacity { needed: 2, available: 0 })
+err:Encode(Capacity { needed: 2, available: 1 })
+ok:21a450ca63e67318
+ok:5decf26db9765413
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+ok:5decf26db9765413
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:5decf26db9765413
+ok:500cb26d111e2382
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+ok:500cb26d111e2382
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:500cb26d111e2382
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:21a450ca63e67318
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Encode(Capacity { needed: 2, available: 0 })
+err:Encode(Capacity { needed: 2, available: 1 })
+ok:21a450ca63e67318
+ok:5decf26db9765413
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:5decf26db9765413
+ok:500cb26d111e2382
+ok:5decf26db9765413
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:500cb26d111e2382
+ok:93adabcf936d21ed
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:d7fd6bfa574fd1ba
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:3e7a114c7269a4b0
+ok:c98717b899564d26
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:3e7a114c7269a4b0
+ok:2207630c13d2f3da
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:d7fd6bfa574fd1ba
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:605f7716ef880506
+ok:9a5d3dd3f047831a
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:605f7716ef880506
+ok:968e7249d8173337
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 2, available: 0 })
+err:Encode(Capacity { needed: 2, available: 1 })
+ok:21a450ca63e67318
+ok:af6f710ab56cacdb
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:af6f710ab56cacdb
+ok:af6f710ab56cacdb
+ok:af6f710ab56cacdb
+ok:af6f710ab56cacdb
+ok:48f1a58bedfaf425
+ok:19a0b374708cbe33
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:af6f710ab56cacdb
+ok:af6f710ab56cacdb
+ok:af6f710ab56cacdb
+ok:af6f710ab56cacdb
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:af6f710ab56cacdb
+ok:3e3f5d9d14124337
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:3e3f5d9d14124337
+ok:3e3f5d9d14124337
+ok:3e3f5d9d14124337
+ok:3e3f5d9d14124337
+ok:48f1a58bedfaf425
+ok:fdf0a416ae751a64
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:3e3f5d9d14124337
+ok:3e3f5d9d14124337
+ok:3e3f5d9d14124337
+ok:3e3f5d9d14124337
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:3e3f5d9d14124337
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:605f7716ef880506
+ok:9a5d3dd3f047831a
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:21a450ca63e67318
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:605f7716ef880506
+ok:968e7249d8173337
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Encode(Capacity { needed: 2, available: 0 })
+err:Encode(Capacity { needed: 2, available: 1 })
+ok:21a450ca63e67318
+ok:af6f710ab56cacdb
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:af6f710ab56cacdb
+ok:3e3f5d9d14124337
+ok:af6f710ab56cacdb
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:3e3f5d9d14124337
+ok:93adabcf936d21ed
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:d7fd6bfa574fd1ba
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:3e7a114c7269a4b0
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:3e7a114c7269a4b0
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:d7fd6bfa574fd1ba
+ok:d7fd6bfa574fd1ba
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:d7fd6bfa574fd1ba
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:605f7716ef880506
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:605f7716ef880506
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Encode(Capacity { needed: 2, available: 0 })
+err:Encode(Capacity { needed: 2, available: 1 })
+ok:21a450ca63e67318
+ok:bda567e0ff8a466a
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+ok:dd1a1b88af7379a2
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+ok:bda567e0ff8a466a
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:bda567e0ff8a466a
+ok:d85f89e55d000bd1
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+ok:dd1a1b88af7379a2
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+ok:d85f89e55d000bd1
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:d85f89e55d000bd1
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:605f7716ef880506
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:21a450ca63e67318
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:605f7716ef880506
+err:Verify(Contract(Violation { type_name: Some("Average"), rule: Range }))
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+ok:21a450ca63e67318
+err:Encode(Capacity { needed: 2, available: 0 })
+err:Encode(Capacity { needed: 2, available: 1 })
+ok:21a450ca63e67318
+ok:bda567e0ff8a466a
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:bda567e0ff8a466a
+ok:d85f89e55d000bd1
+ok:bda567e0ff8a466a
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 14, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:d85f89e55d000bd1
+ok:93adabcf936d21ed
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:d7fd6bfa574fd1ba
+ok:069e487f6252f119
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:069e487f6252f119
+ok:069e487f6252f119
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:069e487f6252f119
+ok:069e487f6252f119
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:069e487f6252f119
+ok:069e487f6252f119
+ok:069e487f6252f119
+ok:927266e234403a14
+ok:9fdc65e847476274
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:069e487f6252f119
+ok:069e487f6252f119
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:069e487f6252f119
+ok:069e487f6252f119
+ok:069e487f6252f119
+ok:0932f2277f497502
+ok:87f02ce9c8d6c56a
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:069e487f6252f119
+ok:069e487f6252f119
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:069e487f6252f119
+ok:069e487f6252f119
+ok:069e487f6252f119
+ok:ccf221318441dc39
+ok:41cbda9041802e0b
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 32, available: 0 })
+err:Encode(Capacity { needed: 32, available: 16 })
+err:Encode(Capacity { needed: 32, available: 31 })
+ok:069e487f6252f119
+ok:757ce708cd48991e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+ok:560af8b90e575e7a
+ok:669367c364edc402
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+ok:049b21a422a449b5
+ok:3650d293d641c11a
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+ok:757ce708cd48991e
+ok:ff0c51f2f44978a2
+ok:fe6183d99cea896d
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 32, available: 0 })
+err:Encode(Capacity { needed: 32, available: 16 })
+err:Encode(Capacity { needed: 32, available: 31 })
+ok:757ce708cd48991e
+ok:805dc358667bf05b
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:ece5cba6cd890b61
+ok:ee705d0ef5214ebf
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:1341ff3ee67b41f2
+ok:21563ea14b16f8c6
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:50764572cf566135
+ok:c72a303b5cd508e9
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 10, available: 0 })
+err:Encode(Capacity { needed: 10, available: 5 })
+err:Encode(Capacity { needed: 10, available: 9 })
+ok:805dc358667bf05b
+ok:8e3cd58ee6838c93
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:a09236d44f7261a9
+ok:df2a5713986f8e6c
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:d950dc4de4fca877
+ok:c9e8c68766e77db0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:b025cd0e4d63de0a
+ok:b00512e83dbad42c
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 18, available: 0 })
+err:Encode(Capacity { needed: 18, available: 9 })
+err:Encode(Capacity { needed: 18, available: 17 })
+ok:8e3cd58ee6838c93
+ok:97ab2ccc72537437
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:f2faf80e68694768
+ok:5dd3b63b4a1597f1
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:3638c98bd0387e28
+ok:84c1a498bdb37fe8
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:97ab2ccc72537437
+ok:4609acf0534057dd
+ok:4f4745aaac73acc6
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 52, available: 48 })
+err:Encode(Capacity { needed: 96, available: 95 })
+ok:97ab2ccc72537437
+ok:d555c0077418eb51
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:3247888a386d68ea
+ok:c2613083d430e9ee
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:ff102a5be80aa775
+ok:14e784bad5e71872
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:d555c0077418eb51
+ok:d9d49b7e8ac71c19
+ok:b0923f4e87c272be
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 52, available: 48 })
+err:Encode(Capacity { needed: 96, available: 95 })
+ok:d555c0077418eb51
+ok:805dc358667bf05b
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:50764572cf566135
+ok:c72a303b5cd508e9
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:1341ff3ee67b41f2
+ok:21563ea14b16f8c6
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:805dc358667bf05b
+ok:ece5cba6cd890b61
+ok:ee705d0ef5214ebf
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 10, available: 0 })
+err:Encode(Capacity { needed: 10, available: 5 })
+err:Encode(Capacity { needed: 10, available: 9 })
+ok:805dc358667bf05b
+ok:8e3cd58ee6838c93
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:b025cd0e4d63de0a
+ok:b00512e83dbad42c
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:d950dc4de4fca877
+ok:c9e8c68766e77db0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:8e3cd58ee6838c93
+ok:a09236d44f7261a9
+ok:df2a5713986f8e6c
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 18, available: 0 })
+err:Encode(Capacity { needed: 18, available: 9 })
+err:Encode(Capacity { needed: 18, available: 17 })
+ok:8e3cd58ee6838c93
+ok:97ab2ccc72537437
+err:Verify(Structure(MissingRequired))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 52, available: 48 })
+err:Encode(Capacity { needed: 96, available: 95 })
+ok:97ab2ccc72537437
+ok:d555c0077418eb51
+err:Verify(Structure(MissingRequired))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 52, available: 48 })
+err:Encode(Capacity { needed: 96, available: 95 })
+ok:d555c0077418eb51
+ok:069e487f6252f119
+err:Verify(Structure(MissingRequired))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 32, available: 0 })
+err:Encode(Capacity { needed: 32, available: 16 })
+err:Encode(Capacity { needed: 32, available: 31 })
+ok:069e487f6252f119
+ok:757ce708cd48991e
+err:Verify(Structure(MissingRequired))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 32, available: 0 })
+err:Encode(Capacity { needed: 32, available: 16 })
+err:Encode(Capacity { needed: 32, available: 31 })
+ok:757ce708cd48991e
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:961d7b62864a57c4
+ok:5a17d13166e58bd0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:31b8cb3465f7721e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:31b8cb3465f7721e
+ok:31b8cb3465f7721e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:31b8cb3465f7721e
+ok:31b8cb3465f7721e
+ok:31b8cb3465f7721e
+ok:31a407f4e9026415
+ok:321a2ae64fa012c6
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:31b8cb3465f7721e
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:bce68af31af43dc4
+ok:112a32efcb1954f2
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:ee16537a9f6cc602
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:726e57ed18c51987
+ok:484b3b9cf52810c0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 4, available: 2 })
+err:Encode(Capacity { needed: 4, available: 3 })
+ok:ee16537a9f6cc602
+ok:4fe90d00e6011c91
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:a370f009b0acf547
+ok:bf8c1b76089ce13d
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4fe90d00e6011c91
+ok:4b8d67bf88c0ae5b
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:9e4c5edccf1ca110
+ok:0851b7b64676fefc
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4b8d67bf88c0ae5b
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:bce68af31af43dc4
+ok:112a32efcb1954f2
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:ee16537a9f6cc602
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:726e57ed18c51987
+ok:484b3b9cf52810c0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 4, available: 2 })
+err:Encode(Capacity { needed: 4, available: 3 })
+ok:ee16537a9f6cc602
+ok:4fe90d00e6011c91
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4fe90d00e6011c91
+ok:4b8d67bf88c0ae5b
+ok:4fe90d00e6011c91
+ok:700fe71ce11684f1
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4b8d67bf88c0ae5b
+ok:93adabcf936d21ed
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:31b8cb3465f7721e
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:31b8cb3465f7721e
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:282d9980c0b4c914
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:282d9980c0b4c914
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:282d9980c0b4c914
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:282d9980c0b4c914
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:fcdb4b423f4e5283
+err:Encode(Capacity { needed: 8, available: 0 })
+err:Encode(Capacity { needed: 8, available: 4 })
+err:Encode(Capacity { needed: 8, available: 7 })
+ok:fcdb4b423f4e5283
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:93adabcf936d21ed
+ok:961d7b62864a57c4
+ok:5a17d13166e58bd0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:31b8cb3465f7721e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:31b8cb3465f7721e
+ok:31b8cb3465f7721e
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:31b8cb3465f7721e
+ok:31b8cb3465f7721e
+ok:31b8cb3465f7721e
+ok:31a407f4e9026415
+ok:321a2ae64fa012c6
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:31b8cb3465f7721e
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:bce68af31af43dc4
+ok:112a32efcb1954f2
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:ee16537a9f6cc602
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(OutOfBounds))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:726e57ed18c51987
+ok:484b3b9cf52810c0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 4, available: 2 })
+err:Encode(Capacity { needed: 4, available: 3 })
+ok:ee16537a9f6cc602
+ok:4fe90d00e6011c91
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:4fe90d00e6011c91
+ok:a370f009b0acf547
+ok:bf8c1b76089ce13d
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4fe90d00e6011c91
+ok:4b8d67bf88c0ae5b
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:4b8d67bf88c0ae5b
+ok:9e4c5edccf1ca110
+ok:0851b7b64676fefc
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4b8d67bf88c0ae5b
+ok:e3b0c44298fc1c14
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:e3b0c44298fc1c14
+ok:bce68af31af43dc4
+ok:112a32efcb1954f2
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+ok:e3b0c44298fc1c14
+ok:ee16537a9f6cc602
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+err:Verify(Structure(Preamble))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:ee16537a9f6cc602
+ok:726e57ed18c51987
+ok:484b3b9cf52810c0
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Verify(Contract(Violation { type_name: Some("Window"), rule: Range }))
+err:Encode(Capacity { needed: 4, available: 0 })
+err:Encode(Capacity { needed: 4, available: 2 })
+err:Encode(Capacity { needed: 4, available: 3 })
+ok:ee16537a9f6cc602
+ok:4fe90d00e6011c91
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4fe90d00e6011c91
+ok:4b8d67bf88c0ae5b
+ok:4fe90d00e6011c91
+ok:700fe71ce11684f1
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 12, available: 0 })
+err:Encode(Capacity { needed: 20, available: 12 })
+err:Encode(Capacity { needed: 24, available: 23 })
+ok:4b8d67bf88c0ae5b
+ok:93adabcf936d21ed
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:93adabcf936d21ed
+ok:31b8cb3465f7721e
+ok:93adabcf936d21ed
+ok:d7fd6bfa574fd1ba
+err:Verify(Structure(OutOfBounds))
+err:Verify(Structure(WireType))
+err:Verify(Contract(Violation { type_name: Some("Level"), rule: Range }))
+err:Verify(Structure(WireType))
+err:Verify(Structure(OutOfBounds))
+err:Encode(Capacity { needed: 16, available: 0 })
+err:Encode(Capacity { needed: 16, available: 8 })
+err:Encode(Capacity { needed: 16, available: 15 })
+ok:31b8cb3465f7721e

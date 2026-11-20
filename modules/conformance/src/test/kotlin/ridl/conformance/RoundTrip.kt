@@ -41,9 +41,16 @@ object RoundTrip {
     /**
      * The round trip over [models]' FlatBuffers codecs, `<Type>Codec`, or,
      * with [podbuf], over their podbuf codecs, `<Type>PodbufCodec`, or, with
-     * [proto3], over their proto3 codecs, `<Type>Proto3Codec`.
+     * [proto3], over their proto3 codecs, `<Type>Proto3Codec`, in the Kotlin
+     * package [kotlinPackage], so that several round trips can compile side by
+     * side.
      */
-    fun source(models: List<Model>, podbuf: Boolean = false, proto3: Boolean = false): String {
+    fun source(
+        models: List<Model>,
+        podbuf: Boolean = false,
+        proto3: Boolean = false,
+        kotlinPackage: String = "ridl.conformance.roundtrip",
+    ): String {
         val samples = StringBuilder()
         val dispatch = StringBuilder()
         val suffix = when {
@@ -97,7 +104,7 @@ object RoundTrip {
         return """
             |@file:JvmName("RoundTrip")
             |
-            |package ridl.conformance.roundtrip
+            |package $kotlinPackage
             |
             |import ridl.rt.payload.Payload
             |import ridl.rt.payload.VerifyError

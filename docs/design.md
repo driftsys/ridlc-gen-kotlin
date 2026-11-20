@@ -103,13 +103,18 @@ of a short-lived JVM and costs nothing a generator notices.
    naming both values, and exits 0 with that response; a schema mismatch is a
    backend failure, not a host failure. `toolchain` is logged to standard error
    and never refused.
-3. Reads the options. Two keys are known: `kotlin-package`, the Kotlin package
+3. Reads the options. Three keys are known: `kotlin-package`, the Kotlin package
    the generated files are placed in (default: the ridl package's dotted name),
    and `encodings`, the payload encodings the codec is generated for (§4, O-K1),
    the manifest's `[backend.kotlin] encodings` joined by `,`, the same key and
    value the Rust backend reads. An empty element, a name given twice and a name
-   that is not an encoding are refused. An unknown key is an error diagnostic,
-   as every in-tree backend answers it.
+   that is not an encoding are refused. The `transcode` option accepts `true` or
+   `false` (default: `false`); the last value wins. Any other value uses Rust's
+   refusal wording: "`transcode` is `<value>`; the value is `true` or `false`",
+   prefixed with `ridlc-gen-kotlin:`. When enabled with two or more encodings,
+   `Transcode.kt` holds the functions between codecs of each shared payload
+   type. An unknown key is an error diagnostic, as every in-tree backend answers
+   it.
 4. Generates the files (§4, §5) into a `CodegenResponse`, every path relative
    and `/`-separated per the path rule, every file a `text` arm, and writes the
    response to standard output as canonical protobuf JSON through the same
@@ -524,10 +529,10 @@ mutation pass is what keeps the snapshot tests honest.
   request nested to 1,000 levels parses; a request with a wrong `schema` gets
   exactly one error diagnostic and exit 0.
 - **The output compiles.** For every corpus package, the generated `Types.kt`,
-  `Codec.kt`, `Proto3Codec.kt`, `PodbufCodec.kt` and `Faces.kt` compile with
-  `kotlin-compile-testing` against `ridl-rt-kt` and the `flatc --kotlin` (or
-  `protoc`) output for that package, in one JUnit test per package, with
-  warnings as errors.
+  `Codec.kt`, `Proto3Codec.kt`, `PodbufCodec.kt`, `Transcode.kt` and `Faces.kt`
+  compile with `kotlin-compile-testing` against `ridl-rt-kt` and the
+  `flatc --kotlin` (or `protoc`) output for that package, in one JUnit test per
+  package, with warnings as errors.
 - **The value objects refuse invalid values.** For every constrained type of the
   corpus, one value inside the range constructs and one value one step outside
   each bound throws `ConstraintViolation` with the right rule. The mutation:

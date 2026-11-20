@@ -13,16 +13,18 @@ licensed under the root [MIT License](../../LICENSE).
 ## Status
 
 Stages K2a to K3a and K6: the reader, the launcher, the schema refusal, the
-option parsing, and up to six files per package in its `kotlin-package`, emitted
-with KotlinPoet from the request's model: `Types.kt`, the value objects of §4;
-`Codec.kt`, their FlatBuffers codec, `Proto3Codec.kt`, their proto3 codec
+option parsing, and up to seven files per package in its `kotlin-package`,
+emitted with KotlinPoet from the request's model: `Types.kt`, the value objects
+of §4; `Codec.kt`, their FlatBuffers codec, `Proto3Codec.kt`, their proto3 codec
 (#133), and `PodbufCodec.kt`, their podbuf codec (#134), each when the package's
-`encodings` names its encoding; and `Faces.kt`, the interaction face of §5 for
-every declared interface, with its clients and `serve`, over every encoding the
-package carries. With a deployment section in the request, one more file,
-`Instances.kt`, holds the system's instance numbers (#137). No AIDL is
-generated; the last section below says why. `just dist` builds the distribution,
-and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
+`encodings` names its encoding; `Transcode.kt`, the transcode functions between
+those codecs, when the manifest sets `transcode = true` (#136); and `Faces.kt`,
+the interaction face of §5 for every declared interface, with its clients and
+`serve`, over every encoding the package carries. With a deployment section in
+the request, `Instances.kt` holds the system's instance numbers (#137). No AIDL
+is generated; the last section below says why. `just dist` builds the
+distribution, and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>`
+runs it.
 
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
@@ -94,6 +96,12 @@ why, and how the rule was last checked; CI does not check it.
   generates it since ridl 0.9 (#83); the cabin sample names `flatbuffers` in
   `[backend.kotlin]`. ridl 0.9 sends `encodings` and never `wire-encoding`,
   which the plugin no longer reads.
+- **`transcode`** is read as the Rust backend reads it (#136): `true` or
+  `false`, the last one given wins, and any other value is refused with
+  "`transcode` is `<value>`; the value is `true` or `false`". Absent or `false`,
+  no `Transcode.kt` is generated. ridl sends it when `[backend.kotlin]` sets
+  `transcode = true`, which the manifest accepts only beside two encodings or
+  more. Every other option is still refused, `wasm` and `codec` included.
 - **Every reference goes through `Model.declarationOf`** (`Refs.kt`), which
   refuses a reference whose `TypeRef.foreign` disagrees with its package, or
   whose index is past its table, with a diagnostic naming the reference, where
@@ -325,6 +333,44 @@ tuple), and a root with no finite podbuf bound.
   is reached by a value built past the constructor, as a Rust value is.
   driftsys/ridl#1280's other case, a u64 enum key of 2^63 or more, cannot be
   written: TYPL-209 gives a map no enum or enum set key.
+
+### `Transcode.kt`
+
+With `transcode = true`, `Transcode.kt` is the Rust backend's `transcode.rs`
+(#136) in Kotlin. For each type that has a `Payload` object under two of the
+package's encodings or more, `object <Type>Transcode` holds one function per
+ordered pair of distinct encodings, `<source>To<Target>(bytes, out): Int`: for
+example `flatbuffersToProto3` and `proto3ToFlatbuffers`, where Rust has
+`Type::transcode_flatbuffers_to_proto3` and
+`Type::transcode_proto3_to_flatbuffers`. Three encodings give six functions, as
+in Rust. Each body is `ridl-rt-kt`'s `transcode` over the two codecs: it
+verifies the bytes from `bytes`' position to its limit under the source codec,
+decodes them, encodes the value under the target codec into `out` from its
+position, and returns the number of bytes written, as `Payload.encode` does. It
+throws `TranscodeError.Verify` or `TranscodeError.Encode`.
+
+The types are the ones the codec emitters report, never a rule restated here:
+`CodecEmitter`, `Proto3CodecEmitter` and `PodbufCodecEmitter` each list the
+types they write a codec object for, as each Rust codec reports its
+`PayloadOwner`s. The types come in the order of the first encoding the manifest
+names, then any only a later one has, and the functions in the order of their
+source, then their target, so `encodings = ["podbuf", "flatbuffers"]` puts
+`podbufToFlatbuffers` first, as Rust does. A type with one codec gets no object,
+and a package with one encoding, or none shared, gets no file. The object of an
+`internal` type is `internal`.
+
+- **The functions are on `<Type>Transcode`, not on the type.** Rust adds them to
+  the type's own `impl`. The value objects are in `Types.kt`, which does not
+  change with the codecs, and not every struct or union has a companion to
+  extend, so the functions take an object of their own, named as `<Type>Codec`
+  and `<Type>PodbufCodec` are, and claimed as they are: a declaration named
+  `<Type>Transcode` beside `<Type>` refuses the package, naming both.
+- **A function returns the number of bytes written** where Rust returns a `Ref`
+  over them, and throws its `TranscodeError` where Rust returns it, as
+  `ridl-rt-kt`'s `transcode` does.
+
+The conformance module's `TranscodeTest` holds every function of `kt-values` to
+the Rust function of the same pair, byte for byte, refusals included.
 
 ### `Faces.kt`
 
@@ -632,16 +678,17 @@ rule). `ridl check` refuses none of these: each is met by the Kotlin output
 alone. Two namespaces are checked:
 
 - **The package's classes and objects**, across `Types.kt`, `Codec.kt`,
-  `Proto3Codec.kt`, `PodbufCodec.kt` and `Faces.kt`: a declaration, an induced
-  tuple, a codec `<Type>Codec`, a proto3 codec `<Type>Proto3Codec`, a podbuf
-  codec `<Type>PodbufCodec` and its `<Type>PodbufView`, and a faced interface's
-  descriptor, member descriptors `<Iface><Member>`, calls `<Iface><Member>Call`,
-  clients, publisher and provider. Each emitter reports what it emits, and
-  `Generator` checks them together, so an interface whose face is skipped claims
-  nothing, as in the Rust backend (X-8b). The design's cases X-8 (members `XY`
-  and `x_y`), X-9, X-11, X-12, X-13 and X-14b are refused here, as are two
-  declarations `Level` and `level`, a declaration named like another's codec,
-  and a member named like the provider.
+  `Proto3Codec.kt`, `PodbufCodec.kt`, `Transcode.kt` and `Faces.kt`: a
+  declaration, an induced tuple, a codec `<Type>Codec`, a proto3 codec
+  `<Type>Proto3Codec`, a podbuf codec `<Type>PodbufCodec` and its
+  `<Type>PodbufView`, a transcode object `<Type>Transcode`, and a faced
+  interface's descriptor, member descriptors `<Iface><Member>`, calls
+  `<Iface><Member>Call`, clients, publisher and provider. Each emitter reports
+  what it emits, and `Generator` checks them together, so an interface whose
+  face is skipped claims nothing, as in the Rust backend (X-8b). The design's
+  cases X-8 (members `XY` and `x_y`), X-9, X-11, X-12, X-13 and X-14b are
+  refused here, as are two declarations `Level` and `level`, a declaration named
+  like another's codec, and a member named like the provider.
 - **One struct's or tuple's properties**: two fields whose `camel_case` agrees
   (`XY` and `x_y`) are one property. RIDL-149 refuses a pair that also agrees
   under `snake_case`, such as X-6a's `minSpeed` and `min_speed`, before the

@@ -61,6 +61,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
     private val wires = Wires(model, pkg)
     private val errors = mutableListOf<String>()
     private val claims = mutableListOf<Claim>()
+    private val owners = mutableListOf<PayloadOwner>()
     private val withheld = mutableListOf<String>()
     private var names = 0
     private val patterns = mutableListOf<String>()
@@ -127,7 +128,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
                 withheld.joinToString { "`$it`" },
             )
         }
-        return EmittedTypes(path, file.build().toString(), emptyList(), claims)
+        return EmittedTypes(path, file.build().toString(), emptyList(), claims, owners)
     }
 
     private fun guarded(name: String, block: () -> Unit) {
@@ -163,6 +164,7 @@ class CodecEmitter(private val model: Model, private val options: Options) {
         val type = ClassName(pkg, name)
         val functions = Functions(pkg, name)
         claims += Claim("${name}Codec", source)
+        owners += PayloadOwner(name, visibility, ClassName(pkg, "${name}Codec"))
         val codec = TypeSpec.objectBuilder("${name}Codec")
             .addKdoc("The FlatBuffers codec of [%T].", type)
             .addSuperinterface(PAYLOAD.parameterizedBy(type, TABLE_VIEW))

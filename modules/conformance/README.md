@@ -158,6 +158,27 @@ crate into `resources/sizes/<package>-rust-sizes.txt`, including the three
 encodings of `cabin` and `kt-values`. A proto3 table built from the podbuf
 codecs turns it red.
 
+The test of #136, `TranscodeTest`, holds the generated transcode functions to
+the Rust transcode functions of the pinned release, for every corpus package
+that sets `transcode = true` in `[backend.kotlin]`. The selected packages are
+listed by `Harness.packages().filter { Harness.transcode(it) }`. Count the
+objects and functions in each generated `Transcode.kt` to derive coverage: each
+shared payload type has one function per ordered pair of its codecs, as Rust
+generates them. Each function transcodes `RoundTrip`'s samples of its source
+encoding, which must succeed; each sample cut to nothing, to half and to one
+byte short, and with each byte set to 0xFF, which `verify` may refuse; and each
+sample into an output of no byte, of half and of one byte short of what it
+wrote, which must be `Capacity`, and of exactly that, which must not. An empty
+proto3 sample has no cut, and a function that writes no byte, as one into proto3
+does for a value of default values, has no output too small. Count the nonblank
+lines in the verdict files below to derive the number of cases. Each case goes
+through the Kotlin function and once through the Rust one, whose verdicts are
+checked in as `resources/transcode/<package>-transcode-rust-verdicts.txt`, and
+every verdict is Rust's: the same bytes, the same `Verify` error, and the same
+`Capacity` with the same `needed`. The script fails on a Rust transcode function
+the corpus does not reach. With `transcode` absent or `false`, no file of the
+package names a transcode function.
+
 `SelectionTest` holds the selection rule (docs/design.md §4): the output of
 every corpus package, and of every package its build reaches, generated with
 `encodings` set to `flatbuffers` alone, has the digests in

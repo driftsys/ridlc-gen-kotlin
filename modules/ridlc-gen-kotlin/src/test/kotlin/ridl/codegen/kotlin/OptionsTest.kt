@@ -6,7 +6,10 @@ import org.junit.jupiter.api.Test
 import ridl.codegen.v1.ModelOuterClass
 import ridl.codegen.v1.Plugin
 
-/** docs/design.md §2, step 3: the two known keys, `encodings` read as the Rust backend reads it, and the refusal of every other. */
+/**
+ * docs/design.md §2, step 3: the three known keys, `encodings` and `transcode`
+ * read as the Rust backend reads them, and the refusal of every other.
+ */
 class OptionsTest {
     private fun request(vararg options: Pair<String, String>): Plugin.CodegenRequest =
         Plugin.CodegenRequest.newBuilder()
@@ -111,6 +114,38 @@ class OptionsTest {
     @Test
     fun `an encoding named twice is refused`() {
         assertTrue("twice" in refused(Options.parse(request("encodings" to "flatbuffers,flatbuffers")))[0])
+    }
+
+    @Test
+    fun `transcode is off unless it is true`() {
+        assertEquals(false, (Options.parse(request()) as Options.Parsed.Ok).options.transcode)
+        assertEquals(true, (Options.parse(request("transcode" to "true")) as Options.Parsed.Ok).options.transcode)
+        assertEquals(false, (Options.parse(request("transcode" to "false")) as Options.Parsed.Ok).options.transcode)
+    }
+
+    @Test
+    fun `the last transcode option wins, as in the Rust backend`() {
+        assertEquals(false, (Options.parse(request("transcode" to "true", "transcode" to "false")) as Options.Parsed.Ok).options.transcode)
+        assertEquals(true, (Options.parse(request("transcode" to "false", "transcode" to "true")) as Options.Parsed.Ok).options.transcode)
+    }
+
+    @Test
+    fun `a transcode that is not a boolean is refused in the Rust backend's words`() {
+        for (bad in listOf("", "yes", "True", "1")) {
+            assertEquals(
+                listOf("$PLUGIN: `transcode` is `$bad`; the value is `true` or `false`"),
+                refused(Options.parse(request("transcode" to bad))),
+                bad,
+            )
+        }
+    }
+
+    @Test
+    fun `an unknown key names the three known options`() {
+        assertEquals(
+            listOf("$PLUGIN: unknown option `colour`; the known options are `kotlin-package`, `encodings` and `transcode`"),
+            refused(Options.parse(request("colour" to "blue"))),
+        )
     }
 
     @Test

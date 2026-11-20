@@ -29,3 +29,9 @@ interface Pump {
   /// A tuple reply: the reply type is an induced struct too.
   query drain(): (level: Level, window: Window) @[..200ms]
 }
+
+/// Nested tuples have helpers but do not carry their own payload codecs.
+struct Nested {
+  pair: (level: Level, window: Window)
+  pairs: [(level: Level, window: Window); 2]
+}

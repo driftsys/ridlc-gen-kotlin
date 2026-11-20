@@ -3,11 +3,13 @@ package ridl.codegen.kotlin
 import ridl.codegen.v1.Plugin.CodegenRequest
 import ridl.codegen.v1.Plugin.CodegenResponse
 import ridl.codegen.kotlin.types.CodecEmitter
+import ridl.codegen.kotlin.types.EmittedTypes
 import ridl.codegen.kotlin.types.FacesEmitter
 import ridl.codegen.kotlin.types.InstancesEmitter
 import ridl.codegen.kotlin.types.Links
 import ridl.codegen.kotlin.types.PodbufCodecEmitter
 import ridl.codegen.kotlin.types.Proto3CodecEmitter
+import ridl.codegen.kotlin.types.TranscodeEmitter
 import ridl.codegen.kotlin.types.TypesEmitter
 import ridl.codegen.kotlin.types.collisions
 import ridl.codegen.v1.Plugin.Diagnostic
@@ -59,27 +61,41 @@ object Generator {
         val links = Links(request.model, options.kotlinPackage, FacesEmitter(request.model, options).faced())
         val types = TypesEmitter(request.model, options, links).emit()
         // One codec per encoding the package names (docs/design.md §4).
-        val codecs = listOfNotNull(
-            if (WireEncoding.FlatBuffers in options.encodings) CodecEmitter(request.model, options).emit() else null,
-            if (WireEncoding.Proto3 in options.encodings) Proto3CodecEmitter(request.model, options).emit() else null,
-            if (WireEncoding.Podbuf in options.encodings) PodbufCodecEmitter(request.model, options).emit() else null,
-        )
+        val coded = listOfNotNull(
+            if (WireEncoding.FlatBuffers in options.encodings) WireEncoding.FlatBuffers to CodecEmitter(request.model, options).emit() else null,
+            if (WireEncoding.Proto3 in options.encodings) WireEncoding.Proto3 to Proto3CodecEmitter(request.model, options).emit() else null,
+            if (WireEncoding.Podbuf in options.encodings) WireEncoding.Podbuf to PodbufCodecEmitter(request.model, options).emit() else null,
+        ).toMap()
+        val codecs = coded.values.toList()
         val faces = FacesEmitter(request.model, options, links).emit()
         val errors = types.errors + codecs.flatMap { it.errors } + faces.errors + instances.errors
         if (errors.isNotEmpty()) return failure(errors)
+        val transcode = transcode(request, options, coded)
         // Two generated types of one name: every file's names are one
         // package's, so they are checked together.
-        val clashes = collisions(request.model.name.dotted, types.claims + codecs.flatMap { it.claims } + faces.claims)
+        val clashes = collisions(request.model.name.dotted, types.claims + codecs.flatMap { it.claims } + transcode.claims + faces.claims)
         if (clashes.isNotEmpty()) return failure(clashes)
         // Every file starts with the host's marker and the project's header
         // (driftsys/ridl#746), as every in-tree backend's file does.
         val preamble = preamble(request.generatedMarker, request.header)
-        val files = (listOf(types.path to types.text) + codecs.map { it.path to it.text } + listOf(faces.path to faces.text, instances.path to instances.text))
+        val files = (
+            listOf(types.path to types.text) + codecs.map { it.path to it.text } +
+                listOf(transcode.path to transcode.text, faces.path to faces.text, instances.path to instances.text)
+            )
             .mapNotNull { (path, text) -> text?.let { file(path, preamble + it) } }
         return CodegenResponse.newBuilder()
             .addAllFiles(files)
             .addAllDiagnostics(faces.warnings.map { diagnostic(DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING, it) })
             .build()
+    }
+
+    /**
+     * `Transcode.kt` over the types each codec reports, in the order the
+     * manifest names the encodings (#136); with `transcode` off, no file.
+     */
+    private fun transcode(request: CodegenRequest, options: Options, coded: Map<WireEncoding, EmittedTypes>): EmittedTypes {
+        val owners = if (options.transcode) options.encodings.map { it to coded.getValue(it).owners } else emptyList()
+        return TranscodeEmitter(options.kotlinPackage, request.model.name.dotted, owners).emit()
     }
 
     private fun file(path: String, text: String): GeneratedFile = GeneratedFile.newBuilder().setPath(path).setText(text).build()
