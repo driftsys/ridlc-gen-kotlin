@@ -14,8 +14,8 @@ class Claim(val name: String, val source: String)
  * (driftsys/ridlc-gen-kotlin#18, step 2.2 of driftsys/ridl's generated-name
  * collision design): both are spelled from ridl names, so no rename is the
  * plugin's to make, and the package is refused with one message naming every
- * source. The names of the package's three files share one Kotlin namespace,
- * so the claims of all three are checked together. An interface whose face
+ * source. The names of the package's generated files share one Kotlin namespace,
+ * so the claims of all files are checked together. An interface whose face
  * is skipped claims nothing, because it emits nothing.
  */
 internal fun collisions(pkg: String, claims: List<Claim>): List<String> =

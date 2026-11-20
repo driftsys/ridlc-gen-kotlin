@@ -99,6 +99,39 @@ class TranscodeEmitterTest {
     }
 
     @Test
+    fun `types owned only by later encodings follow shared types of the first encoding`() {
+        val text = emit(
+            owners(WireEncoding.FlatBuffers, "A", "B"),
+            owners(WireEncoding.Proto3, "B", "C"),
+            owners(WireEncoding.Podbuf, "B", "C"),
+        ).text!!
+        assertEquals(listOf("B", "C"), objects(text))
+        assertEquals(
+            listOf(
+                listOf("flatbuffersToProto3", "flatbuffersToPodbuf", "proto3ToFlatbuffers", "proto3ToPodbuf", "podbufToFlatbuffers", "podbufToProto3"),
+                listOf("proto3ToPodbuf", "podbufToProto3"),
+            ),
+            functions(text),
+        )
+    }
+
+    @Test
+    fun `generator preserves the first encoding's type order`() {
+        val request = request("encodings" to "podbuf,flatbuffers", "transcode" to "true").toBuilder()
+        val model = request.modelBuilder
+        model.addDeclarations(model.getDeclarations(0).toBuilder().setName(Spellings.newBuilder().setDeclared("Zeta").setCamel("Zeta")))
+        model.flatbuffersBuilder.addRoots(FbRoot.newBuilder().setDeclaration(1).setMaxSize(32))
+            .addTables(FbTable.newBuilder().setName("Zeta").setStructDeclaration(1).setVtableSlots(1))
+        val feedHead = model.podbuf.getHeads(0)
+        model.podbufBuilder.clearHeads().addHeads(feedHead.toBuilder().setDeclaration(1)).addHeads(feedHead)
+        val response = Generator.generate(request.build())
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        val text = response.filesList.single { it.path.endsWith("/Transcode.kt") }.text
+        assertEquals(listOf("Zeta", "Feed"), objects(text))
+        assertEquals(List(2) { listOf("podbufToFlatbuffers", "flatbuffersToPodbuf") }, functions(text))
+    }
+
+    @Test
     fun `fewer than two encodings, or no shared type, give no file`() {
         assertNull(emit().text)
         assertNull(emit(flatbuffers).text)

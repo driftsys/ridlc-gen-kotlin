@@ -75,6 +75,20 @@ class TranscodeTest {
     }
 
     @Test
+    fun `transcode reads the input window and writes at the output position`() {
+        val source = ByteBuffer.wrap(byteArrayOf(99, 98, 120, 0, 97))
+        source.position(2)
+        source.limit(4)
+        val out = ByteBuffer.wrap(ByteArray(8) { 55 })
+        out.position(3)
+        out.limit(6)
+        assertEquals(3, transcode(PodbufSpeed, Proto3Speed, source, out))
+        assertEquals(6, out.position())
+        assertEquals(6, out.limit())
+        assertArrayEquals(byteArrayOf(55, 55, 55, MARKER, 120, 0, 55, 55), out.array())
+    }
+
+    @Test
     fun `transcode reverse direction`() {
         val out = ByteBuffer.allocate(8)
         val written = transcode(Proto3Speed, PodbufSpeed, encoded(Proto3Speed, Speed(250)), out)

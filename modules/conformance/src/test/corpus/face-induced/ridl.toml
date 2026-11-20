@@ -5,7 +5,9 @@ version = "1.0.0"
 # Every backend generates the types alone unless the manifest names an
 # encoding (#83, driftsys/ridl#851).
 [backend.kotlin]
-encodings = ["flatbuffers"]
+encodings = ["flatbuffers", "proto3", "podbuf"]
+transcode = true
 
 [backend.rust]
-encodings = ["flatbuffers"]
+encodings = ["flatbuffers", "proto3", "podbuf"]
+transcode = true

@@ -13,18 +13,18 @@ licensed under the root [MIT License](../../LICENSE).
 ## Status
 
 Stages K2a to K3a and K6: the reader, the launcher, the schema refusal, the
-option parsing, and up to six files per package in its `kotlin-package`, emitted
-with KotlinPoet from the request's model: `Types.kt`, the value objects of §4;
-`Codec.kt`, their FlatBuffers codec, `Proto3Codec.kt`, their proto3 codec
+option parsing, and up to seven files per package in its `kotlin-package`,
+emitted with KotlinPoet from the request's model: `Types.kt`, the value objects
+of §4; `Codec.kt`, their FlatBuffers codec, `Proto3Codec.kt`, their proto3 codec
 (#133), and `PodbufCodec.kt`, their podbuf codec (#134), each when the package's
 `encodings` names its encoding; `Transcode.kt`, the transcode functions between
 those codecs, when the manifest sets `transcode = true` (#136); and `Faces.kt`,
 the interaction face of §5 for every declared interface, with its clients and
 `serve`, over every encoding the package carries. With a deployment section in
-the request, one more file, `Instances.kt`, holds the system's instance numbers
-(#137). No AIDL is generated; the last section below says why. `just dist`
-builds the distribution, and
-`ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
+the request, `Instances.kt` holds the system's instance numbers (#137). No AIDL
+is generated; the last section below says why. `just dist` builds the
+distribution, and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>`
+runs it.
 
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
@@ -643,10 +643,10 @@ name that ends in `_` is one no declaration, interface or member can take:
   where a declaration named `Constants` was refused and one named
   `InteractionCall` skipped every face with a call.
 - **The files' JVM classes are `TypesKt_`, `CodecKt_`, `Proto3CodecKt_`,
-  `PodbufCodecKt_`, `TranscodeKt_` and `FacesKt_`** (`@file:JvmName`). By
-  default `Faces.kt` compiles to `FacesKt`, and a declaration named `FacesKt`
-  then failed the consumer's build with a duplicate JVM class. A Java caller of
-  the face's extensions names `FacesKt_`.
+  `PodbufCodecKt_` and `FacesKt_`** (`@file:JvmName`). By default `Faces.kt`
+  compiles to `FacesKt`, and a declaration named `FacesKt` then failed the
+  consumer's build with a duplicate JVM class. A Java caller of the face's
+  extensions names `FacesKt_`.
 - **A Kotlin class the generated code names in an expression goes through
   KotlinPoet**, which imports or qualifies it: a declaration named `Long`, `Int`
   or `List` took a bare `Long.MAX_VALUE`, `Int.MAX_VALUE` or `List(n) { … }`.
@@ -678,16 +678,17 @@ rule). `ridl check` refuses none of these: each is met by the Kotlin output
 alone. Two namespaces are checked:
 
 - **The package's classes and objects**, across `Types.kt`, `Codec.kt`,
-  `Proto3Codec.kt`, `PodbufCodec.kt` and `Faces.kt`: a declaration, an induced
-  tuple, a codec `<Type>Codec`, a proto3 codec `<Type>Proto3Codec`, a podbuf
-  codec `<Type>PodbufCodec` and its `<Type>PodbufView`, and a faced interface's
-  descriptor, member descriptors `<Iface><Member>`, calls `<Iface><Member>Call`,
-  clients, publisher and provider. Each emitter reports what it emits, and
-  `Generator` checks them together, so an interface whose face is skipped claims
-  nothing, as in the Rust backend (X-8b). The design's cases X-8 (members `XY`
-  and `x_y`), X-9, X-11, X-12, X-13 and X-14b are refused here, as are two
-  declarations `Level` and `level`, a declaration named like another's codec,
-  and a member named like the provider.
+  `Proto3Codec.kt`, `PodbufCodec.kt`, `Transcode.kt` and `Faces.kt`: a
+  declaration, an induced tuple, a codec `<Type>Codec`, a proto3 codec
+  `<Type>Proto3Codec`, a podbuf codec `<Type>PodbufCodec` and its
+  `<Type>PodbufView`, a transcode object `<Type>Transcode`, and a faced
+  interface's descriptor, member descriptors `<Iface><Member>`, calls
+  `<Iface><Member>Call`, clients, publisher and provider. Each emitter reports
+  what it emits, and `Generator` checks them together, so an interface whose
+  face is skipped claims nothing, as in the Rust backend (X-8b). The design's
+  cases X-8 (members `XY` and `x_y`), X-9, X-11, X-12, X-13 and X-14b are
+  refused here, as are two declarations `Level` and `level`, a declaration named
+  like another's codec, and a member named like the provider.
 - **One struct's or tuple's properties**: two fields whose `camel_case` agrees
   (`XY` and `x_y`) are one property. RIDL-149 refuses a pair that also agrees
   under `snake_case`, such as X-6a's `minSpeed` and `min_speed`, before the

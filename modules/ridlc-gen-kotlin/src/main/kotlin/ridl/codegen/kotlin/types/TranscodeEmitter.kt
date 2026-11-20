@@ -41,7 +41,7 @@ class TranscodeEmitter(
 ) {
     fun emit(): EmittedTypes {
         val path = pkg.replace('.', '/') + "/Transcode.kt"
-        val file = FileSpec.builder(pkg, "Transcode").jvmName("Transcode")
+        val file = FileSpec.builder(pkg, "Transcode")
         val claims = mutableListOf<Claim>()
         for (owner in owners.flatMap { it.second }.distinctBy { it.name }) {
             val functions = pairs(owner.name)

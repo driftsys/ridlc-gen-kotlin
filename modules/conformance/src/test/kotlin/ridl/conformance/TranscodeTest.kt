@@ -24,7 +24,7 @@ import kotlin.io.path.writeText
 
 /**
  * The transcode functions (#136): every corpus package whose `ridl.toml` sets
- * `transcode = true` for both backends, held to the Rust transcode functions
+ * `transcode = true` in `[backend.kotlin]`, held to the Rust transcode functions
  * of the pinned release.
  *
  * The sources are [RoundTrip]'s samples of each codec. For every function
@@ -127,6 +127,10 @@ class TranscodeTest {
             val compiled = Compiler.compile(sources + roundTrips.mapKeys { "roundtrip/${it.key}/RoundTrip.kt" }, work.resolve("compile-$name"))
             assertTrue(compiled.ok, compiled.messages)
             val loader = compiled.classLoader!!
+            for (path in sources.keys.filter { it.endsWith("/Transcode.kt") }) {
+                val facade = path.removeSuffix(".kt") + "Kt_.class"
+                assertEquals(null, loader.getResource(facade), "Object-only Transcode.kt has no JVM facade")
+            }
             // `pkg.Type label` to hex, per encoding.
             val samples = roundTrips.keys.associateWith { encoding ->
                 @Suppress("UNCHECKED_CAST")

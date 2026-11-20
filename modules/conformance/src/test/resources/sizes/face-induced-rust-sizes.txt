@@ -1,1 +1,3 @@
 face.induced.Pump FlatBuffers reservations=[43, 56, 77, 89] maxBuffer=56 eventBuffer=0
+face.induced.Pump Podbuf reservations=[16, 16, 24, 24] maxBuffer=16 eventBuffer=0
+face.induced.Pump Proto3 reservations=[6, 12, 6, 12] maxBuffer=12 eventBuffer=0
