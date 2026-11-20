@@ -44,7 +44,11 @@ import ridl.codegen.v1.Plugin
 class TranscodeEmitterTest {
     private fun owners(encoding: WireEncoding, vararg names: String, internal: Set<String> = emptySet()) =
         encoding to names.map { name ->
-            val suffix = if (encoding == WireEncoding.FlatBuffers) "Codec" else "PodbufCodec"
+            val suffix = when (encoding) {
+                WireEncoding.FlatBuffers -> "Codec"
+                WireEncoding.Proto3 -> "Proto3Codec"
+                WireEncoding.Podbuf -> "PodbufCodec"
+            }
             val visibility = if (name in internal) Visibility.VISIBILITY_INTERNAL else Visibility.VISIBILITY_PUBLIC
             PayloadOwner(name, visibility, ClassName("kt.demo", "$name$suffix"))
         }
@@ -73,6 +77,18 @@ class TranscodeEmitterTest {
         val second = emit(podbuf, flatbuffers).text!!
         assertEquals(listOf("Gamma", "Beta", "Alpha"), objects(second))
         assertEquals(List(3) { listOf("podbufToFlatbuffers", "flatbuffersToPodbuf") }, functions(second))
+    }
+
+    @Test
+    fun `three encodings give the six ordered pairs, proto3 included, in the listed order`() {
+        val proto3 = owners(WireEncoding.Proto3, "Beta", "Alpha", "Gamma")
+        val text = emit(podbuf, flatbuffers, proto3).text!!
+        assertEquals(listOf("Gamma", "Beta", "Alpha"), objects(text))
+        val pairs = listOf(
+            "podbufToFlatbuffers", "podbufToProto3", "flatbuffersToPodbuf", "flatbuffersToProto3", "proto3ToPodbuf", "proto3ToFlatbuffers",
+        )
+        assertEquals(List(3) { pairs }, functions(text))
+        assertTrue("transcode(AlphaProto3Codec, AlphaCodec, bytes, out)" in text, text)
     }
 
     @Test

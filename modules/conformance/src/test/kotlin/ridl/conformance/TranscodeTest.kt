@@ -36,7 +36,9 @@ import kotlin.io.path.writeText
  * nothing, to half and to one byte short, and the sample with each byte set
  * to 0xFF, each of which `verify` may refuse; then into outputs of no byte,
  * of half and of one byte short of what the function wrote, which must be
- * `Capacity`, and of exactly that, which must not. Each line goes through
+ * `Capacity`, and of exactly that, which must not. An empty proto3 sample, a
+ * message of default values, has no cut, and a function that writes no byte
+ * has no output too small; a proto3 sample cut to nothing may verify. Each line goes through
  * the Kotlin function and once through the Rust one, whose verdicts are
  * checked in as `resources/transcode/<package>-transcode-rust-verdicts.txt`
  * (`just rust-verdicts`), `ok:<digest16>` or `err:<the TranscodeError>`, and
@@ -119,6 +121,7 @@ class TranscodeTest {
             val sources = requests.flatMap { r -> Generator.generate(r).filesList.map { it.path to it.text } }.toMap()
             val roundTrips = mapOf(
                 "flatbuffers" to RoundTrip.source(selecting(requests, "flatbuffers"), kotlinPackage = "ridl.conformance.roundtrip.flatbuffers"),
+                "proto3" to RoundTrip.source(selecting(requests, "proto3"), proto3 = true, kotlinPackage = "ridl.conformance.roundtrip.proto3"),
                 "podbuf" to RoundTrip.source(selecting(requests, "podbuf"), podbuf = true, kotlinPackage = "ridl.conformance.roundtrip.podbuf"),
             )
             val compiled = Compiler.compile(sources + roundTrips.mapKeys { "roundtrip/${it.key}/RoundTrip.kt" }, work.resolve("compile-$name"))
@@ -147,12 +150,16 @@ class TranscodeTest {
                     line("", CAPACITY, hex)
                     assertTrue(kotlin.last().startsWith("ok:"), "$key: ${function.source} to ${function.target}: ${kotlin.last()}")
                     val bytes = hex.chunked(2)
-                    for (n in setOf(0, bytes.size / 2, bytes.size - 1)) line("/trunc$n", CAPACITY, bytes.take(n).joinToString(""))
+                    // A proto3 sample of default values is empty, and has no shorter cut.
+                    for (n in setOf(0, bytes.size / 2, bytes.size - 1).filter { it in 0 until bytes.size }) {
+                        line("/trunc$n", CAPACITY, bytes.take(n).joinToString(""))
+                    }
                     for (i in bytes.indices) {
                         if (bytes[i] != "ff") line("/ones$i", CAPACITY, bytes.toMutableList().also { it[i] = "ff" }.joinToString(""))
                     }
                     val written = function.call(ByteBuffer.wrap(unhex(hex)), ByteBuffer.allocate(CAPACITY))
-                    for (capacity in setOf(0, written / 2, written - 1)) line("/cap$capacity", capacity, hex)
+                    // Into proto3, a value of default values is no byte, and no output is too small.
+                    for (capacity in setOf(0, written / 2, written - 1).filter { it in 0 until written }) line("/cap$capacity", capacity, hex)
                     line("/exact", written, hex)
                 }
             }
@@ -164,7 +171,8 @@ class TranscodeTest {
                 val label = line.split(' ')[1]
                 when {
                     "/cap" in label -> assertTrue(kotlin[index].startsWith("err:Encode(Capacity {"), "$line: ${kotlin[index]}")
-                    "/trunc0" in label -> assertTrue(kotlin[index].startsWith("err:Verify("), "$line: ${kotlin[index]}")
+                    // No byte is a proto3 message of default values, which may verify.
+                    "/trunc0" in label && line.split(' ')[2] != "proto3" -> assertTrue(kotlin[index].startsWith("err:Verify("), "$line: ${kotlin[index]}")
                     "/exact" in label -> assertTrue(kotlin[index].startsWith("ok:"), "$line: ${kotlin[index]}")
                 }
             }

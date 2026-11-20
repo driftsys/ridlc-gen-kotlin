@@ -339,26 +339,25 @@ tuple), and a root with no finite podbuf bound.
 With `transcode = true`, `Transcode.kt` is the Rust backend's `transcode.rs`
 (#136) in Kotlin. For each type that has a `Payload` object under two of the
 package's encodings or more, `object <Type>Transcode` holds one function per
-ordered pair of distinct encodings, `<source>To<Target>(bytes, out): Int`:
-`flatbuffersToPodbuf` and `podbufToFlatbuffers` today, where Rust has
-`Type::transcode_flatbuffers_to_podbuf` and
-`Type::transcode_podbuf_to_flatbuffers`. Each body is `ridl-rt-kt`'s `transcode`
-over the two codecs: it verifies the bytes from `bytes`' position to its limit
-under the source codec, decodes them, encodes the value under the target codec
-into `out` from its position, and returns the number of bytes written, as
-`Payload.encode` does. It throws `TranscodeError.Verify` or
-`TranscodeError.Encode`.
+ordered pair of distinct encodings, `<source>To<Target>(bytes, out): Int`: for
+example `flatbuffersToProto3` and `proto3ToFlatbuffers`, where Rust has
+`Type::transcode_flatbuffers_to_proto3` and
+`Type::transcode_proto3_to_flatbuffers`. Three encodings give six functions, as
+in Rust. Each body is `ridl-rt-kt`'s `transcode` over the two codecs: it
+verifies the bytes from `bytes`' position to its limit under the source codec,
+decodes them, encodes the value under the target codec into `out` from its
+position, and returns the number of bytes written, as `Payload.encode` does. It
+throws `TranscodeError.Verify` or `TranscodeError.Encode`.
 
 The types are the ones the codec emitters report, never a rule restated here:
-`CodecEmitter` and `PodbufCodecEmitter` each list the types they write a codec
-object for, as each Rust codec reports its `PayloadOwner`s. The types come in
-the order of the first encoding the manifest names, then any only a later one
-has, and the functions in the order of their source, then their target, so
-`encodings = ["podbuf", "flatbuffers"]` puts `podbufToFlatbuffers` first, as
-Rust does. A type with one codec gets no object, and a package with one
-encoding, or none shared, gets no file. The object of an `internal` type is
-`internal`. A proto3 codec that reports its owners adds its pairs with no change
-to `TranscodeEmitter`.
+`CodecEmitter`, `Proto3CodecEmitter` and `PodbufCodecEmitter` each list the
+types they write a codec object for, as each Rust codec reports its
+`PayloadOwner`s. The types come in the order of the first encoding the manifest
+names, then any only a later one has, and the functions in the order of their
+source, then their target, so `encodings = ["podbuf", "flatbuffers"]` puts
+`podbufToFlatbuffers` first, as Rust does. A type with one codec gets no object,
+and a package with one encoding, or none shared, gets no file. The object of an
+`internal` type is `internal`.
 
 - **The functions are on `<Type>Transcode`, not on the type.** Rust adds them to
   the type's own `impl`. The value objects are in `Types.kt`, which does not
