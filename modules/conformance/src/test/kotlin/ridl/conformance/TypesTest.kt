@@ -69,7 +69,7 @@ class TypesTest {
         val pkg = work.resolve("src-deprecated").createDirectories()
         pkg.resolve("ridl.toml").writeText(
             "[package]\nname = \"probe.deprecated\"\nversion = \"1.0.0\"\n\n" +
-                "[backend.kotlin]\nencodings = [\"flatbuffers\", \"podbuf\"]\n",
+                "[backend.kotlin]\nencodings = [\"flatbuffers\", \"proto3\", \"podbuf\"]\n",
         )
         pkg.resolve("deprecated.ridl").writeText(
             """

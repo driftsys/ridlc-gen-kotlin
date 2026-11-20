@@ -748,6 +748,65 @@ class FacesEmitterTest {
     }
 
     @Test
+    fun `proto3 refusal precedes podbuf refusal for an induced struct`() {
+        val model = induced(bounded = true).toBuilder()
+        model.getInterfacesBuilder(0).getSlotsBuilder(0).interactionBuilder.commandBuilder
+            .setRequestSizes(PayloadSizes.newBuilder()
+                .setProto3(SizeState.newBuilder().setAbsent(SizeAbsent.newBuilder().setCause(AbsentCause.ABSENT_CAUSE_UNRESOLVED)))
+                .setPodbuf(SizeState.newBuilder().setUnbounded(FbUnbounded.getDefaultInstance())))
+        val emitted = FacesEmitter(model.build(), Options("kt.demo", WireEncoding.entries)).emit()
+        assertNull(emitted.text)
+        assertEquals(
+            listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: `kt.demo.DriveGoParams` has no finite proto3 bound: it names a declaration the sizer did not resolve (Unresolved)"),
+            emitted.warnings,
+        )
+    }
+
+    @Test
+    fun `a reply tuple uses its own proto3 size state`() {
+        for (replyBounded in listOf(false, true)) {
+            val model = induced(bounded = true).toBuilder()
+            model.getTuplesBuilder(0).nameBuilder.setRust("DriveGoReply")
+            val bounded = PayloadSizes.newBuilder().setProto3(SizeState.newBuilder().setBounded(6)).build()
+            val absent = PayloadSizes.newBuilder().setProto3(
+                SizeState.newBuilder().setAbsent(SizeAbsent.newBuilder().setCause(AbsentCause.ABSENT_CAUSE_UNRESOLVED)),
+            ).build()
+            val query = QueryShape.newBuilder()
+                .addParams(Param.newBuilder().setName(spelled("level")).setType(Type.newBuilder().setNamed(level)))
+                .setRequest(levelPayload())
+                .setRequestSizes(if (replyBounded) absent else bounded)
+                .setReplyTuple(TupleRef.newBuilder().setIndex(0))
+                .setReplySizes(if (replyBounded) bounded else absent)
+            model.getInterfacesBuilder(0).getSlotsBuilder(0).interactionBuilder.clearCommand().setQuery(query)
+            val emitted = FacesEmitter(model.build(), Options("kt.demo", listOf(WireEncoding.FlatBuffers, WireEncoding.Proto3))).emit()
+            if (replyBounded) {
+                assertEquals(emptyList<String>(), emitted.warnings)
+                assertTrue("DriveGoReplyProto3Codec" in checkNotNull(emitted.text))
+            } else {
+                assertNull(emitted.text)
+                assertEquals(
+                    listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: `kt.demo.DriveGoReply` has no finite proto3 bound: it names a declaration the sizer did not resolve (Unresolved)"),
+                    emitted.warnings,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a stream element selects the proto3 codec on a proto3 port`() {
+        val model = everyKind().toBuilder()
+        val interaction = model.getInterfacesBuilder(0).getSlotsBuilder(3).interactionBuilder
+        interaction.queryBuilder.clearReplyPayload().setReply(
+            Reply.newBuilder().setValue(Type.newBuilder().setStream(StreamType.newBuilder().setNamed(level))),
+        )
+        interaction.addStreams(StreamShape.newBuilder().setNo(0).setForm(StreamForm.STREAM_FORM_ELEMENTS).setElement(level))
+        val emitted = FacesEmitter(model.build(), Options("kt.demo", WireEncoding.entries)).emit()
+        assertEquals(emptyList<String>(), emitted.warnings)
+        val text = checkNotNull(emitted.text)
+        assertTrue("Encoding.Proto3 -> LevelProto3Codec" in text, text)
+    }
+
+    @Test
     fun `an interface with a named payload not bounded under proto3 is skipped with a warning`() {
         val p3 = Options("kt.demo", listOf(WireEncoding.Proto3))
         val declared = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))

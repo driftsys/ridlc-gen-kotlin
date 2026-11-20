@@ -8,13 +8,10 @@ package ridl.rt.coroutines
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ChannelResult
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import ridl.rt.contract.InterfaceNo
@@ -69,7 +66,8 @@ public interface StreamChunks<T> {
 
     /**
      * The chunks of [value], each read from its position to its limit. A value
-     * longer than a chunk is split; an empty one has no chunk.
+     * longer than a chunk is split. Empty bytes or text produce no chunk; a
+     * named element always produces one, even when its encoding is empty.
      *
      * @throws CallError when [value] cannot be written.
      */
@@ -332,7 +330,7 @@ public class StreamCall<P>(
         }
     }
 
-    /** Emits the reply stream of [sent] to its end. An empty chunk carries no value in any form: a producer can push one to look at its stream. */
+    /** Emits every chunk of the reply stream of [sent], including zero-length elements, to its end. */
     private suspend fun <T> pullAll(sent: Sent, chunks: StreamChunks<T>, emit: suspend (T) -> Unit) {
         val c = sent.correlation
         val buf = ByteBuffer.allocate(chunks.maxChunk)
@@ -354,7 +352,6 @@ public class StreamCall<P>(
                     else -> null
                 }
             }
-            if (pull is Pull.Chunk && pull.len == 0) continue
             started = true
             when (pull) {
                 is Pull.Chunk -> {
@@ -481,49 +478,13 @@ private fun <H : StreamHandler> refuseClaim(handler: H, claim: ClaimId, error: C
 }
 
 /**
- * Whether the reply stream of a claim stopped, for a source that has nothing to
- * push: only a push reads that. The port stops a stream without a chunk to show
- * for it, so the driver watches for a wake, and a wake may be spurious. A
- * registration woken at once, on the registering thread, is the sign of a
- * stream that will not change again, and only that sign is worth a push: an
- * empty chunk, which an open stream takes and a stopped one refuses. One object
- * per stream, because a waker of another object would displace and wake it.
- */
-private class ReplyWatch<H>(private val handler: H, private val claim: ClaimId, private val changed: Waker) : Waker where H : StreamHandler, H : Wakeable {
-    private val interest = Interest.ClaimStream(claim, REPLY_STREAM)
-
-    @Volatile
-    private var registering: Thread? = null
-
-    @Volatile
-    private var atOnce = false
-
-    override fun wake() {
-        if (registering === Thread.currentThread()) atOnce = true else changed.wake()
-    }
-
-    /** Registers again, and throws what a push throws when the stream stopped. */
-    fun check() {
-        atOnce = false
-        registering = Thread.currentThread()
-        handler.wakeOn(interest, this)
-        registering = null
-        if (atOnce) {
-            handler.pushClaim(claim, REPLY_STREAM, ByteBuffer.allocate(0))
-            handler.wakeOn(interest, this)
-        }
-    }
-}
-
-/**
  * Pushes [source] to the reply stream of [claim] and ends it, which settles the
- * claim. A collector's refusal or a forget stops [source], even one suspended
- * between two elements, and the claim settles with it. Before each element it
- * registers with [StreamHandler.wakeOnClaimForget] and reads
- * [StreamHandler.claimForget]: a forget reported there stops [source] without
- * waiting for another element, as `PushError.Failed(Transport.Interrupted)`
- * does. On a runtime with the provided defaults, the empty push of the reply
- * watch reads the forget instead. An element that cannot
+ * claim. A caller's forget cancels [source], even while it is suspended
+ * between elements, through [StreamHandler.wakeOnClaimForget] and
+ * [StreamHandler.claimForget]. As in the Rust face, a real push reports
+ * backpressure or refusal; a wake alone does not establish either. While
+ * [source] is idle, a refusal is learned at its next push or end. Every
+ * encoded chunk is pushed, including a zero-length element. An element that cannot
  * be written stops the stream with that outcome. A [source] that fails with a
  * [CallError], a refusal from [claimStream] included, stops the stream with
  * that error, and another failure with `Transport.Interrupted`, the outcome a
@@ -533,38 +494,16 @@ private class ReplyWatch<H>(private val handler: H, private val claim: ClaimId, 
  */
 public suspend fun <H, T> driveReply(handler: H, claim: ClaimId, chunks: StreamChunks<T>, source: Flow<T>) where H : StreamHandler, H : Wakeable {
     try {
-        coroutineScope {
-            val ready = Channel<ByteBuffer>()
-            launch {
-                try {
-                    source.collect { value -> chunks.encode(value).forEach { ready.send(it) } }
-                    ready.close()
-                } catch (e: Throwable) {
-                    ready.close(e)
+        untilForgotten(handler, claim, command = false) {
+            source.collect { value ->
+                for (chunk in chunks.encode(value)) {
+                    await(handler, Interest.ClaimStream(claim, REPLY_STREAM)) {
+                        val length = chunk.remaining()
+                        Unit.takeIf { handler.pushClaim(claim, REPLY_STREAM, chunk) == length }
+                    }
                 }
             }
-            val changed = Channel<Unit>(Channel.CONFLATED)
-            val watch = ReplyWatch(handler, claim) { changed.trySend(Unit) }
-            // One object for every registration, so a registration again is a refresh, not a displacement.
-            val forget = Waker { changed.trySend(Unit) }
-            while (true) {
-                handler.wakeOnClaimForget(claim, forget)
-                if (handler.claimForget(claim) != ClaimForget.NotForgotten) throw PushError.Failed(Transport.Interrupted)
-                watch.check()
-                val next = select<ChannelResult<ByteBuffer>?> {
-                    ready.onReceiveCatching { it }
-                    changed.onReceive { null }
-                } ?: continue
-                if (next.isClosed) {
-                    next.exceptionOrNull()?.let { throw it }
-                    break
-                }
-                val chunk = next.getOrThrow()
-                await(handler, Interest.ClaimStream(claim, REPLY_STREAM)) {
-                    val length = chunk.remaining()
-                    Unit.takeIf { handler.pushClaim(claim, REPLY_STREAM, chunk) == length }
-                }
-            }
+            Unit
         }
         handler.endClaim(claim, REPLY_STREAM)
     } catch (_: PushError.Failed) {

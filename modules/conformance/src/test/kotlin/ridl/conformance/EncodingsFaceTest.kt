@@ -68,6 +68,7 @@ class EncodingsFaceTest {
         import probe.both.Level
         ${carried.joinToString("\n        ") { "import probe.both.Level${codecSuffix(it)}" }}
         import probe.both.Reading
+        ${carried.joinToString("\n        ") { "import probe.both.Reading${codecSuffix(it)}" }}
         import probe.both.Tank
         import probe.both.TankAsyncClient
         import probe.both.TankPollClient
@@ -88,6 +89,9 @@ class EncodingsFaceTest {
         import ridl.rt.contract.Ordinal
         import ridl.rt.encoding.Encoding
         import ridl.rt.loopback.Loopback
+        import ridl.rt.port.Pull
+        import ridl.rt.port.REPLY_STREAM
+        import kotlinx.coroutines.yield
         import ridl.rt.payload.Payload
         import java.nio.ByteBuffer
 
@@ -102,6 +106,7 @@ class EncodingsFaceTest {
                 Reading(level = Level.of((args.a.value + args.b.value) / 2), note = "mixed")
 
             override fun history(level: Level): Flow<Reading> = flow {
+                emit(Reading(level = Level.of(0), note = ""))
                 for (i in 1..level.value) emit(Reading(level = Level.of(i), note = "r${'$'}i"))
             }
         }
@@ -118,6 +123,7 @@ class EncodingsFaceTest {
                 if (expected != actual) failures += "${'$'}label: expected ${'$'}expected, got ${'$'}actual"
             }
             val carried = listOf(${carried.joinToString { "Encoding.$it to Level${codecSuffix(it)}" }})
+            val readingCodecs = listOf(${carried.joinToString { "Reading${codecSuffix(it)}" }})
             for ((encoding, levelCodec) in carried) {
                 val rt = Loopback(Tank.catalog, encoding)
                 val client = TankPollClient(rt)
@@ -155,6 +161,35 @@ class EncodingsFaceTest {
                 expectEqual("${'$'}encoding: dispatch settles the query", 1, Tank.dispatch(rt, provider, buffer, scope))
                 expectEqual("${'$'}encoding: the reply", Result.success(Reading(level = Level.of(30), note = "mixed")), client.mixReply(mix))
 
+                // Read the stream bytes independently of the generated consumer.
+                val readingCodec = readingCodecs[carried.indexOfFirst { it.first == encoding }]
+                val request = bytes(levelCodec, Level.of(1))
+                val correlation = rt.query(Tank.number, Ordinal(5u), ByteBuffer.wrap(request), null)
+                Tank.dispatch(rt, provider, buffer, scope)
+                val rawElements = runBlocking {
+                    withTimeout(30_000) {
+                        val elements = mutableListOf<List<Byte>>()
+                        val elementBuffer = ByteBuffer.allocate(readingCodec.maxSize)
+                        while (true) {
+                            elementBuffer.clear()
+                            when (val pulled = rt.pull(correlation, REPLY_STREAM, elementBuffer)) {
+                                is Pull.Chunk -> elements += elementBuffer.array().copyOf(pulled.len).toList()
+                                Pull.End -> break
+                                Pull.Pending -> yield()
+                                is Pull.Failed -> error("stream failed: ${'$'}{pulled.error}")
+                            }
+                        }
+                        elements
+                    }
+                }
+                rt.forget(correlation)
+                expectEqual(
+                    "${'$'}encoding: the stream bytes are the port's encoding",
+                    listOf(Reading(level = Level.of(0), note = ""), Reading(level = Level.of(1), note = "r1"))
+                        .map { bytes(readingCodec, it).toList() },
+                    rawElements,
+                )
+
                 // A reply stream: `serveAsync`'s `drive` encodes each element, the async client decodes it.
                 val streamed = Loopback(Tank.catalog, encoding)
                 val readings = runBlocking(Dispatchers.Default) {
@@ -165,7 +200,7 @@ class EncodingsFaceTest {
                         received
                     }
                 }
-                expectEqual("${'$'}encoding: the reply stream", (1L..3L).map { Reading(level = Level.of(it), note = "r${'$'}it") }, readings)
+                expectEqual("${'$'}encoding: the reply stream", listOf(Reading(level = Level.of(0), note = "")) + (1L..3L).map { Reading(level = Level.of(it), note = "r${'$'}it") }, readings)
             }
             val refused = Encoding.entries - carried.map { it.first }
             expectEqual("the encodings refused", ${ENCODINGS.size - carried.size}, refused.size)

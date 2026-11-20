@@ -312,11 +312,11 @@ tuple), and a root with no finite podbuf bound.
   [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-rust-and-docsdesignmd)
   says how. A buffer the face allocates starts at position 0.
 - **A type from another package is written by that package's helpers**, as in
-  `Codec.kt`, and the face names that package's `<Type>PodbufCodec`. A package
-  that carries podbuf and reaches a type of a package that does not carry it
-  generates, and then fails to compile, rather than skip the interface or the
-  type. The Rust backend has the same constraint: the other crate has no
-  `Payload<Podbuf>` implementation.
+  `Codec.kt`, and the face names that package's codec for the selected encoding.
+  A package that carries proto3 or podbuf and reaches a type of a package that
+  does not carry that encoding generates, and then fails to compile, rather than
+  skip the interface or the type. The Rust backend has the same constraint: the
+  other crate has no `Payload<Proto3>` or `Payload<Podbuf>` implementation.
 - **The encoder's map check is Rust's** (driftsys/ridl#1285). It sorts a key
   carried as f32 as the double it holds, and compares two keys for `Unique` as
   the f32 it writes, so two doubles that round to one f32 are refused as
