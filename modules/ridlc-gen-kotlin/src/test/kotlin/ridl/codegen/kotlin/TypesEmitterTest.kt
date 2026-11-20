@@ -89,7 +89,8 @@ class TypesEmitterTest {
         val first = text.indexOf("PATTERN_0.matches(this.text)")
         val second = text.indexOf("PATTERN_1.matches(this.text)")
         assertTrue(first in 0 until second, text)
-        assertTrue("Regex(\"[a-z]+\")" in text && "Regex(\".*x.*\")" in text, text)
+        assertTrue("PATTERN_0: Regex = Regex(\"[a-z]+\")" in text, text)
+        assertTrue("PATTERN_1: Regex = Regex(\".*x.*\")" in text, text)
         assertTrue("containsMatchIn" !in text, text)
     }
 
@@ -104,6 +105,57 @@ class TypesEmitterTest {
             ),
             emitted.errors,
         )
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `legacy pattern fields refuse the request with an error and no files`() {
+        for (constraint in listOf(
+            Constraint.newBuilder().setPattern("[a-z]+").build(),
+            Constraint.newBuilder().setPatternConst("OLD_PATTERN").build(),
+        )) {
+            val scalar = Scalar.newBuilder().setClass_(ScalarClass.SCALAR_CLASS_STRING).setConstraint(constraint).build()
+            val declarations = listOf(
+                Declaration.newBuilder().setName(spelled("Legacy")).setScalar(scalar).build(),
+                struct("Legacy", "text" to Type.newBuilder().setInline(scalar).build()),
+            )
+            for (declaration in declarations) {
+                val input = model(declaration).build()
+                val emitted = TypesEmitter(input, options).emit()
+                assertNull(emitted.text)
+                assertTrue(emitted.errors.single().contains("kt.demo.Legacy"), emitted.errors.toString())
+                assertTrue(emitted.errors.single().contains("requires ridl editor-v0.21.0 or later"), emitted.errors.toString())
+                val response = Generator.generate(ridl.codegen.v1.Plugin.CodegenRequest.newBuilder().setSchema(SCHEMA).setModel(input).build())
+                assertEquals(0, response.filesCount)
+                assertTrue(response.diagnosticsCount > 0)
+                assertTrue(response.diagnosticsList.all { it.severity == ridl.codegen.v1.Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_ERROR })
+            }
+        }
+    }
+
+    @Test
+    fun `a named string refuses a repetition bound Java cannot compile`() {
+        val declaration = Declaration.newBuilder().setName(spelled("Broken"))
+            .setScalar(matching("[a-z]+", "a{99999999999}").inline).build()
+        val emitted = TypesEmitter(model(declaration).build(), options).emit()
+        assertNull(emitted.text)
+        assertTrue(emitted.errors.single().contains("a{99999999999}` does not compile under java.util.regex"), emitted.errors.toString())
+    }
+
+    @Test
+    fun `unresolved clauses add notes but no pattern checks`() {
+        for (resolved in listOf(true, false)) {
+            val constraint = Constraint.newBuilder().addMatches(Match.newBuilder().setPatternConst("MISSING"))
+            if (resolved) constraint.addMatches(Match.newBuilder().setPattern("[a-z]+"))
+            val scalar = Scalar.newBuilder().setClass_(ScalarClass.SCALAR_CLASS_STRING).setConstraint(constraint)
+            val declaration = Declaration.newBuilder().setName(spelled("Token")).setScalar(scalar).build()
+            val emitted = TypesEmitter(model(declaration).build(), options).emit()
+            assertEquals(emptyList<String>(), emitted.errors)
+            val text = emitted.text!!
+            assertTrue("The pattern `MISSING` did not resolve, so it is not checked." in text, text)
+            assertEquals(if (resolved) 1 else 0, Regex("private val PATTERN_").findAll(text).count(), text)
+            assertEquals(if (resolved) 1 else 0, Regex("\\.matches\\(value\\)").findAll(text).count(), text)
+        }
     }
 
     @Test

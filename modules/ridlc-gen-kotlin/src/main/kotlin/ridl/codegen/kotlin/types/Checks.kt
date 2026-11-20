@@ -50,6 +50,7 @@ internal fun scalarChecks(
     pattern: ((String) -> String)?,
     fail: (RuleName) -> CodeBlock,
 ): CodeBlock? {
+    scalar.constraint.requireMatchClauses()
     if (scalar.vacuous) return null
     val c = scalar.constraint
     val code = CodeBlock.builder()
@@ -113,7 +114,18 @@ internal fun scalarChecks(
  * The normalised pattern of each `match` clause that resolved, in source order.
  * A clause whose constant did not resolve has no pattern and checks nothing.
  */
-internal fun Constraint.patterns(): List<String> = matchesList.filter { it.hasPattern() }.map { it.pattern }
+internal fun Constraint.patterns(): List<String> {
+    requireMatchClauses()
+    return matchesList.filter { it.hasPattern() }.map { it.pattern }
+}
+
+/** Deprecated pattern fields do not carry the semantics of the current match clauses. */
+@Suppress("DEPRECATION")
+private fun Constraint.requireMatchClauses() {
+    if (matchesCount == 0 && (hasPattern() || hasPatternConst())) {
+        refuse("the plugin requires ridl editor-v0.21.0 or later; this model uses deprecated pattern fields")
+    }
+}
 
 /**
  * [body], refused unless `java.util.regex` compiles it, as the generated

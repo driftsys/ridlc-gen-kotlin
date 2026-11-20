@@ -260,13 +260,15 @@ The tests of #186, `PatternsTest`: a typl pattern is an I-Regexp that matches
 the whole value (driftsys/ridl#597). Each literal of ridl's agreement table,
 `resources/patterns/pattern-agreement.json`, which is the pinned release's
 `crates/ridl-ir/tests/pattern_agreement.json`, becomes a named string type, and
-each of the table's 125 values gets the table's verdict from the generated
-`ofOrNull`. `ridl.std.Date`'s pattern refuses a date with a character before or
-after it, or a line break after it, and a date in other digits. A string with
-two clauses refuses a value that matches only one of them, in a named type and
-in an inline struct field. That a pattern `java.util.regex` cannot compile
-refuses its declaration (#12) is `TypesEmitterTest`'s: ridl sends no such
-pattern.
+each of the table's 125 pairs gets the table's verdict from the generated
+`ofOrNull`. A local `Day` type uses the same pattern text as `ridl.std.Date` and
+refuses a date with a character before or after it, or a line break after it,
+and a date in other digits. A string with two clauses refuses a value that
+matches only one of them, in a named type and in an inline struct field. That a
+pattern `java.util.regex` cannot compile refuses its declaration (#12) is
+checked with hand-built constraints in `TypesEmitterTest` and `PatternsTest`,
+including a repetition bound Java cannot compile. Codec tests also check that
+both encodings refuse an inline string that breaks only its second match clause.
 
 The tests of #16 and #18, `NamesTest`: a name the plugin chose never refuses a
 package. Two packages, written inline and built with

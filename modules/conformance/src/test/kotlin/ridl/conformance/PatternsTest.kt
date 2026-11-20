@@ -8,6 +8,32 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import ridl.codegen.kotlin.Generator
 import ridl.codegen.kotlin.Wire
+import ridl.codegen.v1.ModelOuterClass.Constraint
+import ridl.codegen.v1.ModelOuterClass.Declaration
+import ridl.codegen.v1.ModelOuterClass.DottedName
+import ridl.codegen.v1.ModelOuterClass.FbSlot
+import ridl.codegen.v1.ModelOuterClass.FbTable
+import ridl.codegen.v1.ModelOuterClass.FbWire
+import ridl.codegen.v1.ModelOuterClass.FbRoot
+import ridl.codegen.v1.ModelOuterClass.Field
+import ridl.codegen.v1.ModelOuterClass.FlatBuffersProjection
+import ridl.codegen.v1.ModelOuterClass.Match
+import ridl.codegen.v1.ModelOuterClass.Model
+import ridl.codegen.v1.ModelOuterClass.PodbufBound
+import ridl.codegen.v1.ModelOuterClass.PodbufDescriptor
+import ridl.codegen.v1.ModelOuterClass.PodbufField
+import ridl.codegen.v1.ModelOuterClass.PodbufForm
+import ridl.codegen.v1.ModelOuterClass.PodbufHead
+import ridl.codegen.v1.ModelOuterClass.PodbufNamedField
+import ridl.codegen.v1.ModelOuterClass.PodbufProjection
+import ridl.codegen.v1.ModelOuterClass.PodbufSource
+import ridl.codegen.v1.ModelOuterClass.Scalar
+import ridl.codegen.v1.ModelOuterClass.ScalarClass
+import ridl.codegen.v1.ModelOuterClass.SizeState
+import ridl.codegen.v1.ModelOuterClass.Slot
+import ridl.codegen.v1.ModelOuterClass.Spellings
+import ridl.codegen.v1.ModelOuterClass.Struct
+import ridl.codegen.v1.ModelOuterClass.Type
 import ridl.codegen.v1.Plugin.CodegenResponse
 import java.lang.reflect.InvocationTargetException
 import java.nio.file.Path
@@ -77,7 +103,7 @@ class PatternsTest {
         assertEquals(125, rows.size, "the table changed size: check it against the pinned release")
     }
 
-    /** The design's whole-value case: `ridl.std.Date`'s pattern, which a search would accept inside a longer text. */
+    /** A local `Day` type uses the same pattern text as `ridl.std.Date`; a search would accept it inside longer text. */
     @Test
     fun `a pattern matches the whole value, not a part of it`() {
         val accepts = compiled("whole", "type Day : string [0..16 match /[0-9]{4}-[0-9]{2}-[0-9]{2}/]")
@@ -88,6 +114,97 @@ class PatternsTest {
             verdicts.map { it.substringAfterLast(' ') },
             verdicts.toString(),
         )
+    }
+
+    @Test
+    fun `dot accepts additional control characters`() {
+        // These cases extend ridl's copied agreement table.
+        val accepts = compiled("dotcontrols", "type Dot : string [1..1 match /./]")
+        for (value in listOf("\u0085", "\u000B", "\u000C")) assertTrue(accepts("Dot", value), shown(value))
+    }
+
+    @Test
+    fun `both codecs refuse a buffer that breaks only the second inline clause`() {
+        val request = Wire.readRequest(Harness.capturedRequests("kt-values", work.resolve("capture")).getValue("kt.values"))
+        val response = Generator.generate(request)
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        val probe = """
+            package kt.values
+
+            import java.nio.ByteBuffer
+            import ridl.rt.payload.Payload
+            import ridl.rt.payload.Rule
+            import ridl.rt.payload.VerifyError
+
+            object ClauseProbe {
+                private fun <V> checkCodec(codec: Payload<ClauseToken, V>) {
+                    val buffer = ByteBuffer.allocate(codec.maxSize)
+                    codec.encode(ClauseToken("ABC"), buffer)
+                    buffer.flip()
+                    check(codec.decode(codec.verify(buffer)).text == "ABC")
+                    val offset = (0 until buffer.limit() - 2).single {
+                        buffer.get(it) == 65.toByte() && buffer.get(it + 1) == 66.toByte() && buffer.get(it + 2) == 67.toByte()
+                    }
+                    // BBC matches [A-Z]+ and fails A[A-Z][A-Z].
+                    buffer.put(offset, 66.toByte())
+                    try {
+                        codec.decode(codec.verify(buffer))
+                        error("accepted a value that breaks clause 2")
+                    } catch (e: VerifyError.Contract) {
+                        check(e.violation.rule == Rule.Pattern)
+                    }
+                }
+
+                @JvmStatic
+                fun flatbuffers() = checkCodec(ClauseTokenCodec)
+
+                @JvmStatic
+                fun podbuf() = checkCodec(ClauseTokenPodbufCodec)
+            }
+        """.trimIndent()
+        val compiled = Compiler.compile(response.filesList.associate { it.path to it.text } + ("kt/values/ClauseProbe.kt" to probe), work.resolve("compile"))
+        assertTrue(compiled.ok, compiled.messages)
+        val owner = compiled.classLoader!!.loadClass("kt.values.ClauseProbe")
+        for (encoding in listOf("flatbuffers", "podbuf")) owner.getMethod(encoding).invoke(null)
+    }
+
+    @Test
+    fun `each codec emitter refuses a second inline clause Java cannot compile`() {
+        val scalar = Scalar.newBuilder().setClass_(ScalarClass.SCALAR_CLASS_STRING).setConstraint(
+            Constraint.newBuilder().setLenMax(3)
+                .addMatches(Match.newBuilder().setPattern("[A-Z]+"))
+                .addMatches(Match.newBuilder().setPattern("a{99999999999}")),
+        )
+        val field = Field.newBuilder().setName(Spellings.newBuilder().setDeclared("text").setCamel("Text"))
+            .setType(Type.newBuilder().setInline(scalar))
+        val declaration = Declaration.newBuilder()
+            .setName(Spellings.newBuilder().setDeclared("Broken").setCamel("Broken"))
+            .setStruct(Struct.newBuilder().addSlots(Slot.newBuilder().setOrdinal(1).setField(field)))
+            .setPodbuf(SizeState.newBuilder().setBounded(40))
+        val head = PodbufHead.newBuilder().setDeclaration(0).setSize(16).setAlign(8).addFields(
+            PodbufField.newBuilder().setOffset(0).setSize(16).setAlign(4)
+                .setSource(PodbufSource.newBuilder().setField(PodbufNamedField.newBuilder().setName("text").setOrdinal(1)))
+                .setForm(PodbufForm.newBuilder().setTailDescriptor(PodbufDescriptor.newBuilder().setText(PodbufBound.newBuilder().setMax(3)))),
+        )
+        val model = Model.newBuilder().setName(DottedName.newBuilder().setDotted("kt.values"))
+            .addDeclarations(declaration)
+            .setFlatbuffers(
+                FlatBuffersProjection.newBuilder().addRoots(FbRoot.newBuilder().setDeclaration(0).setMaxSize(64))
+                    .addTables(
+                        FbTable.newBuilder().setName("Broken").setStructDeclaration(0).setVtableSlots(1)
+                            .addSlots(FbSlot.newBuilder().setId(0).setField(0).setWire(FbWire.newBuilder().setText(true))),
+                    ),
+            )
+            .setPodbuf(PodbufProjection.newBuilder().addHeads(head))
+        val options = ridl.codegen.kotlin.Options("kt.values", listOf(ridl.codegen.kotlin.WireEncoding.FlatBuffers, ridl.codegen.kotlin.WireEncoding.Podbuf))
+        val emissions = listOf(
+            ridl.codegen.kotlin.types.CodecEmitter(model.build(), options).emit(),
+            ridl.codegen.kotlin.types.PodbufCodecEmitter(model.build(), options).emit(),
+        )
+        for (emitted in emissions) {
+            org.junit.jupiter.api.Assertions.assertNull(emitted.text)
+            assertTrue(emitted.errors.any { "a{99999999999}` does not compile under java.util.regex" in it }, emitted.errors.toString())
+        }
     }
 
     /**

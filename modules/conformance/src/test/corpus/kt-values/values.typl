@@ -40,3 +40,7 @@ struct Bundle {
   steps : [integer [0..4]; 0..2]
   mode  : Mode
 }
+
+struct ClauseToken {
+  text : string [3..3 match /[A-Z]+/ match /A[A-Z][A-Z]/]
+}

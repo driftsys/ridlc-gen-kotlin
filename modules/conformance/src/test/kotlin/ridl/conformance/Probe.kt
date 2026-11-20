@@ -51,7 +51,7 @@ object Probe {
     private val NON_MATCHES: Map<String, String> = mapOf("veh.cabin.Glyph" to "ab")
 
     /** A sample of each inline pattern of the corpus, by its clauses' patterns: an inline scalar has no type to key it. */
-    val PATTERN_SAMPLES: Map<String, String> = mapOf("ABC" to "ABC")
+    val PATTERN_SAMPLES: Map<String, String> = mapOf("ABC" to "ABC", "[A-Z]+ A[A-Z][A-Z]" to "ABC")
 
     /** The probe source for [models], a top-level `fun probe(): List<String>` of the failures. */
     fun source(models: List<Model>): String {
