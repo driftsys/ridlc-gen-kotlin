@@ -42,7 +42,7 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.20.0` (`modules/conformance/ridl-release`).
+Tested against ridl `editor-v0.21.0` (`modules/conformance/ridl-release`).
 
 The plugin ignores two parts of ridl's schema (#31). The request's deployment
 section (`CodegenRequest.deployment`) is for a backend that lays out memory for
@@ -226,7 +226,7 @@ to that over 19,023 buffers (`CodecTest`).
 ### `PodbufCodec.kt`
 
 `PodbufCodec.kt` is the Rust podbuf codec (`codec_podbuf.rs` of
-`editor-v0.20.0`) spelled in Kotlin, over `ridl-rt-kt`'s `ridl.rt.podbuf`: one
+`editor-v0.21.0`) spelled in Kotlin, over `ridl-rt-kt`'s `ridl.rt.podbuf`: one
 `<Type>PodbufCodec` object implementing `Payload` per struct and union of the
 package, per box the projection lists (a named scalar, an enum or an enum set
 carried as a payload root) and per tuple a call sends on its own, and `internal`

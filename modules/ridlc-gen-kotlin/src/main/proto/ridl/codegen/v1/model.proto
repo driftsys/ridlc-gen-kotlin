@@ -1714,7 +1714,7 @@ enum Proto3RefusalCause {
   PROTO3_REFUSAL_CAUSE_OPTIONAL_COLLECTION = 1;   // `T[]?` or a map field `?`
   PROTO3_REFUSAL_CAUSE_OPTIONAL_ELEMENT = 2;      // optional element, key or value
   PROTO3_REFUSAL_CAUSE_NESTED_COLLECTION = 3;
-  PROTO3_REFUSAL_CAUSE_MAP_KEY = 4;               // key refused by the codec's rule
+  PROTO3_REFUSAL_CAUSE_MAP_KEY = 4;               // key refused by the projection's rule
   PROTO3_REFUSAL_CAUSE_ENUM_VALUE = 5;            // outside int32, live or retired
   PROTO3_REFUSAL_CAUSE_FIELD_NUMBER = 6;          // 0, 19000..=19999, > 536870911
   PROTO3_REFUSAL_CAUSE_REFUSED_DEPENDENCY = 7;    // needs a refused message
