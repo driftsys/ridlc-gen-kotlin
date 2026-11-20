@@ -688,7 +688,7 @@ internal class Proto3Forms(private val model: Model, private val pkg: String) {
         val element = wire.element
         val v = fresh("v")
         val code = CodeBlock.builder().addStatement("val %L = %L", v, value)
-        if (!wire.packed || element !is P3Wire.Num) {
+        if (element !is P3Wire.Num) {
             return code.add(present(owner, element, v)).addStatement("%L += 1", counter).build()
         }
         val raw = fresh("raw")
@@ -858,16 +858,17 @@ internal class Proto3Forms(private val model: Model, private val pkg: String) {
     // -- decode ------------------------------------------------------------------------------
 
     /**
-     * The locals of `decode` over [fields], each at its default — `null` for
-     * a `?` field — and the walk that reads every known field into its local.
-     * The caller adds the value built from the locals.
+     * The locals of `decode` over [fields] and the walk that fills them.
+     * Message defaults are built only for absent fields: an empty nested
+     * message may violate its type's constraints. The caller builds the value
+     * from the returned expressions.
      */
     fun decodeWalk(fields: List<P3Field>): Pair<List<String>, CodeBlock.Builder> {
         val code = CodeBlock.builder()
         val locals = fields.map { f ->
             val local = fresh("f")
             when {
-                f.optional -> code.addStatement("var %L: %T = null", local, typeName(f.type))
+                f.optional || f.wire is P3Wire.Msg -> code.addStatement("var %L: %T = null", local, typeName(f.type).copy(nullable = true))
                 f.wire is P3Wire.Repeated || f.wire is P3Wire.Keyed ->
                     code.addStatement("val %L = %L", local, decodeDefault(f.wire, f.type))
                 else -> code.addStatement("var %L: %T = %L", local, typeName(f.type), decodeDefault(f.wire, f.type))
@@ -885,16 +886,18 @@ internal class Proto3Forms(private val model: Model, private val pkg: String) {
             code.beginControlFlow("%Lu ->", f.number).add(decodeArm(f, locals[i], "$field.value")).endControlFlow()
         }
         code.addStatement("else -> {}").endControlFlow().endControlFlow()
-        return locals to code
+        val values = fields.zip(locals).map { (f, local) ->
+            if (!f.optional && f.wire is P3Wire.Msg) "($local ?: ${decodeDefault(f.wire, f.type)})" else local
+        }
+        return values to code
     }
 
-    /** `decode` of a union: the first arm at its default until the bytes name an arm, which `verify` required. */
+    /** `decode` of a union: build only the arm present in the bytes, which `verify` required. */
     fun unionDecode(type: ClassName, arms: List<Pair<ClassName, P3Field>>): CodeBlock {
         val out = fresh("out")
         val reader = fresh("reader")
         val field = fresh("field")
-        val (firstVariant, first) = arms.first()
-        val code = CodeBlock.builder().addStatement("var %L: %T = %T(%L)", out, type, firstVariant, decodeDefault(first.wire, first.type))
+        val code = CodeBlock.builder().addStatement("var %L: %T = null", out, type.copy(nullable = true))
             .addStatement("val %L = %T(buf)", reader, P3_READER)
             .beginControlFlow("while (true)")
             .addStatement("val %L = %L.next() ?: break", field, reader)
@@ -905,7 +908,7 @@ internal class Proto3Forms(private val model: Model, private val pkg: String) {
                 .addStatement("if (%L is %T) %L = %T(%L)", v, valueClass(wireOf(arm.wire)), out, variant, decodePresent(arm.wire, v))
                 .endControlFlow()
         }
-        return code.addStatement("else -> {}").endControlFlow().endControlFlow().addStatement("return %L", out).build()
+        return code.addStatement("else -> {}").endControlFlow().endControlFlow().addStatement("return checkNotNull(%L)", out).build()
     }
 
     /** The domain value an absent non-optional value of [wire] decodes as: its proto3 default in its own type. */
@@ -943,7 +946,7 @@ internal class Proto3Forms(private val model: Model, private val pkg: String) {
         return when (val wire = f.wire) {
             is P3Wire.Repeated -> {
                 val element = wire.element
-                if (wire.packed && element is P3Wire.Num) {
+                if (element is P3Wire.Num) {
                     code.beginControlFlow("when (%L)", v)
                         .beginControlFlow("is %T ->", valueClass(P3WireType.Len)).add(packedDecode(element, binding, v)).endControlFlow()
                         .addStatement("is %T -> %L.add(%L)", valueClass(element.wire), binding, decodePresent(element, v))
@@ -986,7 +989,7 @@ internal class Proto3Forms(private val model: Model, private val pkg: String) {
         val ev = fresh("v")
         return CodeBlock.builder()
             .addStatement("var %L = %L", k, decodeDefault(wire.key, wire.keyType))
-            .addStatement("var %L = %L", x, decodeDefault(wire.value, wire.valueType))
+            .addStatement("var %L: %T = null", x, typeName(wire.valueType).copy(nullable = true))
             .addStatement("val %L = %T(%L.bytes)", reader, P3_READER, v)
             .beginControlFlow("while (true)")
             .addStatement("val %L = %L.next() ?: break", field, reader)
@@ -997,7 +1000,7 @@ internal class Proto3Forms(private val model: Model, private val pkg: String) {
             .addStatement("else -> {}")
             .endControlFlow()
             .endControlFlow()
-            .addStatement("%L[%L] = %L", binding, k, x).build()
+            .addStatement("%L[%L] = %L ?: %L", binding, k, x, decodeDefault(wire.value, wire.valueType)).build()
     }
 }
 

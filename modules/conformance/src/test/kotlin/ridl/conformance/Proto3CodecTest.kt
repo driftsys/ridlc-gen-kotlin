@@ -244,6 +244,16 @@ class Proto3CodecTest {
             if (entries.size < 2) continue
             val unique = "err:Contract(Violation { type_name: Some(\"${ownerOf(model, message)}\"), rule: Unique })"
             cases += Case("same-$number", rebuilt(entries[1], entries[0].bytes), unique)
+            val declaration = model.declarationsList.firstOrNull { it.name.declared == ownerOf(model, message) }
+            val field = declaration?.struct?.slotsList?.firstOrNull { it.hasField() && it.field.name.declared == fields[number]?.field }?.field
+            if (field?.type?.hasMap() == true && entries.size.toLong() == field.type.map.max) {
+                val length = "err:Contract(Violation { type_name: Some(\"${ownerOf(model, message)}\"), rule: Length })"
+                cases += Case("map-count-$number", bytes + entries.first().bytes, length)
+            }
+        }
+        if (type == "kt.proto3.OptionalDefaults") {
+            val zeros = "080015000000001900000000000000002200".chunked(2)
+            cases += Case("optional-defaults", zeros, "ok:" + digest(zeros.joinToString("")))
         }
         return cases.map { Case("case-${it.name}", it.bytes, it.expected) }
     }
@@ -405,7 +415,7 @@ class Proto3CodecTest {
     }
 
     /**
-     * #133, task 6 not done: a package that selects proto3 and declares an
+     * #133 still needs proto3 faces: a package that selects proto3 and declares an
      * interface gets no face for it, with one warning naming why, and keeps
      * its codecs, among them the codec of the struct induced for a call,
      * which compiles and writes the canonical proto3 bytes.
@@ -477,7 +487,7 @@ class Proto3CodecTest {
         /** A field number no corpus message uses, below the reserved range. */
         const val UNKNOWN = 2047
 
-        val READER_CASES: Set<String> = setOf("reorder", "unknown", "unpacked", "mixed", "oob", "dup", "wiretype", "varint", "minus-zero", "same")
+        val READER_CASES: Set<String> = setOf("reorder", "unknown", "unpacked", "mixed", "oob", "dup", "wiretype", "varint", "minus-zero", "same", "optional", "map")
 
         /**
          * Every wire kind of the proto3 projection: each scalar type a source

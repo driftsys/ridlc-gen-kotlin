@@ -108,8 +108,8 @@ of a short-lived JVM and costs nothing a generator notices.
    and `encodings`, the payload encodings the codec is generated for (§4, O-K1),
    the manifest's `[backend.kotlin] encodings` joined by `,`, the same key and
    value the Rust backend reads. An empty element, a name given twice and a name
-   the plugin has no codec for are refused. An unknown key is an error
-   diagnostic, as every in-tree backend answers it.
+   that is not an encoding are refused. An unknown key is an error diagnostic,
+   as every in-tree backend answers it.
 4. Generates the files (§4, §5) into a `CodegenResponse`, every path relative
    and `/`-separated per the path rule, every file a `text` arm, and writes the
    response to standard output as canonical protobuf JSON through the same
@@ -225,7 +225,8 @@ is one `class ConstraintViolation(type, rule, value)` in `ridl-rt-kt`, mirroring
 **The codec, one per encoding the package selects.** The manifest's
 `[backend.kotlin] encodings` chooses the codecs, and the plugin generates
 exactly those: a codec for each encoding named and none for another, a face that
-serves exactly those encodings (§5), and, with no encoding named, `Types.kt`
+serves those encodings (§5), except that a package naming proto3 gets no face
+until #133 adds proto3 faces. With no encoding named, it generates `Types.kt`
 alone. FlatBuffers, proto3 and podbuf are supported: ridl projects proto3 into
 `Model.proto3` and podbuf into `Model.podbuf`. For every payload type of every
 interaction, and for every named type a payload reaches, the plugin emits one
@@ -387,21 +388,23 @@ and each binding checks it once, beside the catalog, throwing
 own: it reads the port's, and a face built over a port of an encoding its
 package does not carry is refused.
 
-**A face serves every encoding its package carries** (#134). With one encoding,
-each use names that encoding's codec object, as the face did when FlatBuffers
-was the only codec. With several, each interaction's descriptor carries one
-codec per encoding, `flatBuffersCodec` and `podbufCodec`, and a query's
-descriptor one reply codec per encoding, and `codec(encoding)` and
-`replyCodec(encoding)` pick among them; every use picks the codec of its own
-port's encoding, and a stream's element, which no descriptor holds, picks it
-with a `when` over the carried encodings. `sizes(encoding)` gives the table of
-each carried encoding, built from that encoding's codecs' `maxSize`, and throws
-`IllegalArgumentException` for any other, so a binding's check accepts exactly
-the carried set. An interface with a call struct that the lowering induced,
-bounded in one carried encoding and not in another, is skipped with a warning,
-as the Rust backend skips it. Kotlin also skips an interface whose declared
-payload has no finite bound in a carried encoding, which the Rust backend does
-not check; the departure is recorded in `modules/ridlc-gen-kotlin/README.md`.
+**A face serves every encoding its package carries, except proto3** (#134,
+#133). A package naming proto3 gets no face and a warning until #133 adds proto3
+faces. With one supported face encoding, each use names that encoding's codec
+object, as the face did when FlatBuffers was the only codec. With several, each
+interaction's descriptor carries one codec per encoding, `flatBuffersCodec` and
+`podbufCodec`, and a query's descriptor one reply codec per encoding, and
+`codec(encoding)` and `replyCodec(encoding)` pick among them; every use picks
+the codec of its own port's encoding, and a stream's element, which no
+descriptor holds, picks it with a `when` over the carried encodings.
+`sizes(encoding)` gives the table of each carried encoding, built from that
+encoding's codecs' `maxSize`, and throws `IllegalArgumentException` for any
+other, so a binding's check accepts exactly the carried set. An interface with a
+call struct that the lowering induced, bounded in one carried encoding and not
+in another, is skipped with a warning, as the Rust backend skips it. Kotlin also
+skips an interface whose declared payload has no finite bound in a carried
+encoding, which the Rust backend does not check; the departure is recorded in
+`modules/ridlc-gen-kotlin/README.md`.
 
 **A call sends one named type** (driftsys/ridl#713, ADR-0023 decisions 2 and 6
 as amended 2026-10-13). A command or query with exactly one parameter of a named
@@ -413,14 +416,14 @@ reply, and a query that declares no return type, reply with
 `<Iface><Call>Reply`. The lowering names both (ADR-0016, amendment of
 2026-10-13), and the plugin reads the name and never builds one. Each induced
 struct a call sends is a root of its own in each encoding, so `Codec.kt` gives
-it a `<Name>Codec` and `PodbufCodec.kt` a `<Name>PodbufCodec` as each gives a
-declaration root one, and each size table reserves its `maxSize`. The face still
-skips an interface, with a warning, for an untyped parameter, a fallible `T | E`
-reply, and an induced struct with no finite bound in a carried encoding, as the
-Rust backend does. A member with a stream is on the async client and the
-provider as a `Flow` (O-K5); one with several stream parameters leaves the face
-alone: it has no method and no typed descriptor, and keeps its row of `members`
-and its size rows (#105).
+it a `<Name>Codec`, `Proto3Codec.kt` a `<Name>Proto3Codec`, and `PodbufCodec.kt`
+a `<Name>PodbufCodec` as each gives a declaration root one, and each size table
+reserves its `maxSize`. The face still skips an interface, with a warning, for
+an untyped parameter, a fallible `T | E` reply, and an induced struct with no
+finite bound in a carried encoding, as the Rust backend does. A member with a
+stream is on the async client and the provider as a `Flow` (O-K5); one with
+several stream parameters leaves the face alone: it has no method and no typed
+descriptor, and keeps its row of `members` and its size rows (#105).
 
 **What is deliberately the same as Rust.** The shape, the bounds rule, the
 correlation newtypes, the settlement table and the polling. The reason is the

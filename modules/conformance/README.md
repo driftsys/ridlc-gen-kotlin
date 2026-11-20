@@ -112,22 +112,25 @@ and over -0.0 and 0.0, a string holding U+0000, a stride, a length checked
 before its data, a deprecated field and an empty union arm.
 
 The test of #133, `Proto3CodecTest`, holds the proto3 codec to the Rust proto3
-codec of ridl `main` in the same way, for every corpus package that selects
-proto3: `kt-proto3`, which selects it alone and reaches every wire kind of the
-projection. The generated `Proto3Codec.kt` encodes the samples `RoundTrip`
-writes from the model, in its proto3 mode; the corpus is `CodecTest`'s, plus 200
-random mutants of every sample from seed 133, plus, for each full sample and
-union arm, the reader cases of the Rust codec's header: its fields in reverse
-number order, each packed field unpacked and mixed, and an unknown field, each
-read as the sample is; a singular field twice (`Duplicate`), one under another
-wire type (`WireType`), a 32-bit field's varint past u32 (`Varint`), a
-fixed-width packed run one byte long (`OutOfBounds`), a map's second key made
-its first's (`Unique`), and a double set to `-0.0`, which is written again. That
-is 11,481 buffers, each run through `verify`, `decode` and `encode` in Kotlin at
-position 0 and at position 8, which must agree, and once in Rust, whose verdicts
-are checked in as `resources/proto3/<package>-codec-rust-verdicts.txt`. Every
-verdict is Rust's, with no exception: the Rust crate checks a pattern too, under
-its `validate-pattern` feature, a default one the verdict program keeps, as for
+codec of the pinned release in the same way, for every corpus package that
+selects proto3: `kt-proto3`, which selects it alone and reaches every wire kind
+of the projection, and `kt-values`, which selects all three encodings. The
+generated `Proto3Codec.kt` encodes the samples `RoundTrip` writes from the
+model, in its proto3 mode; the corpus is `CodecTest`'s, plus 200 random mutants
+of every sample from seed 133, plus, for each full sample and union arm, the
+reader cases of the Rust codec's header: its fields in reverse number order,
+each packed field unpacked and mixed, and an unknown field, each read as the
+sample is; a singular field twice (`Duplicate`), one under another wire type
+(`WireType`), a 32-bit field's varint past u32 (`Varint`), a fixed-width packed
+run one byte long (`OutOfBounds`), a map's second key made its first's
+(`Unique`), a map with too many entries whose last repeats a key (`Length`),
+optional scalars present at their zero or empty defaults, and a double set to
+`-0.0`, which is written again. Each buffer is run through `verify`, `decode`
+and `encode` in Kotlin at position 0 and at position 8, which must agree, and
+once in Rust, whose verdicts are checked in as
+`resources/proto3/<package>-codec-rust-verdicts.txt`. Every verdict is Rust's,
+with no exception: the Rust crate checks a pattern too, under its
+`validate-pattern` feature, a default one the verdict program keeps, as for
 FlatBuffers and podbuf. A test checks each reader case's own verdict, and one
 walks the projection and fails on a wire kind the corpus does not reach; the
 proto3 `INT64` scalar has no source, since an enum is projected as an enum. A
@@ -135,6 +138,12 @@ package of its own declares an interface: its face is skipped with the warning
 of #133, and the codec of the struct its call induces compiles and writes
 `0803120261 62` for `(3, "ab")`. Writing `-0.0` as the default, reading no
 `Duplicate`, or writing a packed array one record per element each turns it red.
+
+`Proto3EmitterRunTest` compiles regressions for nested messages with no valid
+empty default, present optional defaults, map count ordering, and encode
+refusals for range, UTF-8 and length. It also checks enum and enum-set map keys
+in hand-built models, since source syntax refuses those keys, and packed numeric
+input when the projection selects an unpacked writer.
 
 `SelectionTest` holds the selection rule (docs/design.md §4): the output of
 every corpus package, and of every package its build reaches, generated with

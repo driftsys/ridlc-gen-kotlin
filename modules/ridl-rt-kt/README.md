@@ -68,9 +68,10 @@ and adds `Rule.Utf8`, `Transport.Interrupted`, `EncodeError.Contract`,
 `StreamNo`, `StreamForm`, `StreamInfo`, `Member.streams`, `REPLY_STREAM`, the
 `Stream` and `ClaimStream` interests, and the `rateFloor` and `stalenessBound`
 accessors. The variants of an encoding Kotlin has no codec for are mirrored all
-the same, so a `when` over them stays the Rust one. `TranscodeError` and
-`ridl_rt::proto3` have no Kotlin item: nothing here transcodes or reads proto3.
-`ridl_rt::podbuf` is `ridl.rt.podbuf` since stage K6, below.
+the same, so a `when` over them stays the Rust one. `TranscodeError` has no
+Kotlin item: nothing here transcodes. `ridl_rt::proto3` has a Kotlin port in the
+optional `ridl-rt-kt-proto3` module. `ridl_rt::podbuf` is `ridl.rt.podbuf` since
+stage K6, below.
 
 ridl 0.15 adds the stream ports (driftsys/ridl#1154), `StreamCaller` and
 `StreamHandler` with `Pull` and `PushError`, and `Table`'s stream wakers,

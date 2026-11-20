@@ -244,20 +244,21 @@ to that over 19,023 buffers (`CodecTest`).
 implementing `Payload` per struct, union and root box of the projection (a named
 scalar, an enum or an enum set as `<Name>Box { value = 1 }`) and per tuple a
 call sends on its own, and `internal` length, encode, verify and decode helpers
-per message, which another package's codec calls for a message it nests. Its
-view is the runtime's `Verified`. The codec computes no layout: every field
-number, wire type, packing and `default_is_legal` is read from the model's
-`Proto3Projection`, and `Proto3WireType` is mapped to the runtime's `WireType`
-by name, never shifted into a tag. Its writer writes Rust's canonical form, its
-reader reaches Rust's verdicts in Rust's order, and `encode` sizes the value
-first and throws `EncodeError.Capacity` with the exact `needed` before any byte
-is written. The conformance module holds it to that over 11,481 buffers
-(`Proto3CodecTest`). Only a package that names `proto3` depends on
+per reachable message, which another package's codec calls for a message it
+nests. Tuple helpers are emitted only when a declaration or a bounded call root
+reaches the tuple. Its view is the runtime's `Verified`. The codec computes no
+layout: every field number, wire type, packing and `default_is_legal` is read
+from the model's `Proto3Projection`, and `Proto3WireType` is mapped to the
+runtime's `WireType` by name, never shifted into a tag. Its writer writes Rust's
+canonical form, its reader reaches Rust's verdicts in Rust's order, and `encode`
+sizes the value first and throws `EncodeError.Capacity` with the exact `needed`
+before any byte is written. The conformance module checks the generated codecs
+against Rust (`Proto3CodecTest`). Only a package that names `proto3` depends on
 `ridl.rt.proto3`; a FlatBuffers-only package's output names neither.
 
 A package is refused, with no file written, as the Rust codec refuses it: a
-model with no proto3 projection, a declaration the projection refuses
-("`<pkg>.<Name>` has no proto3 codec: <the projection's message>"), and a
+model with no proto3 projection, a declaration the projection refuses (the first
+original refusal's message verbatim, skipping dependency refusals), and a
 declaration whose `Declaration.proto3` size state is not bounded, since every
 struct, union and root box gets a codec.
 
@@ -358,13 +359,13 @@ whatever the manifest's, as Rust orders its `Sizes<E>` implementations. A
 `SignalReader` states no encoding, so with several encodings `bindChecks` takes
 the client's port's as a second argument.
 
-- **No face for an interface of a package that names `proto3`** (#133, task 6).
-  Its size tables, its codec choice and its stream elements name FlatBuffers and
-  podbuf alone, so the interface is skipped with the warning "interface
-  `<pkg>.<Iface>` has no generated face: the Kotlin face does not carry the
-  proto3 encoding yet (#133)", as an interface the face cannot carry is,
-  whatever else the package names. The package's codecs, the proto3 codec of the
-  struct a call induces among them, are still generated.
+- **No face for an interface of a package that names `proto3`** (#133 still
+  needs proto3 faces). Its size tables, its codec choice and its stream elements
+  name FlatBuffers and podbuf alone, so the interface is skipped with the
+  warning "interface `<pkg>.<Iface>` has no generated face: the Kotlin face does
+  not carry the proto3 encoding yet (#133)", as an interface the face cannot
+  carry is, whatever else the package names. The package's codecs, the proto3
+  codec of the struct a call induces among them, are still generated.
 
 Since ridl 0.6.0 (driftsys/ridl#752) every `command`, `query` and `raise` the
 face sends passes `null` as its trace context, as the Rust face passes `None`;
@@ -599,10 +600,11 @@ name that ends in `_` is one no declaration, interface or member can take:
 - **`object Constants_`**, **`InteractionCall_`** and **`object Instances_`**,
   where a declaration named `Constants` was refused and one named
   `InteractionCall` skipped every face with a call.
-- **The files' JVM classes are `TypesKt_`, `CodecKt_`, `PodbufCodecKt_` and
-  `FacesKt_`** (`@file:JvmName`). By default `Faces.kt` compiles to `FacesKt`,
-  and a declaration named `FacesKt` then failed the consumer's build with a
-  duplicate JVM class. A Java caller of the face's extensions names `FacesKt_`.
+- **The files' JVM classes are `TypesKt_`, `CodecKt_`, `Proto3CodecKt_`,
+  `PodbufCodecKt_` and `FacesKt_`** (`@file:JvmName`). By default `Faces.kt`
+  compiles to `FacesKt`, and a declaration named `FacesKt` then failed the
+  consumer's build with a duplicate JVM class. A Java caller of the face's
+  extensions names `FacesKt_`.
 - **A Kotlin class the generated code names in an expression goes through
   KotlinPoet**, which imports or qualifies it: a declaration named `Long`, `Int`
   or `List` took a bare `Long.MAX_VALUE`, `Int.MAX_VALUE` or `List(n) { … }`.
@@ -634,15 +636,16 @@ rule). `ridl check` refuses none of these: each is met by the Kotlin output
 alone. Two namespaces are checked:
 
 - **The package's classes and objects**, across `Types.kt`, `Codec.kt`,
-  `PodbufCodec.kt` and `Faces.kt`: a declaration, an induced tuple, a codec
-  `<Type>Codec`, a podbuf codec `<Type>PodbufCodec` and its `<Type>PodbufView`,
-  and a faced interface's descriptor, member descriptors `<Iface><Member>`,
-  calls `<Iface><Member>Call`, clients, publisher and provider. Each emitter
-  reports what it emits, and `Generator` checks them together, so an interface
-  whose face is skipped claims nothing, as in the Rust backend (X-8b). The
-  design's cases X-8 (members `XY` and `x_y`), X-9, X-11, X-12, X-13 and X-14b
-  are refused here, as are two declarations `Level` and `level`, a declaration
-  named like another's codec, and a member named like the provider.
+  `Proto3Codec.kt`, `PodbufCodec.kt` and `Faces.kt`: a declaration, an induced
+  tuple, a codec `<Type>Codec`, a proto3 codec `<Type>Proto3Codec`, a podbuf
+  codec `<Type>PodbufCodec` and its `<Type>PodbufView`, and a faced interface's
+  descriptor, member descriptors `<Iface><Member>`, calls `<Iface><Member>Call`,
+  clients, publisher and provider. Each emitter reports what it emits, and
+  `Generator` checks them together, so an interface whose face is skipped claims
+  nothing, as in the Rust backend (X-8b). The design's cases X-8 (members `XY`
+  and `x_y`), X-9, X-11, X-12, X-13 and X-14b are refused here, as are two
+  declarations `Level` and `level`, a declaration named like another's codec,
+  and a member named like the provider.
 - **One struct's or tuple's properties**: two fields whose `camel_case` agrees
   (`XY` and `x_y`) are one property. RIDL-149 refuses a pair that also agrees
   under `snake_case`, such as X-6a's `minSpeed` and `min_speed`, before the

@@ -155,3 +155,28 @@ struct Tails {
   byFlag  : [boolean : Name; 0..2]
   shape   : Shape
 }
+
+/// A child whose empty message is not valid.
+struct Child {
+  level : integer [1..10]
+}
+
+/// Required nested messages and map values with no valid empty default.
+struct Parent {
+  child : Child
+  children : [integer [0..10] : Child; 0..2]
+}
+
+/// A union whose first arm has no valid empty default.
+union RequiredChoice {
+  child : Child
+  empty : Empty
+}
+
+/// Optional scalars whose zero and empty values retain presence.
+struct OptionalDefaults {
+  maybe : integer?
+  spot : float [0.0..1.0 step 0.125]?
+  odd : float?
+  note : string [0..8]?
+}

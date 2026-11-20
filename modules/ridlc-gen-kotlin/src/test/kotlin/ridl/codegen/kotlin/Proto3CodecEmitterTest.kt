@@ -90,12 +90,66 @@ class Proto3CodecEmitterTest {
     }
 
     @Test
+    fun `internal declarations get internal codec objects`() {
+        val declaration = feed(bounded).toBuilder().setVisibility(ridl.codegen.v1.ModelOuterClass.Visibility.VISIBILITY_INTERNAL).build()
+        val emitted = Proto3CodecEmitter(model(declaration, Proto3Projection.newBuilder().addMessages(message())), options).emit()
+        assertTrue("internal object FeedProto3Codec" in checkNotNull(emitted.text))
+    }
+
+    @Test
+    fun `I64 and Len wire types are mapped by name`() {
+        for ((kind, wire, name) in listOf(
+            Triple(ScalarClass.SCALAR_CLASS_FLOAT, scalar(Proto3ScalarType.PROTO3_SCALAR_TYPE_DOUBLE, Proto3WireType.PROTO3_WIRE_TYPE_I64), "I64"),
+            Triple(ScalarClass.SCALAR_CLASS_STRING, Proto3Wire.newBuilder().setText(true).setDefaultIsLegal(true), "Len"),
+        )) {
+            val declaration = feed(bounded).toBuilder()
+            declaration.structBuilder.getSlotsBuilder(1).fieldBuilder.setType(
+                Type.newBuilder().setInline(Scalar.newBuilder().setClass_(kind).setFloatWidth(FloatWidth.FLOAT_WIDTH_F64).setVacuous(true)),
+            )
+            val message = message().setFields(1, Proto3Field.newBuilder().setNumber(3).setField("ratio").setWire(wire))
+            val emitted = Proto3CodecEmitter(model(declaration.build(), Proto3Projection.newBuilder().addMessages(message)), options).emit()
+            assertEquals(emptyList<String>(), emitted.errors)
+            assertTrue("w.tag(3u, WireType.$name)" in checkNotNull(emitted.text), emitted.text)
+        }
+    }
+
+    @Test
+    fun `unbounded size state has the Rust refusal text`() {
+        val state = SizeState.newBuilder().setUnbounded(ridl.codegen.v1.ModelOuterClass.FbUnbounded.getDefaultInstance()).build()
+        val emitted = Proto3CodecEmitter(model(feed(state), Proto3Projection.newBuilder().addMessages(message())), options).emit()
+        assertEquals(listOf("ridlc-gen-kotlin: `kt.demo.Feed` has no proto3 codec: no finite bound exists for it"), emitted.errors)
+    }
+
+    @Test
+    fun `unreachable tuples emit no helpers and their refusals are ignored`() {
+        val tuple = ridl.codegen.v1.ModelOuterClass.InducedTuple.newBuilder()
+            .setName(ridl.codegen.v1.ModelOuterClass.InducedName.newBuilder().setRust("Unused"))
+        val projection = Proto3Projection.newBuilder().addMessages(message())
+            .addMessages(Proto3Message.newBuilder().setName("Unused").setTuple(0))
+            .addRefused(Proto3Refused.newBuilder().setTuple(0).setMessage("unused refusal"))
+        val model = model(feed(bounded), projection).toBuilder().addTuples(tuple).build()
+        val emitted = Proto3CodecEmitter(model, options).emit()
+        assertEquals(emptyList<String>(), emitted.errors)
+        assertTrue("Unused" !in checkNotNull(emitted.text), emitted.text)
+    }
+
+    @Test
     fun `a wire type the scalar cannot take is refused`() {
         val projection = Proto3Projection.newBuilder().addMessages(message(Proto3WireType.PROTO3_WIRE_TYPE_I64))
         val emitted = Proto3CodecEmitter(model(feed(bounded), projection), options).emit()
         assertNull(emitted.text)
         assertEquals(
             listOf("ridlc-gen-kotlin: `kt.demo.Feed` has no proto3 codec: the proto3 projection gives a `PROTO3_SCALAR_TYPE_FLOAT` of `Feed` the wire type I64"),
+            emitted.errors,
+        )
+    }
+
+    @Test
+    fun `Len in a scalar projection is named in the refusal`() {
+        val projection = Proto3Projection.newBuilder().addMessages(message(Proto3WireType.PROTO3_WIRE_TYPE_LEN))
+        val emitted = Proto3CodecEmitter(model(feed(bounded), projection), options).emit()
+        assertEquals(
+            listOf("ridlc-gen-kotlin: `kt.demo.Feed` has no proto3 codec: the proto3 projection gives a `PROTO3_SCALAR_TYPE_FLOAT` of `Feed` the wire type Len"),
             emitted.errors,
         )
     }
@@ -113,7 +167,7 @@ class Proto3CodecEmitterTest {
         val emitted = Proto3CodecEmitter(model(feed(bounded), Proto3Projection.newBuilder().addRefused(refused)), options).emit()
         assertNull(emitted.text)
         assertEquals(
-            listOf("ridlc-gen-kotlin: `kt.demo.Feed` has no proto3 codec: `Feed.level` has field number 19000, which proto3 reserves or does not admit"),
+            listOf("`Feed.level` has field number 19000, which proto3 reserves or does not admit"),
             emitted.errors,
         )
     }
@@ -122,7 +176,7 @@ class Proto3CodecEmitterTest {
     fun `a declaration whose proto3 state is not bounded is refused`() {
         val absent = SizeState.newBuilder().setAbsent(SizeAbsent.newBuilder().setCause(AbsentCause.ABSENT_CAUSE_NO_BOUND)).build()
         for ((state, cause) in listOf(
-            absent to "its proto3 size state is absent (ABSENT_CAUSE_NO_BOUND)",
+            absent to "a member of it has no finite bound (NoBound)",
             null to "the lowered model carries no proto3 size state for it",
             SizeState.newBuilder().setBounded(-1).build() to "has a proto3 bound of 4294967295 bytes",
         )) {
