@@ -124,10 +124,10 @@ class PatternsTest {
     }
 
     @Test
-    fun `both codecs refuse a buffer that breaks only the second inline clause`() {
+    fun `all three codecs refuse a buffer that breaks only the second inline clause`() {
         val request = Wire.readRequest(Harness.capturedRequests("kt-values", work.resolve("capture")).getValue("kt.values"))
         val response = Generator.generate(request)
-        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
+        assertEquals(Harness.proto3FaceWarnings(request), response.diagnosticsList)
         val probe = """
             package kt.values
 
@@ -160,12 +160,15 @@ class PatternsTest {
 
                 @JvmStatic
                 fun podbuf() = checkCodec(ClauseTokenPodbufCodec)
+
+                @JvmStatic
+                fun proto3() = checkCodec(ClauseTokenProto3Codec)
             }
         """.trimIndent()
         val compiled = Compiler.compile(response.filesList.associate { it.path to it.text } + ("kt/values/ClauseProbe.kt" to probe), work.resolve("compile"))
         assertTrue(compiled.ok, compiled.messages)
         val owner = compiled.classLoader!!.loadClass("kt.values.ClauseProbe")
-        for (encoding in listOf("flatbuffers", "podbuf")) owner.getMethod(encoding).invoke(null)
+        for (encoding in listOf("flatbuffers", "proto3", "podbuf")) owner.getMethod(encoding).invoke(null)
     }
 
     @Test

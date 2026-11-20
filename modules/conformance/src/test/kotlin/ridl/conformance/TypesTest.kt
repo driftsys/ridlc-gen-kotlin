@@ -24,11 +24,12 @@ class TypesTest {
     private class Generated(val models: List<Model>, val sources: Map<String, String>)
 
     /** Every package the build of [name] hands the plugin, generated in process. */
-    private fun generate(name: String): Generated {
+    private fun generate(name: String, facesOnly: Boolean = false): Generated {
         val requests = Harness.capturedRequests(name, work.resolve("capture-$name")).values.map(Wire::readRequest)
+            .map { if (facesOnly) Harness.faceEncodings(it) else it }
         val sources = requests.flatMap { request ->
             val response = Generator.generate(request)
-            assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message }, request.model.name.dotted)
+            assertEquals(Harness.proto3FaceWarnings(request), response.diagnosticsList, request.model.name.dotted)
             response.filesList.map { it.path to it.text }
         }.toMap()
         return Generated(requests.map { it.model }, sources)
@@ -38,18 +39,31 @@ class TypesTest {
     fun `the generated Types kt, Codec kt and Faces kt compile`(): List<DynamicTest> = Harness.packages().map { name ->
         DynamicTest.dynamicTest(name) {
             val generated = generate(name)
-            // A codec file per encoding the unit's manifest selects: `Codec.kt` for FlatBuffers, `PodbufCodec.kt` for podbuf.
+            // A codec file per encoding the unit's manifest selects: `Codec.kt` for FlatBuffers, `Proto3Codec.kt` for
+            // proto3, `PodbufCodec.kt` for podbuf.
             val encodings = Harness.encodings(name)
-            val codecs = listOfNotNull("Codec.kt".takeIf { "flatbuffers" in encodings }, "PodbufCodec.kt".takeIf { "podbuf" in encodings })
+            val codecs = listOfNotNull(
+                "Codec.kt".takeIf { "flatbuffers" in encodings },
+                "Proto3Codec.kt".takeIf { "proto3" in encodings },
+                "PodbufCodec.kt".takeIf { "podbuf" in encodings },
+            )
             for (model in generated.models) {
                 val dir = model.name.dotted.replace('.', '/')
-                val expected = setOf("Types.kt") + codecs + if (model.interfacesCount > 0) setOf("Faces.kt") else emptySet()
+                val expected = setOf("Types.kt") + codecs + if (model.interfacesCount > 0 && "proto3" !in encodings) setOf("Faces.kt") else emptySet()
                 val kinds = generated.sources.keys.filter { it.substringBeforeLast('/') == dir }.map { it.substringAfterLast('/') }.toSet()
                 assertEquals(expected, kinds, "${model.name.dotted}: ${generated.sources.keys}")
             }
             val compiled = Compiler.compile(generated.sources, work.resolve("compile-$name"))
             assertTrue(compiled.ok, compiled.messages)
         }
+    }
+
+    @Test
+    fun `kt-values faces compile without proto3`() {
+        val generated = generate("kt-values", facesOnly = true)
+        assertTrue("kt/values/Faces.kt" in generated.sources, "kt-values faces must be compiled")
+        val compiled = Compiler.compile(generated.sources, work.resolve("compile-kt-values-faces"))
+        assertTrue(compiled.ok, compiled.messages)
     }
 
     /**

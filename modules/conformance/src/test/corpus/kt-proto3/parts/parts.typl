@@ -1,0 +1,16 @@
+package kt.proto3.parts
+
+// Declared here and reached by kt.proto3, whose codec writes them through
+// this package's helpers (`Proto3MessageRef.foreign`). The tuple of `Corner`
+// is laid out in this package's projection, not in kt.proto3's.
+type Small : integer [0..100]
+
+struct Corner {
+  x    : Small
+  span : (low: Small, high: Small)
+}
+
+union Pick {
+  small  : Small
+  corner : Corner
+}

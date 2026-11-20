@@ -1,0 +1,11 @@
+[package]
+name = "kt.proto3"
+version = "1.0.0"
+
+# The proto3 codec alone, in both backends (#133): the package's Kotlin and
+# Rust codecs are held to each other by Proto3CodecTest.
+[backend.kotlin]
+encodings = ["proto3"]
+
+[backend.rust]
+encodings = ["proto3"]

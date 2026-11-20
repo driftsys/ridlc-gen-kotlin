@@ -3,8 +3,10 @@ package ridl.conformance
 import ridl.codegen.kotlin.types.plain
 import ridl.codegen.v1.ModelOuterClass.Declaration
 import ridl.codegen.v1.ModelOuterClass.Model
+import ridl.codegen.v1.ModelOuterClass.PayloadSizes
 import ridl.codegen.v1.ModelOuterClass.PodbufHead
 import ridl.codegen.v1.ModelOuterClass.PrimitiveType
+import ridl.codegen.v1.ModelOuterClass.Proto3Message
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
 import ridl.codegen.v1.ModelOuterClass.SizeState
@@ -38,16 +40,29 @@ object RoundTrip {
 
     /**
      * The round trip over [models]' FlatBuffers codecs, `<Type>Codec`, or,
-     * with [podbuf], over their podbuf codecs, `<Type>PodbufCodec`.
+     * with [podbuf], over their podbuf codecs, `<Type>PodbufCodec`, or, with
+     * [proto3], over their proto3 codecs, `<Type>Proto3Codec`.
      */
-    fun source(models: List<Model>, podbuf: Boolean = false): String {
+    fun source(models: List<Model>, podbuf: Boolean = false, proto3: Boolean = false): String {
         val samples = StringBuilder()
         val dispatch = StringBuilder()
-        val suffix = if (podbuf) "PodbufCodec" else "Codec"
+        val suffix = when {
+            podbuf -> "PodbufCodec"
+            proto3 -> "Proto3Codec"
+            else -> "Codec"
+        }
         for (model in models) {
             val pkg = model.name.dotted
-            val tupleRoots = if (podbuf) podbufTupleRoots(model) else model.flatbuffers.rootsList.filter { it.hasMaxSize() && it.hasTuple() }.map { it.tuple }
-            val declarationRoots = if (podbuf) podbufDeclarationRoots(model) else model.flatbuffers.rootsList.filter { it.hasMaxSize() && !it.hasTuple() }.map { it.declaration }
+            val tupleRoots = when {
+                podbuf -> tupleRoots(model) { it.podbuf }
+                proto3 -> tupleRoots(model) { it.proto3 }
+                else -> model.flatbuffers.rootsList.filter { it.hasMaxSize() && it.hasTuple() }.map { it.tuple }
+            }
+            val declarationRoots = when {
+                podbuf -> podbufDeclarationRoots(model)
+                proto3 -> proto3DeclarationRoots(model)
+                else -> model.flatbuffers.rootsList.filter { it.hasMaxSize() && !it.hasTuple() }.map { it.declaration }
+            }
             for (index in tupleRoots) {
                 // A call's induced argument or reply struct (driftsys/ridl#713): sampled as a struct is.
                 val tuple = model.getTuples(index)
@@ -147,8 +162,28 @@ object RoundTrip {
         }
     }
 
-    /** The induced tuples a command or a query sends on their own, with a podbuf bound: the Rust backend's `tuple_roots`. */
-    private fun podbufTupleRoots(model: Model): List<Int> {
+    /**
+     * The structs, unions and root boxes of the proto3 projection whose proto3
+     * bound a Kotlin `Int` holds: the declarations the package's
+     * `Proto3Codec.kt` gives a codec, in declaration order.
+     */
+    private fun proto3DeclarationRoots(model: Model): List<Int> = model.proto3.messagesList.mapNotNull { message ->
+        when (message.sourceCase) {
+            Proto3Message.SourceCase.STRUCT_DECLARATION -> message.structDeclaration
+            Proto3Message.SourceCase.UNION_DECLARATION -> message.unionDeclaration
+            Proto3Message.SourceCase.ROOT_BOX -> message.rootBox
+            else -> null
+        }
+    }.toSortedSet().filter { index ->
+        val state = model.getDeclarations(index).proto3
+        state.stateCase == SizeState.StateCase.BOUNDED && Integer.toUnsignedLong(state.bounded) <= Int.MAX_VALUE
+    }
+
+    /**
+     * The induced tuples a command or a query sends on their own, whose state
+     * [select] reads is bounded: the Rust backend's `tuple_roots`.
+     */
+    private fun tupleRoots(model: Model, select: (PayloadSizes) -> SizeState): List<Int> {
         val roots = sortedSetOf<Int>()
         for (slot in model.interfacesList.flatMap { it.slotsList }.filter { it.hasInteraction() }) {
             val interaction = slot.interaction
@@ -160,7 +195,7 @@ object RoundTrip {
                 else -> emptyList()
             }
             for ((has, tuple, sizes) in payloads) {
-                if (has && sizes.podbuf.stateCase == SizeState.StateCase.BOUNDED) roots += tuple.index
+                if (has && select(sizes).stateCase == SizeState.StateCase.BOUNDED) roots += tuple.index
             }
         }
         return roots.toList()
@@ -203,12 +238,13 @@ object RoundTrip {
             } + ")"
 
         fun named(ref: ridl.codegen.v1.ModelOuterClass.TypeRef, variant: Int, i: Int): String {
-            val (pkg, declaration) = if (ref.foreign) {
-                model.getForeign(ref.index).let { it.`package` to it.declaration }
-            } else {
-                model.name.dotted to model.getDeclarations(ref.index)
-            }
-            return declaration(pkg, declaration, variant, i)
+            if (!ref.foreign) return declaration(model.name.dotted, model.getDeclarations(ref.index), variant, i)
+            val (pkg, declaration) = model.getForeign(ref.index).let { it.`package` to it.declaration }
+            // A foreign declaration's tuples are named in its own package's model, not in the copy this one holds.
+            val own = models.firstOrNull { it.name.dotted == pkg }?.let { other ->
+                other.declarationsList.firstOrNull { it.name.declared == declaration.name.declared }?.let { other to it }
+            } ?: return declaration(pkg, declaration, variant, i)
+            return Writer(own.first, models).declaration(pkg, own.second, variant, i)
         }
 
         fun position(type: Type, variant: Int, i: Int): String {

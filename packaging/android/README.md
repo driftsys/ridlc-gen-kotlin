@@ -14,12 +14,12 @@ version and the date in `Android.bp` and `METADATA` are filled in from
 The package unpacks to one directory, `ridl-rt-kt-<version>/`. Put its contents
 at a path of the tree such as `external/ridl-rt-kt`, and depend on the libraries
 by name: `ridl-rt-kt`, `ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback` for tests,
-`ridl-descriptor-kt`, which the loopback depends on, and `ridl-rt-kt-proto3`.
+`ridl-descriptor-kt`, which the loopback depends on, and `ridl-rt-kt-proto3`
+when the app selects proto3.
 
 `ridl-rt-kt-proto3` provides the `ridl.rt.proto3` package and depends only on
-`ridl-rt-kt`. The plugin does not generate proto3 codecs yet, because it refuses
-a manifest that selects `proto3`, so no generated code uses this library today.
-An app does not need to list it.
+`ridl-rt-kt`. The code the plugin generates for a manifest that selects `proto3`
+uses it; an app whose packages do not select `proto3` does not list it.
 
 Two things are left to the tree:
 

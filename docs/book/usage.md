@@ -15,17 +15,20 @@ the output directory, `veh/cabin/` for package `veh.cabin`:
 | ---------------- | ----------------------------------------------------------------------------------------------- |
 | `Types.kt`       | one value object per declaration: scalars, enums, enum sets, structs, tuples, unions, constants |
 | `Codec.kt`       | the FlatBuffers codec of each payload: `encode`, `verify` and `decode`                          |
+| `Proto3Codec.kt` | the proto3 codec of each payload, the same three functions                                      |
 | `PodbufCodec.kt` | the podbuf codec of each payload, the same three functions                                      |
 | `Faces.kt`       | per interface: its descriptor, the clients, the provider interface, the publisher, `serve`      |
 
 The manifest chooses the codecs: `encodings` under `[backend.kotlin]` in
-`ridl.toml` names `flatbuffers`, `podbuf` or both, and the plugin writes a codec
-for each encoding named and no other. The sample names `flatbuffers`. A package
-that names none gets `Types.kt` alone, and `proto3` is refused. `Faces.kt` is
-written only for a package that names an encoding and declares an interface, and
-its face serves a port of any encoding the package names. The Kotlin package is
-the ridl package's name. The plugin has a `kotlin-package` option, but no
-`ridl build` flag sets a plugin option yet, so the name is always the default.
+`ridl.toml` names `flatbuffers`, `proto3` and `podbuf`, in any combination, and
+the plugin writes a codec for each encoding named and no other. The sample names
+`flatbuffers`. A package that names none gets `Types.kt` alone. `Faces.kt` is
+written only for a package that names an encoding and declares an interface. A
+package that names `proto3` gets no face, with a warning, until #133 adds proto3
+faces. Otherwise, its face serves a port of any encoding the package names. The
+Kotlin package is the ridl package's name. The plugin has a `kotlin-package`
+option, but no `ridl build` flag sets a plugin option yet, so the name is always
+the default.
 
 ## The Gradle build
 

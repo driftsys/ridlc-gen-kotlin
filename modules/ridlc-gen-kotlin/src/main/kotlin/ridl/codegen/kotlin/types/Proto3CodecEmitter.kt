@@ -1,0 +1,356 @@
+package ridl.codegen.kotlin.types
+
+import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.INT
+import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.MemberName
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeSpec
+import ridl.codegen.kotlin.Options
+import ridl.codegen.kotlin.PLUGIN
+import ridl.codegen.v1.ModelOuterClass.AbsentCause
+import ridl.codegen.v1.ModelOuterClass.Proto3RefusalCause
+import ridl.codegen.v1.ModelOuterClass.Declaration
+import ridl.codegen.v1.ModelOuterClass.Field
+import ridl.codegen.v1.ModelOuterClass.Model
+import ridl.codegen.v1.ModelOuterClass.Proto3Field
+import ridl.codegen.v1.ModelOuterClass.Proto3Message
+import ridl.codegen.v1.ModelOuterClass.SizeState
+import ridl.codegen.v1.ModelOuterClass.Type
+import ridl.codegen.v1.ModelOuterClass.TypeRef
+import ridl.codegen.v1.ModelOuterClass.Visibility
+
+private val P3_VERIFIED = ClassName("ridl.rt.proto3", "Verified")
+private val P3_CHECK_CAPACITY = MemberName("ridl.rt.proto3", "checkCapacity")
+private val P3_PAYLOAD = ClassName("ridl.rt.payload", "Payload")
+private val P3_ENCODING = ClassName("ridl.rt.encoding", "Encoding")
+private val P3_BUFFER = ClassName("java.nio", "ByteBuffer")
+private val P3_REGEX = ClassName("kotlin.text", "Regex")
+
+/**
+ * `Proto3Codec.kt`: one proto3 codec per payload root of the package
+ * (docs/design.md §4), over `ridl.rt.proto3`, and the length, encode, verify
+ * and decode helpers of every reachable message of the package's projection. It is the
+ * Rust proto3 codec of the pinned release (`codec_proto3.rs`) spelled in
+ * Kotlin: every field number, wire type, packing and default rule is read
+ * from `Model.proto3`, never computed, and the writer's canonical form, the
+ * reader's verdicts and their order are Rust's. As in [CodecEmitter],
+ * `verify` checks what the value objects check, because `decode` builds them
+ * through `unchecked` and must never throw.
+ *
+ * Per message `T` (a struct, a union, a root box or a named tuple):
+ * `proto3LenT(value)` is its exact encoded length, `proto3EncodeT(value, w)`
+ * writes its fields in number order, `proto3VerifyT(buf)` walks its fields,
+ * and `proto3DecodeT(buf)` reads one `verify` passed; each is `internal`, so
+ * another package's codec writes a message it nests through them. Per root,
+ * `object TProto3Codec` is the `Payload`, whose view is `Verified`.
+ */
+class Proto3CodecEmitter(private val model: Model, private val options: Options) {
+    private val pkg = options.kotlinPackage
+    private val file = FileSpec.builder(pkg, "Proto3Codec").jvmName("Proto3Codec")
+    private val forms = Proto3Forms(model, pkg)
+    private val errors = mutableListOf<String>()
+    private val claims = mutableListOf<Claim>()
+
+    fun emit(): EmittedTypes {
+        val path = pkg.replace('.', '/') + "/Proto3Codec.kt"
+        if (!model.hasProto3()) return EmittedTypes(path, null, listOf("$PLUGIN: the model carries no proto3 projection"))
+        val tupleBounds = tupleBounds(model) { if (it.hasProto3()) it.proto3 else null }
+        val tuples = reachableTuples(tupleBounds.keys)
+        // Report the original refusal, not the declaration that depends on it.
+        model.proto3.refusedList.firstOrNull {
+            it.cause != Proto3RefusalCause.PROTO3_REFUSAL_CAUSE_REFUSED_DEPENDENCY &&
+                (it.hasDeclaration() || (it.hasTuple() && it.tuple in tuples))
+        }?.let { return EmittedTypes(path, null, listOf(it.message)) }
+        for (message in model.proto3.messagesList) {
+            when (message.sourceCase) {
+                Proto3Message.SourceCase.TUPLE -> if (message.tuple in tuples) tuple(message, tupleBounds)
+                Proto3Message.SourceCase.STRUCT_DECLARATION,
+                Proto3Message.SourceCase.UNION_DECLARATION,
+                Proto3Message.SourceCase.ROOT_BOX,
+                -> declaration(message)
+                else -> errors += "$PLUGIN: a proto3 message of `${model.name.dotted}` has no source"
+            }
+        }
+        if (errors.isNotEmpty()) return EmittedTypes(path, null, errors)
+        for ((index, body) in forms.patterns.withIndex()) {
+            val pattern = PropertySpec.builder("PROTO3_PATTERN_$index", P3_REGEX, KModifier.PRIVATE).initializer("%T(%S)", P3_REGEX, body)
+            file.addProperty(pattern.build())
+        }
+        val (properties, functions) = forms.privateHelpers()
+        properties.forEach(file::addProperty)
+        functions.forEach(file::addFunction)
+        if (model.reachesDeprecated()) file.addAnnotation(AnnotationSpec.builder(Suppress::class).addMember("%S", "DEPRECATION").build())
+        file.addFileComment("Generated by %L from `%L`. Do not edit.", PLUGIN, model.name.dotted)
+        return EmittedTypes(path, file.build().toString(), emptyList(), claims)
+    }
+
+    /** Tuples reached by declaration fields or bounded interaction roots, as Rust's `reachable_tuples`. */
+    private fun reachableTuples(roots: Set<Int>): Set<Int> {
+        val found = linkedSetOf<Int>()
+        val queue = ArrayDeque<Type>()
+        fun reach(index: Int) {
+            val tuple = model.tuplesList.getOrNull(index) ?: return
+            if (tuple.name.rust.isNotEmpty() && found.add(index)) {
+                tuple.fieldsList.filter { it.hasType() }.forEach { queue.addLast(it.type) }
+            }
+        }
+        for (declaration in model.declarationsList.filter { it.hasStruct() }) {
+            declaration.struct.slotsList.filter { it.hasField() && it.field.hasType() }.forEach { queue.addLast(it.field.type) }
+        }
+        roots.sorted().forEach(::reach)
+        while (queue.isNotEmpty()) {
+            val type = queue.removeFirst()
+            when (type.kindCase) {
+                Type.KindCase.TUPLE -> reach(type.tuple.index)
+                Type.KindCase.ARRAY -> if (type.array.hasElement()) queue.addLast(type.array.element)
+                Type.KindCase.MAP -> {
+                    if (type.map.hasKey()) queue.addLast(type.map.key)
+                    if (type.map.hasValue()) queue.addLast(type.map.value)
+                }
+                else -> {}
+            }
+        }
+        return found
+    }
+
+    /** Runs [block], reporting a [Refusal] as the package's error; whether it passed. */
+    private fun guarded(name: String, block: () -> Unit): Boolean = try {
+        block()
+        true
+    } catch (refusal: Refusal) {
+        errors += "$PLUGIN: `${model.name.dotted}.$name` has no proto3 codec: ${refusal.message}"
+        false
+    }
+
+    /** A named tuple's helpers, and its codec when an interaction sends it on its own with a bounded state. */
+    private fun tuple(message: Proto3Message, tupleBounds: Map<Int, Long>) {
+        val tuple = model.tuplesList.getOrNull(message.tuple) ?: return
+        val name = tuple.name.rust
+        if (name.isEmpty()) return
+        val emitted = guarded(name) {
+            record(message, name, name) { f ->
+                if (f.sourceCase == Proto3Field.SourceCase.TUPLE_POSITION) tuple.fieldsList.getOrNull(f.tuplePosition) else null
+            }
+        }
+        // A tuple no interaction sends on its own has helpers and no codec: only its owner's helpers call them.
+        val bound = tupleBounds[message.tuple]?.let { maxSize(name, it) }
+        if (emitted && bound != null) codec(name, tuple.visibility, "the struct induced for a call", bound)
+    }
+
+    /**
+     * The helpers and the codec of a struct, a union or a root box. As in
+     * Rust, every one has a codec, so its proto3 size state must be bounded.
+     */
+    private fun declaration(message: Proto3Message) {
+        val index = when (message.sourceCase) {
+            Proto3Message.SourceCase.STRUCT_DECLARATION -> message.structDeclaration
+            Proto3Message.SourceCase.UNION_DECLARATION -> message.unionDeclaration
+            else -> message.rootBox
+        }
+        val declaration = model.declarationsList.getOrNull(index) ?: return
+        val owner = declaration.name.declared
+        val emitted = guarded(owner) {
+            when (message.sourceCase) {
+                Proto3Message.SourceCase.STRUCT_DECLARATION -> {
+                    val fields = declaration.struct.slotsList.filter { it.hasField() }.map { it.field }
+                    record(message, declaration.name.camel, owner) { f ->
+                        if (f.sourceCase == Proto3Field.SourceCase.FIELD) fields.firstOrNull { it.name.declared == f.field } else null
+                    }
+                }
+                Proto3Message.SourceCase.UNION_DECLARATION -> union(message, declaration)
+                else -> box(message, declaration, index)
+            }
+        }
+        val bound = declaredBound(declaration) ?: return
+        if (emitted) codec(declaration.name.camel, declaration.visibility, "declaration `$owner`", bound)
+    }
+
+    // -- bounds -------------------------------------------------------------------
+
+    /** A declaration's proto3 bound as a `maxSize`, or the error Rust gives a declaration whose state is not bounded. */
+    private fun declaredBound(declaration: Declaration): Int? {
+        val name = declaration.name.declared
+        val state = if (declaration.hasProto3()) declaration.proto3 else null
+        val bound = state?.let { bounded(it) }
+        if (bound == null) {
+            val cause = when (state?.stateCase) {
+                SizeState.StateCase.ABSENT -> when (state.absent.cause) {
+                    AbsentCause.ABSENT_CAUSE_NO_BOUND ->
+                        "a member of it has no finite bound (NoBound): a string or bytes with no length bound; declare the bound in the type"
+                    AbsentCause.ABSENT_CAUSE_OVERFLOW ->
+                        "its bound does not fit a u32 (Overflow): a bound past u32::MAX, a sum or product of bounds that does not fit, " +
+                            "or a nesting past the sizer's depth limit; lower the bounds in the type"
+                    AbsentCause.ABSENT_CAUSE_REFUSED_MEMBER ->
+                        "a member of it is one proto3 cannot represent (RefusedMember): an optional array or map, an array of arrays or of maps, " +
+                            "a map whose value is a collection, a map key outside the integral and string scalars, a field number proto3 reserves or exceeds, " +
+                            "a name that does not resolve, a live enum value outside int32 in hand-built IR (TYPL-225 rejects it in source), " +
+                            "or a retired value outside int32 (legal in source)"
+                    AbsentCause.ABSENT_CAUSE_UNRESOLVED -> "it names a declaration the sizer did not resolve (Unresolved)"
+                    AbsentCause.ABSENT_CAUSE_NO_MESSAGE -> "no proto3 message defines it (NoMessage)"
+                    AbsentCause.ABSENT_CAUSE_ENCODING_UNDEFINED -> "no proto3 message defines it (EncodingUndefined)"
+                    else -> "no proto3 message defines it (Unspecified)"
+                }
+                SizeState.StateCase.UNBOUNDED -> "no finite bound exists for it"
+                else -> "the lowered model carries no proto3 size state for it"
+            }
+            errors += "$PLUGIN: `${model.name.dotted}.$name` has no proto3 codec: $cause"
+            return null
+        }
+        return maxSize(name, bound)
+    }
+
+    /** [bound] as a `Payload.maxSize`, an `Int`, refused past it as the podbuf codec refuses it (Rust's is a `usize`). */
+    private fun maxSize(name: String, bound: Long): Int? {
+        if (bound > Int.MAX_VALUE) {
+            errors += "$PLUGIN: `${model.name.dotted}.$name` has a proto3 bound of $bound bytes, " +
+                "above the largest a Kotlin `Payload.maxSize` holds"
+            return null
+        }
+        return bound.toInt()
+    }
+
+    // -- the codecs and their helpers ---------------------------------------------------
+
+    /** The `Payload` object of [name], whose helpers are already emitted. */
+    private fun codec(name: String, visibility: Visibility, source: String, maxSize: Int) {
+        val type = ClassName(pkg, name)
+        val functions = Proto3Functions(pkg, name)
+        val codec = ClassName(pkg, "${name}Proto3Codec")
+        claims += Claim(codec.simpleName, "the proto3 codec of $source")
+        val spec = TypeSpec.objectBuilder(codec)
+            .addKdoc("The proto3 codec of [%T].", type)
+            .addSuperinterface(P3_PAYLOAD.parameterizedBy(type, P3_VERIFIED))
+            .addProperty(PropertySpec.builder("encoding", P3_ENCODING, KModifier.OVERRIDE).initializer("%T.Proto3", P3_ENCODING).build())
+            .addProperty(PropertySpec.builder("maxSize", INT, KModifier.OVERRIDE).initializer("%L", maxSize).build())
+            .addFunction(
+                // Sized first, so a buffer too small is reported with the exact length needed before a byte is written.
+                FunSpec.builder("encode").addModifiers(KModifier.OVERRIDE)
+                    .addParameter("value", type).addParameter("out", P3_BUFFER).returns(INT)
+                    .addStatement("%M(%M(value).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), out)", P3_CHECK_CAPACITY, functions.len)
+                    .addStatement("val w = %T(out)", P3_WRITER)
+                    .addStatement("%M(value, w)", functions.encode)
+                    .addStatement("return w.finish()")
+                    .build(),
+            )
+            .addFunction(
+                // No size ceiling: a buffer from a newer writer may carry fields this version skips.
+                FunSpec.builder("verify").addModifiers(KModifier.OVERRIDE)
+                    .addParameter("buf", P3_BUFFER).returns(P3_VERIFIED)
+                    .addStatement("%M(buf)", functions.verify)
+                    .addStatement("return %T(buf)", P3_VERIFIED)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("decode").addModifiers(KModifier.OVERRIDE)
+                    .addParameter("view", P3_VERIFIED).returns(type)
+                    .addStatement("return %M(view.bytes)", functions.decode)
+                    .build(),
+            )
+        if (visibility == Visibility.VISIBILITY_INTERNAL) spec.addModifiers(KModifier.INTERNAL)
+        file.addType(spec.build())
+    }
+
+    /** The four helpers of the message [name], internal to the generated module. */
+    private fun helpers(name: String, type: ClassName, len: CodeBlock, encode: CodeBlock, verify: CodeBlock, decode: CodeBlock) {
+        val functions = Proto3Functions(pkg, name)
+        fun helper(function: MemberName) = FunSpec.builder(function.simpleName).addModifiers(KModifier.INTERNAL)
+        file.addFunction(helper(functions.len).addParameter("value", type).returns(LONG).addCode(len).build())
+        file.addFunction(helper(functions.encode).addParameter("value", type).addParameter("w", P3_WRITER).addCode(encode).build())
+        file.addFunction(helper(functions.verify).addParameter("buf", P3_BUFFER).addCode(verify).build())
+        file.addFunction(helper(functions.decode).addParameter("buf", P3_BUFFER).returns(type).addCode(decode).build())
+    }
+
+    /** The helpers of a struct's, a tuple's or a box's message over [fields], whose `decode` is [decode]. */
+    private fun recordHelpers(name: String, owner: String, fields: List<P3Field>, decode: CodeBlock) {
+        val len = body(P3Pass.Len, owner, fields)
+        val encode = body(P3Pass.Encode, owner, fields)
+        helpers(name, ClassName(pkg, name), len, encode, forms.walk(owner, fields, "buf"), decode)
+    }
+
+    /** A struct's or a tuple's message: its fields in number order, each the model field [member] finds for it. */
+    private fun record(message: Proto3Message, name: String, owner: String, member: (Proto3Field) -> Field?) {
+        val members = message.fieldsList.map { f ->
+            val field = member(f) ?: refuse("the proto3 layout of `$owner` names a field the type does not have")
+            if (!field.hasType()) refuse("a field of `$owner` carries no type")
+            val property = escaped(field.name.property)
+            property to P3Field(f.number, forms.resolve(f.wire, field.type, owner), field.type, field.type.optional, "value.$property")
+        }
+        val fields = members.map { it.second }
+        val type = ClassName(pkg, name)
+        val (locals, decode) = forms.decodeWalk(fields)
+        decode.add("return %T(\n", type).indent()
+        members.zip(locals).forEach { (member, local) -> decode.add("%L = %L,\n", member.first, local) }
+        decode.unindent().add(")\n")
+        recordHelpers(name, owner, fields, decode.build())
+    }
+
+    /** A root box: the declaration's value as its one field, written and read as a struct field of its type is. */
+    private fun box(message: Proto3Message, declaration: Declaration, index: Int) {
+        val owner = declaration.name.declared
+        val f = message.fieldsList.singleOrNull() ?: refuse("the proto3 box of `$owner` has no single field")
+        val ref = TypeRef.newBuilder().setReference(owner).setResolved(true).setPackage(model.scope.`package`)
+            .setForeign(false).setIndex(index)
+        val type = Type.newBuilder().setNamed(ref).build()
+        val fields = listOf(P3Field(f.number, forms.resolve(f.wire, type, owner), type, false, "value"))
+        val (locals, decode) = forms.decodeWalk(fields)
+        decode.addStatement("return %L", locals.single())
+        recordHelpers(declaration.name.camel, owner, fields, decode.build())
+    }
+
+    /** A union's message: its arms as `oneof value`, exactly one written, even at the arm's default. */
+    private fun union(message: Proto3Message, declaration: Declaration) {
+        val owner = declaration.name.declared
+        val type = ClassName(pkg, declaration.name.camel)
+        if (message.fieldsCount == 0) refuse("`$owner` declares no arm, so it encodes no value")
+        val arms = message.fieldsList.map { f ->
+            val arm = declaration.union.armsList.firstOrNull { f.sourceCase == Proto3Field.SourceCase.ARM && it.name.declared == f.arm }
+                ?: refuse("the proto3 layout of `$owner` names an arm the union does not have")
+            if (!arm.hasType()) refuse("arm `${arm.name.declared}` of `$owner` names no type")
+            val armType = Type.newBuilder().setNamed(arm.type).build()
+            type.nestedClass(arm.name.camel) to P3Field(f.number, forms.resolve(f.wire, armType, owner), armType, false, "value.value")
+        }
+        val len = unionBody(P3Pass.Len, owner, arms)
+        val encode = unionBody(P3Pass.Encode, owner, arms)
+        helpers(declaration.name.camel, type, len, encode, forms.unionWalk(owner, arms.map { it.second }), forms.unionDecode(type, arms))
+    }
+
+    /** The body of a length ([P3Pass.Len], counted in `n`) or an encode function over [fields] of `value`. */
+    private fun body(pass: P3Pass, owner: String, fields: List<P3Field>): CodeBlock {
+        val code = CodeBlock.builder()
+        for (f in fields) {
+            if (!f.optional) {
+                code.add(forms.put(pass, f.number, f.wire, f.expr, P3Site.Field, "n", owner))
+                continue
+            }
+            // A `?` field is written whenever present, whatever its value.
+            val o = forms.fresh("o")
+            code.addStatement("val %L = %L", o, f.expr).beginControlFlow("if (%L != null)", o)
+                .add(forms.put(pass, f.number, f.wire, o, P3Site.Element, "n", owner)).endControlFlow()
+        }
+        val statements = code.build()
+        if (pass == P3Pass.Encode) return statements
+        if (statements.isEmpty()) return CodeBlock.of("return 0L\n")
+        return CodeBlock.builder().addStatement("var n = 0L").add(statements).addStatement("return n").build()
+    }
+
+    private fun unionBody(pass: P3Pass, owner: String, arms: List<Pair<ClassName, P3Field>>): CodeBlock {
+        val code = CodeBlock.builder()
+        if (pass == P3Pass.Len) code.addStatement("var n = 0L")
+        code.beginControlFlow("when (value)")
+        for ((variant, arm) in arms) {
+            code.beginControlFlow("is %T ->", variant)
+                .add(forms.put(pass, arm.number, arm.wire, arm.expr, P3Site.Element, "n", owner))
+                .endControlFlow()
+        }
+        code.endControlFlow()
+        if (pass == P3Pass.Len) code.addStatement("return n")
+        return code.build()
+    }
+}

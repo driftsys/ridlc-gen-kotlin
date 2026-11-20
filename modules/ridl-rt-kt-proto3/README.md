@@ -3,7 +3,7 @@
 ## Responsibility
 
 The shared proto3 reader and writer, in `ridl.rt.proto3`: a hand-written port of
-`crates/ridl-rt/src/proto3.rs` at ridl `editor-v0.20.0`. It depends only on
+`crates/ridl-rt/src/proto3.rs` at ridl `editor-v0.21.0`. It depends only on
 `ridl-rt-kt`, which supplies the encoding, payload and error types and the
 string well-formedness checks. The dependency goes one way: `ridl-rt-kt` does
 not reference this module.
@@ -32,8 +32,9 @@ fixed-width values, large lengths, invalid UTF-8 sequences and the absence of a
 dependency from the core runtime to this module.
 
 The Android vendor package declares this module as the optional Soong library
-`ridl-rt-kt-proto3` (see `packaging/android/README.md`). This module does not
-add generated codecs or faces.
+`ridl-rt-kt-proto3` (see `packaging/android/README.md`). The plugin's generated
+`Proto3Codec.kt` reads and writes through this module, which a package needs
+only when it selects proto3 (#133); the module holds no codec or face itself.
 
 ## Where the code departs from Rust and docs/design.md
 
@@ -62,4 +63,6 @@ add generated codecs or faces.
   exception is allocated on failure; successful writes and `finish` allocate
   nothing. Existing `WellFormed.kt` checks remain in the core runtime.
 
-There is no change to the codec selection or generation design.
+A manifest can now select proto3 to generate `Proto3Codec.kt`. The generated
+code depends on this runtime. Proto3 faces are still missing under #133; an
+interface in a package that selects proto3 gets no face and a warning.

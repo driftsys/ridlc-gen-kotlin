@@ -91,8 +91,8 @@ An Android tree that builds with Soong cannot read Maven. Each release attaches
 `ridl-rt-kt-coroutines`, `ridl-rt-kt-loopback`, `ridl-descriptor-kt` and
 `ridl-rt-kt-proto3`, with an `Android.bp` declaring the five libraries, an AOSP
 `METADATA` file and the license files. Unpack it at a path such as
-`external/ridl-rt-kt` and depend on the libraries by name. The plugin does not
-generate proto3 codecs yet, so an app does not need `ridl-rt-kt-proto3`.
+`external/ridl-rt-kt` and depend on the libraries by name. An app that selects
+proto3 lists `ridl-rt-kt-proto3`; other apps do not need it.
 
 The tree must provide two things:
 

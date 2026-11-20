@@ -26,7 +26,7 @@ java_library {
     sdk_version: "current",
 }
 
-// The optional proto3 codec.
+// The optional proto3 runtime.
 java_library {
     name: "ridl-rt-kt-proto3",
     srcs: ["ridl-rt-kt-proto3/src/main/kotlin/**/*.kt"],

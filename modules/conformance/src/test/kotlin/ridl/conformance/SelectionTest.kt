@@ -83,4 +83,19 @@ class SelectionTest {
                 }
             }
         }
+
+    @TestFactory
+    fun `flatbuffers-only output names neither proto3 nor its runtime`(): List<DynamicTest> =
+        Harness.packages().map { name ->
+            DynamicTest.dynamicTest(name) {
+                // The corpus package `kt-proto3` is named so: its own name is not a proto3 item.
+                val own = Harness.manifestName(name)
+                for ((pkg, files) in flatBuffersOutputs(name)) {
+                    for ((path, text) in files) {
+                        assertFalse("ridl.rt.proto3" in text, "$pkg $path names ridl.rt.proto3")
+                        assertFalse(text.replace(own, "").contains("proto3", ignoreCase = true), "$pkg $path names proto3")
+                    }
+                }
+            }
+        }
 }

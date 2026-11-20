@@ -99,15 +99,17 @@ private val FLOW = ClassName("kotlinx.coroutines.flow", "Flow")
 private val COROUTINE_SCOPE_OF = MemberName("kotlinx.coroutines", "coroutineScope")
 private val LAUNCH = MemberName("kotlinx.coroutines", "launch")
 
-/** What a codec object's name adds to its type's: `Codec.kt` and `PodbufCodec.kt` name them so (docs/design.md §4). */
+/** What a codec object's name adds to its type's: `Codec.kt`, `Proto3Codec.kt` and `PodbufCodec.kt` name them so (docs/design.md §4). */
 private fun codecSuffix(encoding: WireEncoding): String = when (encoding) {
     WireEncoding.FlatBuffers -> "Codec"
+    WireEncoding.Proto3 -> "Proto3Codec"
     WireEncoding.Podbuf -> "PodbufCodec"
 }
 
-/** How the face's prose names [encoding]: `FlatBuffers`, as the Rust tables' docs do, and `podbuf`. */
+/** How the face's prose names [encoding]: `FlatBuffers`, as the Rust tables' docs do, `proto3` and `podbuf`. */
 private fun prose(encoding: WireEncoding): String = when (encoding) {
     WireEncoding.FlatBuffers -> "FlatBuffers"
+    WireEncoding.Proto3 -> "proto3"
     WireEncoding.Podbuf -> "podbuf"
 }
 
@@ -796,6 +798,10 @@ class FacesEmitter internal constructor(
         }
 
         fun emit() {
+            // The face has no proto3 arm yet (#133, task 6): its size tables, codec choice and stream elements name
+            // FlatBuffers and podbuf alone. The interface is skipped with a warning, as one the face cannot carry is,
+            // and the package's codecs are still generated.
+            if (WireEncoding.Proto3 in carried) refuse("the Kotlin face does not carry the proto3 encoding yet (#133)")
             val waits = events.isNotEmpty() || commands.isNotEmpty() || queries.isNotEmpty() || streamed.isNotEmpty()
             val of = "interface `${iface.declared.declared}`"
             add(descriptor(), "the descriptor of $of")
