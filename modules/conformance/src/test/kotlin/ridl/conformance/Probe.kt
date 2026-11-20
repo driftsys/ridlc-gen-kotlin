@@ -45,13 +45,13 @@ object Probe {
 
     /**
      * A string of a legal length that does not match, for each patterned type
-     * that a run of U+0001 matches: `veh.cabin.Glyph`'s `/^.$/` matches any
-     * one character but `\n`.
+     * that a run of U+0001 matches: `veh.cabin.Glyph`'s `/./` matches any
+     * one character but `\n` and `\r`.
      */
     private val NON_MATCHES: Map<String, String> = mapOf("veh.cabin.Glyph" to "ab")
 
-    /** A sample of each inline pattern of the corpus, by its pattern: an inline scalar has no type to key it. */
-    val PATTERN_SAMPLES: Map<String, String> = mapOf("ABC" to "ABC")
+    /** A sample of each inline pattern of the corpus, by its clauses' patterns: an inline scalar has no type to key it. */
+    val PATTERN_SAMPLES: Map<String, String> = mapOf("ABC" to "ABC", "[A-Z]+ A[A-Z][A-Z]" to "ABC")
 
     /** The probe source for [models], a top-level `fun probe(): List<String>` of the failures. */
     fun source(models: List<Model>): String {
@@ -158,7 +158,7 @@ object Probe {
             ScalarClass.SCALAR_CLASS_STRING -> {
                 val min = if (c.hasLenMin()) c.lenMin.toInt() else 0
                 val max = if (c.hasLenMax()) c.lenMax.toInt() else null
-                if (c.hasPattern()) {
+                if (c.matchesList.any { it.hasPattern() }) {
                     val sample = SAMPLES[type]
                     if (sample == null) {
                         out.line("failures += \"$type is patterned and the probe has no sample of it\"")

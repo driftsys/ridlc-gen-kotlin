@@ -2,4 +2,4 @@
 next 4
 veh.adas.Cruise/primary 1
 veh.adas.Cruise/backup 2
-veh.ego.status/Unit 3
+veh.ego.Status/Unit 3

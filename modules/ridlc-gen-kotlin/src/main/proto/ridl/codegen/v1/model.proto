@@ -18,7 +18,7 @@ syntax = "proto3";
 // Encoding: canonical protobuf JSON, the dialect ADR-0014 decision 14 fixes
 // for the IR, through the same pbjson-generated impls and the same reader
 // guards (`ridl_ir::codegen::to_json_pretty`, `from_json`). The nesting bound
-// a reader must provision is 264 JSON levels and 261 message levels below the
+// a reader must provision is 266 JSON levels and 262 message levels below the
 // root (design note §6.2).
 //
 // Field numbering scheme, as `ir.proto` has it: envelope and data fields
@@ -60,6 +60,11 @@ message Model {
   // toolchain lowers a package; a head that cannot be laid out is listed in
   // `PodbufProjection.refused`, not left out silently.
   PodbufProjection podbuf = 11;
+  // The proto3 layout of the package. Set whenever the toolchain lowers a
+  // package; a struct, union, named scalar, enum, enum set or tuple that proto3
+  // cannot represent is listed in `Proto3Projection.refused`. A constant has
+  // neither a message nor a refusal.
+  Proto3Projection proto3 = 12;
 }
 
 // The packages the lowering was handed. The output depends on it, so it is
@@ -117,15 +122,15 @@ message Spellings {
 
 // A package name or a service name.
 message DottedName {
-  // "veh.adas.cruise".
+  // "veh.adas.Cruise".
   string dotted = 1;
-  // ["veh", "adas", "cruise"].
+  // ["veh", "adas", "Cruise"].
   repeated string segments = 2;
   // "VehAdasCruise" — the wire backends' `type_name`, which ADR-0016 does not
-  // pin. `camel_case` splits on underscores and gives "Veh.adas.cruise" over
+  // pin. `camel_case` splits on underscores and gives "Veh.adas.Cruise" over
   // a dotted name, so this is its own rule.
   string joined_camel = 3;
-  // "veh_adas_cruise" — the TypeScript import alias.
+  // "veh_adas_Cruise" — the TypeScript import alias.
   string underscored = 4;
 }
 
@@ -215,10 +220,23 @@ message Constraint {
   optional string step = 3;
   optional uint64 len_min = 4;
   optional uint64 len_max = 5;
-  // The regex body, `/…/` stripped.
-  optional string pattern = 6;
-  // The canonical reference to the regex constant.
-  optional string pattern_const = 7;
+  // Deprecated: ^(?:P)$, a search text equal to the whole-value match of
+  // the first clause. Still written and read (IR specification §6).
+  optional string pattern = 6 [deprecated = true];
+  // Deprecated: the first clause of matches, still written and read
+  // (IR specification §6).
+  optional string pattern_const = 7 [deprecated = true];
+  // Every match clause, in source order.
+  repeated Match matches = 8;
+}
+
+// One `match` clause (typl §5.3).
+message Match {
+  // The normalised pattern (ridl_ir::pattern), matched against the whole value.
+  optional string pattern = 1;
+  // The canonical reference when the name resolves to a regex constant;
+  // otherwise the name as written.
+  optional string pattern_const = 2;
 }
 
 // A named compile-time constant, with its declared type resolved.
@@ -518,7 +536,7 @@ message Interface {
   oneof identity {
     // An `interface` declaration.
     Spellings declared = 10;
-    // A service's inline shape: the service's dotted name.
+    // A service's inline shape: the service's global name.
     DottedName service = 11;
   }
   // Numbered after the oneof: 16–19 stay open for it.
@@ -992,7 +1010,7 @@ message Rule {
     // The canonical UCUM unit.
     string unit = 12;
     Length length = 13;
-    // The regex source text of a string's `match` pattern.
+    // The regex source text of one string `match` clause; one rule per clause.
     string pattern = 14;
     CollectionBound collection_bound = 15;
     Timing timing = 16;
@@ -1550,4 +1568,155 @@ message PodbufArm {
   uint32 ordinal = 1;
   // The head of the arm: an index into `heads`.
   uint32 head = 2;
+}
+
+// ---------------------------------------------------------------------
+// The proto3 projection
+// ---------------------------------------------------------------------
+
+// The proto3 layout of the package: every message the proto3 codec writes,
+// and every declaration and named tuple proto3 cannot represent. Set whenever the
+// toolchain lowers a package, whatever `encodings` the manifest selects.
+message Proto3Projection {
+  // In `Model.declarations` order, then every named induced tuple in
+  // `Model.tuples` order, whether or not a declaration or an interaction
+  // reaches it. A tuple lifted from another package's declaration has no
+  // name here and has neither a message nor a refusal here; the declaring
+  // package's projection lists it. Map entries are not listed: an entry's
+  // key is field 1 and its value is field 2; `Proto3Map` carries both wires.
+  repeated Proto3Message messages = 1;
+  // The refused declarations and named tuples, in the same order.
+  // A tuple with no name in this package has no refusal here; it comes from
+  // another package's declaration and is listed in that package's projection.
+  // A message that needs a refused one is refused too, transitively, with
+  // the cause REFUSED_DEPENDENCY, and is not in `messages`.
+  repeated Proto3Refused refused = 2;
+}
+
+message Proto3Message {
+  // The `.proto` message name without its package, as `ridl-backend-proto`
+  // emits it: the declaration's name, `<Name>Box` for a root box, the wire
+  // name of a tuple, or its Rust name when the wire name is empty.
+  string name = 1;
+  // In field-number order, the order the canonical writer writes. The
+  // numbers are not dense: a reserved or retired slot has no field.
+  repeated Proto3Field fields = 2;
+  oneof source {
+    uint32 struct_declaration = 10; // index into Model.declarations
+    uint32 union_declaration = 11;  // its fields are the arms of `oneof value`
+    uint32 root_box = 12;           // `<Name>Box { <type> value = 1; }`
+    uint32 tuple = 13;              // index into Model.tuples
+  }
+}
+
+message Proto3Field {
+  uint32 number = 1;
+  Proto3Wire wire = 2;
+  oneof source {
+    string field = 10;          // a struct field, by its source name
+    string arm = 11;            // a union arm, by its source name
+    uint32 tuple_position = 12; // 0-based; the number is position + 1
+    bool box_value = 13;        // the one field of a root box
+  }
+}
+
+message Proto3Wire {
+  // Whether the proto3 default of this wire is a legal value of its type:
+  // 0 inside the range and on the step grid of a numeric scalar, a length
+  // lower bound of 0 for text and bytes, a zero member or an open enum, a
+  // count lower bound of 0 for an array or a map, always for an enum set and
+  // for a message. When this is true, an absent field with implicit presence,
+  // map key or map value is taken as the proto3 default and then verified as a
+  // present value would be; when false, an absent value is malformed.
+  // A writer omits a value at its default only when this is true.
+  // This field has existed since Model.proto3, so every writer that writes a
+  // Proto3Wire sets it, and false always means the default is not legal.
+  bool default_is_legal = 1;
+  oneof kind {
+    Proto3Scalar scalar = 10;     // numeric, boolean, or an enum set's integer
+    bool text = 11;               // `string`, wire type LEN
+    bool bytes = 12;              // `bytes`, wire type LEN
+    Proto3Enum enumeration = 13;  // a proto3 enum, an int32 varint
+    Proto3MessageRef message = 14;
+    Proto3Array array = 15;
+    Proto3Map map = 16;
+  }
+}
+
+message Proto3Scalar {
+  Proto3ScalarType type = 1;
+  Proto3WireType wire_type = 2;
+}
+
+// The enum may be one of another package; `TypeRef` says which.
+message Proto3Enum { TypeRef type = 1; }
+
+// A nested message: a struct, a union or an induced tuple, of this package
+// or of another one.
+message Proto3MessageRef {
+  oneof target {
+    uint32 message = 10;  // index into Proto3Projection.messages
+    uint32 foreign = 11;  // index into Model.foreign
+  }
+}
+
+message Proto3Array {
+  Proto3Wire element = 1;
+  // True when the canonical writer writes one packed record: the element is
+  // a scalar or an enum. False: one record per element.
+  bool packed = 2;
+}
+
+message Proto3Map {
+  Proto3Wire key = 1;    // entry field 1
+  Proto3Wire value = 2;  // entry field 2
+}
+
+message Proto3Refused {
+  oneof source {
+    uint32 declaration = 10;
+    uint32 tuple = 11;
+  }
+  Proto3RefusalCause cause = 2;
+  // The member the cause is about, when there is one: `Owner.field` or `Enum.value`.
+  optional string member = 3;
+  // The diagnostic text. For every cause but REFUSED_DEPENDENCY, the Rust
+  // backend reports this text unchanged. For REFUSED_DEPENDENCY the text is
+  // "`<name>` needs the refused message `<other>`: <the message of other>",
+  // the form `PodbufRefused.cause` has.
+  string message = 4;
+}
+
+enum Proto3ScalarType {
+  PROTO3_SCALAR_TYPE_UNSPECIFIED = 0;
+  PROTO3_SCALAR_TYPE_BOOL = 1;
+  PROTO3_SCALAR_TYPE_INT64 = 2;
+  PROTO3_SCALAR_TYPE_UINT32 = 3;
+  PROTO3_SCALAR_TYPE_UINT64 = 4;
+  PROTO3_SCALAR_TYPE_SINT32 = 5;
+  PROTO3_SCALAR_TYPE_SINT64 = 6;
+  PROTO3_SCALAR_TYPE_FLOAT = 7;
+  PROTO3_SCALAR_TYPE_DOUBLE = 8;
+}
+
+// These enum values are not protobuf wire-type numbers. The mapping is
+// VARINT -> 0, I64 -> 1, LEN -> 2, I32 -> 5.
+enum Proto3WireType {
+  PROTO3_WIRE_TYPE_UNSPECIFIED = 0;
+  PROTO3_WIRE_TYPE_VARINT = 1;
+  PROTO3_WIRE_TYPE_I64 = 2;
+  PROTO3_WIRE_TYPE_LEN = 3;
+  PROTO3_WIRE_TYPE_I32 = 4;
+}
+
+enum Proto3RefusalCause {
+  PROTO3_REFUSAL_CAUSE_UNSPECIFIED = 0;
+  PROTO3_REFUSAL_CAUSE_OPTIONAL_COLLECTION = 1;   // `T[]?` or a map field `?`
+  PROTO3_REFUSAL_CAUSE_OPTIONAL_ELEMENT = 2;      // optional element, key or value
+  PROTO3_REFUSAL_CAUSE_NESTED_COLLECTION = 3;
+  PROTO3_REFUSAL_CAUSE_MAP_KEY = 4;               // key refused by the projection's rule
+  PROTO3_REFUSAL_CAUSE_ENUM_VALUE = 5;            // outside int32, live or retired
+  PROTO3_REFUSAL_CAUSE_FIELD_NUMBER = 6;          // 0, 19000..=19999, > 536870911
+  PROTO3_REFUSAL_CAUSE_REFUSED_DEPENDENCY = 7;    // needs a refused message
+  PROTO3_REFUSAL_CAUSE_OTHER = 8;                 // see `message`
 }

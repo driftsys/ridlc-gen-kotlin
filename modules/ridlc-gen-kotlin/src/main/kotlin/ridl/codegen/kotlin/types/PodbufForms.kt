@@ -774,9 +774,9 @@ internal class PodbufForms(private val model: Model, private val pkg: String) {
             .build()
     }
 
-    /** Registers an inline string scalar's pattern and names its compiled `Regex`. */
-    private fun pattern(scalar: Scalar): String {
-        patterns += javaPattern(scalar.constraint.pattern)
+    /** Registers one clause of an inline string scalar, by its normalised pattern, and names its compiled `Regex`. */
+    private fun pattern(body: String): String {
+        patterns += javaPattern(body)
         return "PODBUF_PATTERN_${patterns.size - 1}"
     }
 

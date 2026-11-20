@@ -569,8 +569,8 @@ class CodecEmitter(private val model: Model, private val options: Options) {
 
     /** The contract checks of a value read at a position: its type's, or its owner's for an inline scalar. */
     private fun domainCheck(domain: Domain, value: String, owner: String): CodeBlock =
-        checkDomain(domain, value, owner) { scalar ->
-            patterns += scalar.constraint.pattern
+        checkDomain(domain, value, owner) { body ->
+            patterns += javaPattern(body)
             "PATTERN_${patterns.size - 1}"
         }
 
@@ -679,12 +679,13 @@ internal fun base(domain: Domain, expr: String): String = when (domain) {
 /**
  * The contract checks of a [value] read at a position: its type's, or its
  * owner's for an inline scalar, `verify`'s `Contract` on the first it breaks.
- * [pattern] names the compiled pattern of an inline string scalar's.
+ * [pattern] names the compiled `Regex` of one of an inline string scalar's
+ * clauses, given its normalised pattern.
  */
-internal fun checkDomain(domain: Domain, value: String, owner: String, pattern: (Scalar) -> String): CodeBlock = when (domain) {
+internal fun checkDomain(domain: Domain, value: String, owner: String, pattern: (String) -> String): CodeBlock = when (domain) {
     Domain.Primitive -> CodeBlock.of("")
     is Domain.Inline -> {
-        val compiled = if (domain.scalar.checksPattern()) pattern(domain.scalar) else null
+        val compiled = if (domain.scalar.checksPattern()) pattern else null
         scalarChecks(domain.scalar, value, compiled) { rule ->
             CodeBlock.of("throw %T.Contract(%T(%S, %T.%L))\n", VERIFY_ERROR, VIOLATION, owner, RULE, rule)
         } ?: CodeBlock.of("")

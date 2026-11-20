@@ -1,14 +1,14 @@
 package alpha
 
 /// The first local instance.
-component First [ linux.nice = 5 ] { offers alpha.face
+component First [ linux.nice = 5 ] { offers alpha.FaceService
                   requires mapped.Face }
 /// The second local instance.
-component Second { offers beta.face
+component Second { offers beta.FaceService
                    requires alpha.Face }
 /// The remote instance, outside the system.
-component Foreign [ external ] { offers mapped.face
-                    offers remote.face }
+component Foreign [ external ] { offers mapped.FaceService
+                    offers remote.FaceService }
 /// The fixture system.
 system Test [ linux.owner = fleet ] { First, Second, Foreign }
 /// The fixture placement.

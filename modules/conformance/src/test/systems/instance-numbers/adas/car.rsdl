@@ -1,11 +1,11 @@
 package veh.adas
 
 component Cruise [ instances = (primary, backup) ] {
-  offers veh.adas.cruise
+  offers veh.adas.Assist
 }
 
-system Car { Cruise, veh.ego.status }
+system Car { Cruise, veh.ego.Status }
 
 deployment Bench for Car {
-  machine Box { Cruise, veh.ego.status }
+  machine Box { Cruise, veh.ego.Status }
 }

@@ -5,10 +5,10 @@
 // inline constrained scalars inside collections.
 package kt.values
 
-const SERIAL_PATTERN = /^[0-9]+$/
+const SERIAL_PATTERN = /[0-9]+/
 
 type Even   : integer [-10..10]
-type Code   : string [2..8 match /^[A-Z]+$/]
+type Code   : string [2..8 match /[A-Z]+/]
 type Serial : string [4 match SERIAL_PATTERN]
 /// An offset, in quarter steps. Its doc tags are the model's, not the text's:
 /// ridl strips them from the doc (#51).
@@ -39,4 +39,8 @@ struct Bundle {
   word  : string [1..2]
   steps : [integer [0..4]; 0..2]
   mode  : Mode
+}
+
+struct ClauseToken {
+  text : string [3..3 match /[A-Z]+/ match /A[A-Z][A-Z]/]
 }

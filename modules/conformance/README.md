@@ -28,7 +28,7 @@ The repository is licensed under the root [MIT License](../../LICENSE).
 
 ## Status
 
-Pinned to `editor-v0.20.0`, the tag that carries ridl 0.20.0's binaries. The
+Pinned to `editor-v0.21.0`, the tag that carries ridl 0.21.0's binaries. The
 tests of stage K2a run: a request the pinned `ridl` wrote parses, a request with
 an unknown key parses, a request nested 1,000 levels parses in process and
 through the installed script, a wrong schema is one error diagnostic and exit 0,
@@ -256,12 +256,19 @@ reachable, the shadowed `nextEvent`, `subscribePing` and `unsubscribePing`
 through an aliased import. The probe imports the extensions of `Probe` and
 `Clash` under one name, the Kotlin counterpart of a consumer of two preludes.
 
-The test of #12, `PatternsTest`: a package the pinned `ridl` accepts, whose
-patterns ECMA-262 and the Rust `regex` crate both compile, declares four that
-`java.util.regex` does not — `\p{Greek}` through a regex constant, `\p{Letter}`,
-`\u{41}` and, inline in a struct, `\p{Emoji}` — and each refuses its declaration
-with the pattern and Java's reason. Eighteen patterns Java compiles, where the
-engines' syntaxes differ most, generate, compile, and their classes load.
+The tests of #186, `PatternsTest`: a typl pattern is an I-Regexp that matches
+the whole value (driftsys/ridl#597). Each literal of ridl's agreement table,
+`resources/patterns/pattern-agreement.json`, which is the pinned release's
+`crates/ridl-ir/tests/pattern_agreement.json`, becomes a named string type, and
+each of the table's 125 pairs gets the table's verdict from the generated
+`ofOrNull`. A local `Day` type uses the same pattern text as `ridl.std.Date` and
+refuses a date with a character before or after it, or a line break after it,
+and a date in other digits. A string with two clauses refuses a value that
+matches only one of them, in a named type and in an inline struct field. That a
+pattern `java.util.regex` cannot compile refuses its declaration (#12) is
+checked with hand-built constraints in `TypesEmitterTest` and `PatternsTest`,
+including a repetition bound Java cannot compile. Codec tests also check that
+both encodings refuse an inline string that breaks only its second match clause.
 
 The tests of #16 and #18, `NamesTest`: a name the plugin chose never refuses a
 package. Two packages, written inline and built with

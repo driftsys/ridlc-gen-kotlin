@@ -135,7 +135,7 @@ class InstancesTest {
     private companion object {
         /** A second deployment of the fixture's system, over two machines. */
         const val SECOND_DEPLOYMENT: String =
-            "\ndeployment Split for Car {\n  machine Front { Cruise }\n  machine Rear { veh.ego.status }\n}\n"
+            "\ndeployment Split for Car {\n  machine Front { Cruise }\n  machine Rear { veh.ego.Status }\n}\n"
     }
 
     @Test

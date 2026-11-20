@@ -42,18 +42,22 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-Tested against ridl `editor-v0.20.0` (`modules/conformance/ridl-release`).
+The plugin requires ridl `editor-v0.21.0` or later and is tested against that
+release (`modules/conformance/ridl-release`). It refuses a model from an older
+ridl that carries only the deprecated pattern fields; it does not interpret
+those fields as match clauses.
 
-The plugin ignores two parts of ridl's schema (#31). The request's deployment
-section (`CodegenRequest.deployment`) is for a backend that lays out memory for
-one deployment, and this one lays out none. The model's `reservation` and
-`table_budget` are not read either: a descriptor's size table is built from its
-codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
+The plugin ignores three parts of ridl's schema (#31, #133). The request's
+deployment section (`CodegenRequest.deployment`) is for a backend that lays out
+memory for one deployment, and this one lays out none. The model's `reservation`
+and `table_budget` are not read either: a descriptor's size table is built from
+its codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
 `MAX_SIZE`. A FlatBuffers codec's is `Payload.flatbuffers_max_size`, which ridl
 keeps writing, equal to the bounded FlatBuffers state; a podbuf codec's is the
 podbuf size state of its declaration or its call. The podbuf states of
 `Payload.sizes`, `request_sizes` and `reply_sizes` are read only to skip an
-interface whose payload has no finite podbuf bound, below.
+interface whose payload has no finite podbuf bound, below. The third part is
+`Model.proto3` (`Proto3Projection`), which is ignored until #133 reads it.
 
 ## Generated code on Android
 
@@ -79,8 +83,8 @@ why, and how the rule was last checked; CI does not check it.
   and the script still ends in `exec "$JAVACMD" "$@"`.
 - **`encodings`** accepts `flatbuffers` and `podbuf`, alone or together, in
   either order: O-K1 is disposed on FlatBuffers with a verifier (#65), and
-  podbuf joins it (#134). `proto3` is refused, naming it, until ridl projects
-  proto3 into `ridl.codegen.v1`. The plugin generates a codec for exactly the
+  podbuf joins it (#134). `proto3` is refused, naming it, until #133 reads the
+  model's `Proto3Projection`. The plugin generates a codec for exactly the
   encodings named, and the face serves exactly those (docs/design.md §4, §5).
   With no `encodings` option the package is `Types.kt` alone, with no codec and
   no face, as every backend of the family generates it since ridl 0.9 (#83); the
@@ -126,26 +130,24 @@ why, and how the rule was last checked; CI does not check it.
   checks this, including one without constraints (#182). A struct does not check
   its inline strings for it, as the TypeScript backend does not: the encoder
   refuses the value (`Codec.kt` and `PodbufCodec.kt`, below).
-- **A pattern is searched for**, as Rust's `Regex::is_match` does, not matched
-  whole: the pattern's own `^` and `$` decide.
-- **A pattern matches as the Rust `regex` crate does** under its defaults on
-  these points (#155): `.` is any character but `\n`, `$` outside a class is the
-  end of the text only, `\d`, `\w`, `\s` and `\b` are Unicode classes, and
-  `(?i)` folds case over Unicode. The plugin refuses `\v` and the class
-  operators `--` and `~~`, whose Java meanings differ from Rust (#169). The
-  plugin prefixes each pattern with `(?dU)` and rewrites each such `$` to `\z`;
-  `java.util.regex` alone let `/^.$/` accept `"a\n"` and refuse `"\r"`. A
-  pattern that turns on the multi-line flag `m`, as `(?m:...)`, is refused,
-  although `ridl check` accepts it (#169). This includes combined flags and
-  nested groups; the rewrite does not track where a multi-line flag applies.
+- **A pattern is the normalised I-Regexp ridl sends, matched whole** (#186,
+  driftsys/ridl#597). `ridl check` refuses every pattern outside the typl subset
+  of RFC 9485. When ridl lowers the model, it writes each `.` as `[^\n\r]`, so
+  `java.util.regex` reads the pattern as the Rust `regex` crate does. The plugin
+  compiles it unchanged and calls `Regex.matches`, as Rust wraps it in
+  `\A(?:…)\z`. A string checks each of its `match` clauses in source order, and
+  the first one that refuses the value is the `Rule.Pattern` violation, as in
+  Rust. ridl's agreement table (`resources/patterns/pattern-agreement.json`) is
+  run through the generated code.
 - **A pattern `java.util.regex` cannot compile refuses its declaration**, with
-  the pattern and Java's reason (#12). `ridl check` passes a pattern ECMA-262
-  and the Rust `regex` crate both compile (TYPL-106, TYPL-220), and some of
-  those are not Java syntax: a script or a long property name such as
-  `\p{Greek}`, `\p{Letter}` or `\p{Emoji}`, and `\u{41}`. The generated
-  `Regex(…)` threw `PatternSyntaxException` when its class loaded; the plugin
-  now compiles each pattern as it generates it. The check is the JVM the plugin
-  runs on: Android's `java.util.regex` is ICU's, and is not checked.
+  the pattern and Java's reason (#12). For example, ridl accepts
+  `a{99999999999}`, but Java refuses its repetition bound above `Int.MAX_VALUE`;
+  the plugin reports a diagnostic instead of generating a `Regex(…)` that throws
+  when its class loads. The check uses the JVM the plugin runs on: Android's
+  `java.util.regex` is ICU's, and is not checked. Java's backtracking engine can
+  throw `StackOverflowError` on a long value with alternation inside a repeated
+  group, such as `([a-z]|[0-9])*` on 20 000 characters, so give such strings a
+  length bound.
 - **Every integer is a `Long` and every float a `Double`**, as every Rust
   backing is `i64` or `f64`; the declared widths are the codec's.
 - **An enum's discriminant is a `Long`**, not the `Int` of §4, because the
@@ -232,7 +234,7 @@ to that over 19,023 buffers (`CodecTest`).
 ### `PodbufCodec.kt`
 
 `PodbufCodec.kt` is the Rust podbuf codec (`codec_podbuf.rs` of
-`editor-v0.20.0`) spelled in Kotlin, over `ridl-rt-kt`'s `ridl.rt.podbuf`: one
+`editor-v0.21.0`) spelled in Kotlin, over `ridl-rt-kt`'s `ridl.rt.podbuf`: one
 `<Type>PodbufCodec` object implementing `Payload` per struct and union of the
 package, per box the projection lists (a named scalar, an enum or an enum set
 carried as a payload root) and per tuple a call sends on its own, and `internal`

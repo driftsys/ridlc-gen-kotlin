@@ -14,4 +14,4 @@ interface Face {
   query get(): Value @[..100ms]
 }
 /// Provides the test interface.
-service mapped.face : Face
+service FaceService : Face

@@ -1,14 +1,14 @@
 package alpha
 
 /// The first local instance.
-component First { offers alpha.face
+component First { offers alpha.FaceService
                   requires mapped.Face }
 /// The second local instance.
-component Second { offers beta.face
+component Second { offers beta.FaceService
                    requires alpha.Face }
 /// The remote instance.
-component Foreign { offers mapped.face
-                    offers remote.face }
+component Foreign { offers mapped.FaceService
+                    offers remote.FaceService }
 /// The fixture system.
 system Test { First, Second, Foreign }
 /// The fixture placement.
