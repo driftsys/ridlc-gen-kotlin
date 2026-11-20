@@ -48,11 +48,11 @@ release (`modules/conformance/ridl-release`). It refuses a model from an older
 ridl that carries only the deprecated pattern fields; it does not interpret
 those fields as match clauses.
 
-The plugin ignores two parts of ridl's schema (#31). The request's
-deployment section (`CodegenRequest.deployment`) is for a backend that lays out
-memory for one deployment, and this one lays out none. The model's `reservation`
-and `table_budget` are not read either: a descriptor's size table is built from
-its codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
+The plugin ignores two parts of ridl's schema (#31). The request's deployment
+section (`CodegenRequest.deployment`) is for a backend that lays out memory for
+one deployment, and this one lays out none. The model's `reservation` and
+`table_budget` are not read either: a descriptor's size table is built from its
+codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
 `MAX_SIZE`. A FlatBuffers codec's is `Payload.flatbuffers_max_size`, which ridl
 keeps writing, equal to the bounded FlatBuffers state; a proto3 or a podbuf
 codec's is that encoding's size state of its declaration or its call. The podbuf
