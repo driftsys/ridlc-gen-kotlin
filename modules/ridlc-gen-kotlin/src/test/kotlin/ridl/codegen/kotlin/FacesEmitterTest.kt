@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test
 import ridl.codegen.kotlin.types.EmittedFaces
 import ridl.codegen.kotlin.types.FacesEmitter
 import com.google.protobuf.ByteString
+import ridl.codegen.v1.ModelOuterClass.AbsentCause
 import ridl.codegen.v1.ModelOuterClass.Catalog
 import ridl.codegen.v1.ModelOuterClass.Clause
 import ridl.codegen.v1.ModelOuterClass.Comparison
@@ -30,6 +31,7 @@ import ridl.codegen.v1.ModelOuterClass.Param
 import ridl.codegen.v1.ModelOuterClass.Payload
 import ridl.codegen.v1.ModelOuterClass.PayloadSizes
 import ridl.codegen.v1.ModelOuterClass.PodbufProjection
+import ridl.codegen.v1.ModelOuterClass.SizeAbsent
 import ridl.codegen.v1.ModelOuterClass.SizeState
 import ridl.codegen.v1.ModelOuterClass.Scalar
 import ridl.codegen.v1.ModelOuterClass.ScalarClass
@@ -519,15 +521,18 @@ class FacesEmitterTest {
     // -- the encodings the face serves (docs/design.md §5) -------------------------
 
     /** A payload of one `Level`, bounded in FlatBuffers when [flatBuffers] and in podbuf when [podbuf]. */
-    private fun levelPayload(flatBuffers: Boolean = true, podbuf: Boolean = true) = Payload.newBuilder().setType(level).apply {
+    private fun levelPayload(flatBuffers: Boolean = true, proto3: Boolean = true, podbuf: Boolean = true) = Payload.newBuilder().setType(level).apply {
         if (flatBuffers) setFlatbuffersMaxSize(43)
-        if (podbuf) setSizes(PayloadSizes.newBuilder().setPodbuf(SizeState.newBuilder().setBounded(16)))
+        val sizes = PayloadSizes.newBuilder()
+        if (proto3) sizes.setProto3(SizeState.newBuilder().setBounded(3))
+        if (podbuf) sizes.setPodbuf(SizeState.newBuilder().setBounded(16))
+        setSizes(sizes)
     }
 
     /**
      * Interface `Drive` of every kind over `Level`: signal `level`, event
      * `alarm`, command `set` and query `probe`, each payload bounded in
-     * FlatBuffers and in podbuf.
+     * FlatBuffers, in proto3 and in podbuf.
      */
     private fun everyKind(): Model {
         val param = Param.newBuilder().setName(spelled("level")).setType(Type.newBuilder().setNamed(level))
@@ -656,18 +661,162 @@ class FacesEmitterTest {
     }
 
     @Test
-    fun `an interface of a package that carries proto3 is skipped with a warning`() {
-        // #133: the face's proto3 arms are task 6; until then the interface is skipped, whatever else the package carries.
-        for (encodings in listOf(listOf(WireEncoding.Proto3), listOf(WireEncoding.FlatBuffers, WireEncoding.Proto3))) {
-            val declared = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
-            declared.getSlotsBuilder(0).interactionBuilder.commandBuilder.setRequest(levelPayload())
-            val emitted = FacesEmitter(demo().addDeclarations(scalar("Level")).addInterfaces(declared).build(), Options("kt.demo", encodings)).emit()
-            assertNull(emitted.text, "$encodings")
+    fun `a proto3-only face names Proto3Codec and sizes(Proto3)`() {
+        val text = everyKindFace(WireEncoding.Proto3)
+        assertFalse(Regex("\\bLevel(Podbuf)?Codec\\b").containsMatchIn(text), "no other encoding's codec\n$text")
+        for (item in listOf("FlatBuffers", "FLATBUFFERS", "Podbuf", "PODBUF", "fun codec(")) assertFalse(item in text, "`$item`\n$text")
+        assertTrue("public val codec: LevelProto3Codec = LevelProto3Codec" in text, text)
+        assertTrue("public val replyCodec: LevelProto3Codec = LevelProto3Codec" in text, text)
+        assertTrue("private val PROTO3_SIZES: Sizes = Sizes(\n      Encoding.Proto3," in text, text)
+        assertTrue("The size table in proto3, the one encoding the package carries a codec for" in text, text)
+        assertTrue("LevelProto3Codec.maxSize.toULong() + LevelProto3Codec.maxSize.toULong()" in text, "the query's row\n$text")
+        assertTrue("require(encoding == Encoding.Proto3)" in text && "its package carries proto3 only" in text, text)
+        assertTrue("return PROTO3_SIZES" in text, text)
+        assertTrue("encoded(LevelProto3Codec, level)" in text, "the send encodes with the proto3 codec\n$text")
+    }
+
+    @Test
+    fun `a three-encoding face picks the codec of the port's encoding, in the Rust order`() {
+        val text = everyKindFace(WireEncoding.FlatBuffers, WireEncoding.Proto3, WireEncoding.Podbuf)
+        assertEquals(text, everyKindFace(WireEncoding.Podbuf, WireEncoding.FlatBuffers, WireEncoding.Proto3), "the manifest's order changes nothing")
+        for (descriptor in listOf("DriveLevel", "DriveAlarm", "DriveSet", "DriveProbe")) {
+            val body = text.substringAfter("object $descriptor :").substringBefore("\n}\n")
+            assertTrue("public val proto3Codec: LevelProto3Codec = LevelProto3Codec" in body, "$descriptor\n$body")
+            val pick = body.substringAfter("public fun codec(encoding: Encoding): Payload<Level, *> = when (encoding) {").substringBefore("}")
             assertEquals(
-                listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: the Kotlin face does not carry the proto3 encoding yet (#133)"),
+                listOf("Encoding.FlatBuffers -> flatBuffersCodec", "Encoding.Proto3 -> proto3Codec", "Encoding.Podbuf -> podbufCodec"),
+                pick.lines().map { it.trim() }.filter { it.startsWith("Encoding.") },
+                "$descriptor\n$body",
+            )
+        }
+        val probe = text.substringAfter("object DriveProbe :").substringBefore("\n}\n")
+        assertTrue("public val proto3ReplyCodec: LevelProto3Codec = LevelProto3Codec" in probe, probe)
+        assertTrue("Encoding.Proto3 -> proto3ReplyCodec" in probe, probe)
+        // One table per encoding, FlatBuffers, proto3 and podbuf, as Rust's `Sizes<E>`, and `sizes` picks one.
+        val tables = Regex("private val (\\w+)_SIZES: Sizes = Sizes\\(\n      Encoding\\.(\\w+),").findAll(text).map { it.groupValues[1] to it.groupValues[2] }
+        assertEquals(listOf("FLATBUFFERS" to "FlatBuffers", "PROTO3" to "Proto3", "PODBUF" to "Podbuf"), tables.toList(), text)
+        assertTrue("LevelProto3Codec.maxSize.toULong() + LevelProto3Codec.maxSize.toULong()" in text, "the query's proto3 row\n$text")
+        assertTrue("Encoding.Proto3 -> PROTO3_SIZES" in text, text)
+        // Every encoding is carried, so no `when` over one has an `else`, which Kotlin would warn is redundant.
+        assertFalse("else -> throw IllegalArgumentException" in text, text)
+    }
+
+    @Test
+    fun `an interface whose induced struct is not bounded under proto3 is skipped with Rust's cause`() {
+        val p3 = Options("kt.demo", listOf(WireEncoding.FlatBuffers, WireEncoding.Proto3))
+        fun absent(cause: AbsentCause) = SizeState.newBuilder().setAbsent(SizeAbsent.newBuilder().setCause(cause)).build()
+        // `codec_proto3::bound_state`'s causes, as `descriptors::induced_name` writes them into the interface's note.
+        val causes = listOf(
+            absent(AbsentCause.ABSENT_CAUSE_NO_BOUND) to
+                "a member of it has no finite bound (NoBound): a string or bytes with no length bound; declare the bound in the type",
+            absent(AbsentCause.ABSENT_CAUSE_OVERFLOW) to
+                "its bound does not fit a u32 (Overflow): a bound past u32::MAX, a sum or product of bounds that does not fit, or a " +
+                "nesting past the sizer's depth limit; lower the bounds in the type",
+            absent(AbsentCause.ABSENT_CAUSE_REFUSED_MEMBER) to
+                "a member of it is one proto3 cannot represent (RefusedMember): an optional array or map, an array of arrays or of " +
+                "maps, a map whose value is a collection, a map key outside the integral and string scalars, a field number proto3 " +
+                "reserves or exceeds, a name that does not resolve, a live enum value outside int32 in hand-built IR (TYPL-225 " +
+                "rejects it in source), or a retired value outside int32 (legal in source)",
+            absent(AbsentCause.ABSENT_CAUSE_UNRESOLVED) to "it names a declaration the sizer did not resolve (Unresolved)",
+            absent(AbsentCause.ABSENT_CAUSE_NO_MESSAGE) to "no proto3 message defines it (NoMessage)",
+            absent(AbsentCause.ABSENT_CAUSE_ENCODING_UNDEFINED) to "no proto3 message defines it (EncodingUndefined)",
+            absent(AbsentCause.ABSENT_CAUSE_UNSPECIFIED) to "no proto3 message defines it (Unspecified)",
+            SizeState.newBuilder().setUnbounded(FbUnbounded.getDefaultInstance()).build() to "no finite bound exists for it",
+            null to "the lowered model carries no proto3 size state for it",
+        )
+        for ((state, cause) in causes) {
+            val model = induced(bounded = true).toBuilder()
+            val sizes = PayloadSizes.newBuilder().apply { if (state != null) setProto3(state) }
+            model.getInterfacesBuilder(0).getSlotsBuilder(0).interactionBuilder.commandBuilder.setRequestSizes(sizes)
+            val emitted = FacesEmitter(model.build(), p3).emit()
+            assertNull(emitted.text, cause)
+            assertEquals(
+                listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: `kt.demo.DriveGoParams` has no finite proto3 bound: $cause"),
                 emitted.warnings,
             )
         }
+        // Bounded under proto3, it is faced, with its proto3 codec beside the FlatBuffers one.
+        val bounded = induced(bounded = true).toBuilder()
+        bounded.getInterfacesBuilder(0).getSlotsBuilder(0).interactionBuilder.commandBuilder
+            .setRequestSizes(PayloadSizes.newBuilder().setProto3(SizeState.newBuilder().setBounded(6)))
+        val faced = FacesEmitter(bounded.build(), p3).emit()
+        assertEquals(emptyList<String>(), faced.warnings)
+        assertTrue("public val proto3Codec: DriveGoParamsProto3Codec = DriveGoParamsProto3Codec" in checkNotNull(faced.text), faced.text)
+        // FlatBuffers is checked first, as in `induced_name`.
+        val both = FacesEmitter(induced(bounded = false), p3).emit()
+        assertEquals(listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: `kt.demo.DriveGoParams` has no finite FlatBuffers bound"), both.warnings)
+    }
+
+    @Test
+    fun `proto3 refusal precedes podbuf refusal for an induced struct`() {
+        val model = induced(bounded = true).toBuilder()
+        model.getInterfacesBuilder(0).getSlotsBuilder(0).interactionBuilder.commandBuilder
+            .setRequestSizes(PayloadSizes.newBuilder()
+                .setProto3(SizeState.newBuilder().setAbsent(SizeAbsent.newBuilder().setCause(AbsentCause.ABSENT_CAUSE_UNRESOLVED)))
+                .setPodbuf(SizeState.newBuilder().setUnbounded(FbUnbounded.getDefaultInstance())))
+        val emitted = FacesEmitter(model.build(), Options("kt.demo", WireEncoding.entries)).emit()
+        assertNull(emitted.text)
+        assertEquals(
+            listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: `kt.demo.DriveGoParams` has no finite proto3 bound: it names a declaration the sizer did not resolve (Unresolved)"),
+            emitted.warnings,
+        )
+    }
+
+    @Test
+    fun `a reply tuple uses its own proto3 size state`() {
+        for (replyBounded in listOf(false, true)) {
+            val model = induced(bounded = true).toBuilder()
+            model.getTuplesBuilder(0).nameBuilder.setRust("DriveGoReply")
+            val bounded = PayloadSizes.newBuilder().setProto3(SizeState.newBuilder().setBounded(6)).build()
+            val absent = PayloadSizes.newBuilder().setProto3(
+                SizeState.newBuilder().setAbsent(SizeAbsent.newBuilder().setCause(AbsentCause.ABSENT_CAUSE_UNRESOLVED)),
+            ).build()
+            val query = QueryShape.newBuilder()
+                .addParams(Param.newBuilder().setName(spelled("level")).setType(Type.newBuilder().setNamed(level)))
+                .setRequest(levelPayload())
+                .setRequestSizes(if (replyBounded) absent else bounded)
+                .setReplyTuple(TupleRef.newBuilder().setIndex(0))
+                .setReplySizes(if (replyBounded) bounded else absent)
+            model.getInterfacesBuilder(0).getSlotsBuilder(0).interactionBuilder.clearCommand().setQuery(query)
+            val emitted = FacesEmitter(model.build(), Options("kt.demo", listOf(WireEncoding.FlatBuffers, WireEncoding.Proto3))).emit()
+            if (replyBounded) {
+                assertEquals(emptyList<String>(), emitted.warnings)
+                assertTrue("DriveGoReplyProto3Codec" in checkNotNull(emitted.text))
+            } else {
+                assertNull(emitted.text)
+                assertEquals(
+                    listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: `kt.demo.DriveGoReply` has no finite proto3 bound: it names a declaration the sizer did not resolve (Unresolved)"),
+                    emitted.warnings,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a stream element selects the proto3 codec on a proto3 port`() {
+        val model = everyKind().toBuilder()
+        val interaction = model.getInterfacesBuilder(0).getSlotsBuilder(3).interactionBuilder
+        interaction.queryBuilder.clearReplyPayload().setReply(
+            Reply.newBuilder().setValue(Type.newBuilder().setStream(StreamType.newBuilder().setNamed(level))),
+        )
+        interaction.addStreams(StreamShape.newBuilder().setNo(0).setForm(StreamForm.STREAM_FORM_ELEMENTS).setElement(level))
+        val emitted = FacesEmitter(model.build(), Options("kt.demo", WireEncoding.entries)).emit()
+        assertEquals(emptyList<String>(), emitted.warnings)
+        val text = checkNotNull(emitted.text)
+        assertTrue("Encoding.Proto3 -> LevelProto3Codec" in text, text)
+    }
+
+    @Test
+    fun `an interface with a named payload not bounded under proto3 is skipped with a warning`() {
+        val p3 = Options("kt.demo", listOf(WireEncoding.Proto3))
+        val declared = Interface.newBuilder().setDeclared(spelled("Drive")).setNumber(1).addSlots(command(1, "set", "Set"))
+        declared.getSlotsBuilder(0).interactionBuilder.commandBuilder.setRequest(levelPayload(proto3 = false))
+        val emitted = FacesEmitter(demo().addDeclarations(scalar("Level")).addInterfaces(declared).build(), p3).emit()
+        assertNull(emitted.text)
+        assertEquals(
+            listOf("$PLUGIN: interface `kt.demo.Drive` has no generated face: interaction `set`'s parameter `Level` has no proto3 bound"),
+            emitted.warnings,
+        )
     }
 
     @Test

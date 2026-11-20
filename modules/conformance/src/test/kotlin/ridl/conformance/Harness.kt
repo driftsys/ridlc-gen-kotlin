@@ -1,7 +1,6 @@
 package ridl.conformance
 
 import ridl.codegen.kotlin.Wire
-import ridl.codegen.v1.Plugin
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
@@ -22,32 +21,6 @@ object Harness {
     val release: String = System.getProperty("ridl.release")
     val plugin: Path = Path.of(System.getProperty("plugin.bin"))
     val corpus: Path = Path.of(System.getProperty("corpus.dir"))
-
-    /** #133 still needs proto3 faces. Face tests select only the supported encodings. */
-    fun faceEncodings(request: Plugin.CodegenRequest): Plugin.CodegenRequest {
-        val builder = request.toBuilder().clearOptions()
-        for (option in request.optionsList) {
-            if (option.key != "encodings") {
-                builder.addOptions(option)
-                continue
-            }
-            val encodings = option.value.split(',').filter { it != "proto3" }
-            if (encodings.isNotEmpty()) builder.addOptions(option.toBuilder().setValue(encodings.joinToString(",")))
-        }
-        return builder.build()
-    }
-
-    /** The exact missing-face warnings expected when a corpus package selects proto3. */
-    fun proto3FaceWarnings(request: Plugin.CodegenRequest): List<Plugin.Diagnostic> {
-        if (request.optionsList.none { it.key == "encodings" && "proto3" in it.value.split(',') }) return emptyList()
-        return request.model.interfacesList.filter { it.hasDeclared() }.map {
-            Plugin.Diagnostic.newBuilder().setSeverity(Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING)
-                .setMessage(
-                    "ridlc-gen-kotlin: interface `${request.model.name.dotted}.${it.declared.declared}` has no generated face: " +
-                        "the Kotlin face does not carry the proto3 encoding yet (#133)",
-                ).build()
-        }
-    }
 
     /**
      * The `ridl.toml` of a package a test writes: [name], and the FlatBuffers

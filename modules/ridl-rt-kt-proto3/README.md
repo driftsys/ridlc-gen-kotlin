@@ -64,5 +64,4 @@ only when it selects proto3 (#133); the module holds no codec or face itself.
   nothing. Existing `WellFormed.kt` checks remain in the core runtime.
 
 A manifest can now select proto3 to generate `Proto3Codec.kt`. The generated
-code depends on this runtime. Proto3 faces are still missing under #133; an
-interface in a package that selects proto3 gets no face and a warning.
+code depends on this runtime.

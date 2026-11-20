@@ -367,22 +367,10 @@ fun probe(): List<String> {
         ridl.rt.contract.reservation(veh.cabin.CabinAverage, ridl.rt.encoding.Encoding.FlatBuffers),
     )
 
-    // driftsys/ridl#887: a face reads its encoding from its port, and refuses
-    // a port whose encoding the package carries no codec for. Cabin carries
-    // FlatBuffers and podbuf; EncodingsFaceTest drives it over both.
-    for (encoding in listOf(ridl.rt.encoding.Encoding.Proto3)) {
-        val foreign = Loopback(Cabin.catalog, encoding)
-        try {
-            CabinPublisher(foreign)
-            failures += "a publisher over a $encoding port is built"
-        } catch (_: IllegalArgumentException) {
-        }
-        try {
-            Cabin.dispatch(foreign, provider, ByteBuffer.allocate(Cabin.sizes(ridl.rt.encoding.Encoding.FlatBuffers).maxBufferSize))
-            failures += "dispatch over a $encoding handler runs"
-        } catch (_: IllegalArgumentException) {
-        }
-    }
+    // driftsys/ridl#887: a face reads its encoding from its port. Cabin
+    // carries all three encodings, so it refuses no port; EncodingsFaceTest
+    // drives it over each, and refuses, in a package of its own, a port whose
+    // encoding the package carries no codec for.
 
     // dispatch reports the handler's read failure as serve does.
     val failing = object : ridl.rt.port.Handler by rt, ridl.rt.port.Encoded by rt {

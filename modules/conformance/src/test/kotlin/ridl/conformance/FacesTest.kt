@@ -30,7 +30,7 @@ class FacesTest {
         DynamicTest.dynamicTest(name) {
             val requests = Harness.capturedRequests(name, work.resolve("capture-$name")).values.map(Wire::readRequest)
             val sources = requests.flatMap { r ->
-                val response = Generator.generate(Harness.faceEncodings(r))
+                val response = Generator.generate(r)
                 assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
                 response.filesList.map { it.path to it.text }
             }.toMap()

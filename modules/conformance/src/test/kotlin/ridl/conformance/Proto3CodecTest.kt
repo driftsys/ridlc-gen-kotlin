@@ -415,13 +415,12 @@ class Proto3CodecTest {
     }
 
     /**
-     * #133 still needs proto3 faces: a package that selects proto3 and declares an
-     * interface gets no face for it, with one warning naming why, and keeps
-     * its codecs, among them the codec of the struct induced for a call,
-     * which compiles and writes the canonical proto3 bytes.
+     * A package that selects proto3 alone faces its interface, and the codec
+     * of the struct its call induces compiles and writes the canonical proto3
+     * bytes. `EncodingsFaceTest` drives such a face over a proto3 port.
      */
     @Test
-    fun `an interface under proto3 has no face, and its induced struct has a codec`() {
+    fun `an interface under proto3 has a face, and its induced struct has a codec`() {
         val pkg = work.resolve("src-probe").createDirectories()
         pkg.resolve("ridl.toml").writeText(
             "[package]\nname = \"probe.proto3\"\nversion = \"1.0.0\"\n\n[backend.kotlin]\nencodings = [\"proto3\"]\n",
@@ -444,16 +443,9 @@ class Proto3CodecTest {
         )
         val request = Wire.readRequest(Harness.capturedRequests(pkg, "probe", work).getValue("probe.proto3"))
         val response = Generator.generate(request)
-        assertEquals(
-            listOf(
-                "ridlc-gen-kotlin: interface `probe.proto3.Meter` has no generated face: " +
-                    "the Kotlin face does not carry the proto3 encoding yet (#133)",
-            ),
-            response.diagnosticsList.map { it.message },
-        )
-        assertTrue(response.diagnosticsList.all { it.severity == Plugin.DiagnosticSeverity.DIAGNOSTIC_SEVERITY_WARNING })
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
         val sources = response.filesList.associate { it.path to it.text }
-        assertEquals(setOf("probe/proto3/Types.kt", "probe/proto3/Proto3Codec.kt"), sources.keys)
+        assertEquals(setOf("probe/proto3/Types.kt", "probe/proto3/Proto3Codec.kt", "probe/proto3/Faces.kt"), sources.keys)
         val tuple = request.model.tuplesList.single { it.name.rust.isNotEmpty() }.name.rust
         val run = """
             package probe.run

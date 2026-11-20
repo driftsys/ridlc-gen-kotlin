@@ -23,12 +23,10 @@ The manifest chooses the codecs: `encodings` under `[backend.kotlin]` in
 `ridl.toml` names `flatbuffers`, `proto3` and `podbuf`, in any combination, and
 the plugin writes a codec for each encoding named and no other. The sample names
 `flatbuffers`. A package that names none gets `Types.kt` alone. `Faces.kt` is
-written only for a package that names an encoding and declares an interface. A
-package that names `proto3` gets no face, with a warning, until #133 adds proto3
-faces. Otherwise, its face serves a port of any encoding the package names. The
-Kotlin package is the ridl package's name. The plugin has a `kotlin-package`
-option, but no `ridl build` flag sets a plugin option yet, so the name is always
-the default.
+written only for a package that names an encoding and declares an interface. Its
+face serves a port of any encoding the package names. The Kotlin package is the
+ridl package's name. The plugin has a `kotlin-package` option, but no
+`ridl build` flag sets a plugin option yet, so the name is always the default.
 
 ## The Gradle build
 

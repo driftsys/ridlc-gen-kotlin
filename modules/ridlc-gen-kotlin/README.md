@@ -19,11 +19,10 @@ with KotlinPoet from the request's model: `Types.kt`, the value objects of §4;
 (#133), and `PodbufCodec.kt`, their podbuf codec (#134), each when the package's
 `encodings` names its encoding; and `Faces.kt`, the interaction face of §5 for
 every declared interface, with its clients and `serve`, over every encoding the
-package carries, proto3 not yet (below). With a deployment section in the
-request, one more file, `Instances.kt`, holds the system's instance numbers
-(#137). No AIDL is generated; the last section below says why. `just dist`
-builds the distribution, and
-`ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
+package carries. With a deployment section in the request, one more file,
+`Instances.kt`, holds the system's instance numbers (#137). No AIDL is
+generated; the last section below says why. `just dist` builds the distribution,
+and `ridl build --plugin kotlin=<path to bin/ridlc-gen-kotlin>` runs it.
 
 A declaration the plugin cannot spell in Kotlin is refused with one error
 diagnostic naming it, and every refused declaration of the package is reported
@@ -55,9 +54,11 @@ one deployment, and this one lays out none. The model's `reservation` and
 codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
 `MAX_SIZE`. A FlatBuffers codec's is `Payload.flatbuffers_max_size`, which ridl
 keeps writing, equal to the bounded FlatBuffers state; a proto3 or a podbuf
-codec's is that encoding's size state of its declaration or its call. The podbuf
-states of `Payload.sizes`, `request_sizes` and `reply_sizes` are read only to
-skip an interface whose payload has no finite podbuf bound, below.
+codec's is that encoding's size state of its declaration or its call. The proto3
+and podbuf states of `Payload.sizes`, `request_sizes` and `reply_sizes` are read
+only to skip an interface whose payload has no finite bound in that encoding,
+below. The conformance module holds every table to the Rust backend's
+(`FaceSizesTest`).
 
 ## Generated code on Android
 
@@ -85,10 +86,8 @@ why, and how the rule was last checked; CI does not check it.
   together, in any order: O-K1 is disposed on FlatBuffers with a verifier (#65),
   podbuf joins it (#134), and proto3 since ridl projects it into `Model.proto3`
   (#133). The plugin generates a codec for exactly the encodings named, and the
-  face serves exactly those (docs/design.md §4, §5), except proto3, which the
-  face does not carry yet: an interface of a package that names `proto3` gets no
-  face, with a warning (`Faces.kt`, below). `WireEncoding` lists the three in
-  the Rust backend's order — FlatBuffers, proto3, podbuf, its codec and
+  face serves exactly those (docs/design.md §4, §5). `WireEncoding` lists the
+  three in the Rust backend's order — FlatBuffers, proto3, podbuf, its codec and
   `Sizes<E>` order and the encoding tags 1, 2 and 3 — which is the order the
   face sorts what it carries by. With no `encodings` option the package is
   `Types.kt` alone, with no codec and no face, as every backend of the family
@@ -313,11 +312,11 @@ tuple), and a root with no finite podbuf bound.
   [`ridl-rt-kt`'s README](../ridl-rt-kt/README.md#where-the-code-departs-from-rust-and-docsdesignmd)
   says how. A buffer the face allocates starts at position 0.
 - **A type from another package is written by that package's helpers**, as in
-  `Codec.kt`, and the face names that package's `<Type>PodbufCodec`. A package
-  that carries podbuf and reaches a type of a package that does not carry it
-  generates, and then fails to compile, rather than skip the interface or the
-  type. The Rust backend has the same constraint: the other crate has no
-  `Payload<Podbuf>` implementation.
+  `Codec.kt`, and the face names that package's codec for the selected encoding.
+  A package that carries proto3 or podbuf and reaches a type of a package that
+  does not carry that encoding generates, and then fails to compile, rather than
+  skip the interface or the type. The Rust backend has the same constraint: the
+  other crate has no `Payload<Proto3>` or `Payload<Podbuf>` implementation.
 - **The encoder's map check is Rust's** (driftsys/ridl#1285). It sorts a key
   carried as f32 as the double it holds, and compares two keys for `Unique` as
   the f32 it writes, so two doubles that round to one f32 are refused as
@@ -350,22 +349,17 @@ buffer.
 Since #134 a face serves every encoding its package carries (docs/design.md §5).
 With one encoding, each use names that encoding's codec object, and a
 FlatBuffers-only face is the text it was before podbuf. With several, each
-interaction's descriptor holds `flatBuffersCodec` and `podbufCodec`, a query's
-also `flatBuffersReplyCodec` and `podbufReplyCodec`, and `codec(encoding)` and
-`replyCodec(encoding)` pick one; every use reads its own port's encoding, and a
-stream's element, which no descriptor holds, is a `when` over the carried
-encodings. The tables are `FLATBUFFERS_SIZES` and `PODBUF_SIZES`, in that order
-whatever the manifest's, as Rust orders its `Sizes<E>` implementations. A
+interaction's descriptor holds one codec per encoding it carries,
+`flatBuffersCodec`, `proto3Codec` and `podbufCodec` (#133), a query's also
+`flatBuffersReplyCodec`, `proto3ReplyCodec` and `podbufReplyCodec`, and
+`codec(encoding)` and `replyCodec(encoding)` pick one; every use reads its own
+port's encoding, and a stream's element, which no descriptor holds, is a `when`
+over the carried encodings. The tables are `FLATBUFFERS_SIZES`, `PROTO3_SIZES`
+and `PODBUF_SIZES`, in that order whatever the manifest's, as Rust orders its
+`Sizes<E>` implementations. A package that carries all three has no `else` in
+those `when`s, since every `Encoding` has its arm, and so refuses no port. A
 `SignalReader` states no encoding, so with several encodings `bindChecks` takes
 the client's port's as a second argument.
-
-- **No face for an interface of a package that names `proto3`** (#133 still
-  needs proto3 faces). Its size tables, its codec choice and its stream elements
-  name FlatBuffers and podbuf alone, so the interface is skipped with the
-  warning "interface `<pkg>.<Iface>` has no generated face: the Kotlin face does
-  not carry the proto3 encoding yet (#133)", as an interface the face cannot
-  carry is, whatever else the package names. The package's codecs, the proto3
-  codec of the struct a call induces among them, are still generated.
 
 Since ridl 0.6.0 (driftsys/ridl#752) every `command`, `query` and `raise` the
 face sends passes `null` as its trace context, as the Rust face passes `None`;
@@ -462,15 +456,17 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   with the error §5 names: a clause outside the narrow translator's one form, a
   parameter with no type, a fallible `T | E` reply, a call struct the lowering
   induced with no finite bound in an encoding the package carries, in the Rust
-  backend's words. A declared payload with no podbuf bound is skipped too, which
-  the Rust backend does not check: for a type of the package itself the podbuf
-  codec has already refused the package, so only a payload from another package
-  meets it. Since ridl 0.10 (driftsys/ridl#713) a call of any other parameter
-  list sends its induced `<Iface><Call>Params`, and a tuple reply its
-  `<Iface><Call>Reply`; a call method's KDoc lists the parameters under
-  `@param args`, as the Rust face's `# Parameters` section does. The rest of the
-  package is generated, as the Rust pipeline skips such an interface with a
-  `__RIDL_NO_FACE_*` note (E11.14 decision 2).
+  backend's words and order: FlatBuffers, then proto3 with the cause of Rust's
+  `codec_proto3::bound_state`, then podbuf. A declared payload with no proto3 or
+  podbuf bound is skipped too, which the Rust backend does not check: for a type
+  of the package itself that encoding's codec has already refused the package,
+  so only a payload from another package meets it. Since ridl 0.10
+  (driftsys/ridl#713) a call of any other parameter list sends its induced
+  `<Iface><Call>Params`, and a tuple reply its `<Iface><Call>Reply`; a call
+  method's KDoc lists the parameters under `@param args`, as the Rust face's
+  `# Parameters` section does. The rest of the package is generated, as the Rust
+  pipeline skips such an interface with a `__RIDL_NO_FACE_*` note (E11.14
+  decision 2).
 - **A float clause literal is the binary64 bound that keeps the exact
   comparison**, as in the Rust face since ridl 0.20.0 (driftsys/ridl#1301,
   driftsys/ridl#1358 and driftsys/ridl#1370; `types/FloatClauses.kt`): `<=` and

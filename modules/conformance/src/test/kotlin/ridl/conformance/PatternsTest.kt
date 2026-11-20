@@ -127,7 +127,7 @@ class PatternsTest {
     fun `all three codecs refuse a buffer that breaks only the second inline clause`() {
         val request = Wire.readRequest(Harness.capturedRequests("kt-values", work.resolve("capture")).getValue("kt.values"))
         val response = Generator.generate(request)
-        assertEquals(Harness.proto3FaceWarnings(request), response.diagnosticsList)
+        assertEquals(emptyList<String>(), response.diagnosticsList.map { it.message })
         val probe = """
             package kt.values
 

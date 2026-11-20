@@ -3,10 +3,10 @@ name = "veh.cabin"
 version = "1.0.0"
 
 # Every backend generates the types alone unless the manifest names an
-# encoding (#83, driftsys/ridl#851). Both encodings, so the face over each and
-# the podbuf codec are held to the Rust backend's (#134).
+# encoding (#83, driftsys/ridl#851). All three encodings, so the face over each
+# and the proto3 and podbuf codecs are held to the Rust backend's (#133, #134).
 [backend.kotlin]
-encodings = ["flatbuffers", "podbuf"]
+encodings = ["flatbuffers", "proto3", "podbuf"]
 
 [backend.rust]
-encodings = ["flatbuffers", "podbuf"]
+encodings = ["flatbuffers", "proto3", "podbuf"]

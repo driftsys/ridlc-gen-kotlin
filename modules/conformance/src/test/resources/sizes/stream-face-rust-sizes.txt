@@ -1,0 +1,5 @@
+face.stream.Docs FlatBuffers reservations=[43, 43, 43, 33] maxBuffer=43 eventBuffer=0
+face.stream.Log FlatBuffers reservations=[43, 43, 33, 100, 33, 76] maxBuffer=67 eventBuffer=0
+face.stream.Plain FlatBuffers reservations=[96] maxBuffer=53 eventBuffer=0
+face.stream.RawQueries FlatBuffers reservations=[100, 33] maxBuffer=67 eventBuffer=0
+face.stream.Twin FlatBuffers reservations=[43, 43] maxBuffer=43 eventBuffer=0

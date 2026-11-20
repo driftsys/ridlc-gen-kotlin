@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import ridl.rt.contract.CatalogHash
 import ridl.rt.contract.CatalogRef
@@ -42,6 +43,7 @@ import ridl.rt.port.Clock
 import ridl.rt.port.Encoded
 import ridl.rt.port.Interest
 import ridl.rt.port.REPLY_STREAM
+import ridl.rt.port.PushError
 import ridl.rt.port.SettleError
 import ridl.rt.port.StreamCaller
 import ridl.rt.port.StreamHandler
@@ -206,23 +208,78 @@ class StreamDriveTest {
             )
         }
         val reply = async { call(rt).reply(CHUNKS).toList().map { it.single() } }
-        while (spurious.left.get() > 0) delay(1)
         first.complete(Unit)
         assertEquals(listOf<Byte>(9), reply.await())
+        assertTrue(spurious.left.get() < Loopback.STREAM_WINDOW)
         server.cancelAndJoin()
     }
 
     @Test
-    fun `an empty chunk carries no value`() = running {
+    fun `a zero-length element is delivered without watch probes`() = running {
         val rt = runtime()
         val handler = rt.handler()
-        val server = serving(handler) { claim ->
-            handler.pushClaim(claim.id, REPLY_STREAM, ByteBuffer.allocate(0))
-            handler.pushClaim(claim.id, REPLY_STREAM, ByteBuffer.wrap(bytes(5)))
-            handler.endClaim(claim.id, REPLY_STREAM)
+        val spurious = AtOnce(handler, Loopback.STREAM_WINDOW)
+        val first = CompletableDeferred<Unit>()
+        val codec = object : ridl.rt.payload.Payload<Unit, Unit> {
+            override val encoding = ridl.rt.encoding.Encoding.Proto3
+            override val maxSize = 0
+            override fun encode(value: Unit, out: ByteBuffer): Int = 0
+            override fun verify(buf: ByteBuffer) { assertEquals(0, buf.remaining()) }
+            override fun decode(view: Unit) = Unit
         }
-        assertEquals(listOf<Byte>(5), call(rt).reply(CHUNKS).toList().map { it.single() })
+        val chunks = elementChunks(codec)
+        val server = serving(handler) { claim ->
+            driveReply(spurious, claim.id, chunks, flow {
+                first.await()
+                emit(Unit)
+                emit(Unit)
+            })
+        }
+        val reply = async { call(rt).reply(chunks).toList() }
+        first.complete(Unit)
+        assertEquals(listOf(Unit, Unit), reply.await())
+        assertTrue(spurious.left.get() < Loopback.STREAM_WINDOW)
         server.cancelAndJoin()
+    }
+
+    @Test
+    fun `a consumer refusal reaches the next real reply push before the caller forgets`() = running {
+        val rt = runtime()
+        val handler = rt.handler()
+        val started = CompletableDeferred<Unit>()
+        val next = CompletableDeferred<Unit>()
+        val refusal = CompletableDeferred<PushError.Failed>()
+        val stopped = CompletableDeferred<Unit>()
+        val server = serving(handler) { claim ->
+            driveReply(handler, claim.id, CHUNKS, flow {
+                try {
+                    emit(bytes(1))
+                    started.complete(Unit)
+                    next.await()
+                    emit(bytes(2))
+                    error("the next push must report the consumer's refusal")
+                } catch (e: PushError.Failed) {
+                    refusal.complete(e)
+                    throw e
+                } finally {
+                    stopped.complete(Unit)
+                }
+            })
+        }
+        val caller = rt.caller()
+        val correlation = caller.query(IFACE, ORD, ByteBuffer.allocate(0), null)
+        started.await()
+        await(caller, Interest.Stream(correlation, REPLY_STREAM)) {
+            caller.pull(correlation, REPLY_STREAM, ByteBuffer.allocate(16))
+                .takeUnless { it == ridl.rt.port.Pull.Pending }
+        }
+        caller.abort(correlation, REPLY_STREAM, Contract.ContractBroken)
+        next.complete(Unit)
+        assertEquals(Contract.ContractBroken, refusal.await().error)
+        stopped.await()
+        caller.forget(correlation)
+        server.cancelAndJoin()
+        caller.close()
     }
 
     @Test
