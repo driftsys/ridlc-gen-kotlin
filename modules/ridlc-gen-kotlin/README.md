@@ -49,18 +49,22 @@ release (`modules/conformance/ridl-release`). It refuses a model from an older
 ridl that carries only the deprecated pattern fields; it does not interpret
 those fields as match clauses.
 
-The plugin ignores two parts of ridl's schema (#31). The request's deployment
-section (`CodegenRequest.deployment`) is for a backend that lays out memory for
-one deployment, and this one lays out none. The model's `reservation` and
-`table_budget` are not read either: a descriptor's size table is built from its
-codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from each codec's
-`MAX_SIZE`. A FlatBuffers codec's is `Payload.flatbuffers_max_size`, which ridl
-keeps writing, equal to the bounded FlatBuffers state; a proto3 or a podbuf
-codec's is that encoding's size state of its declaration or its call. The proto3
-and podbuf states of `Payload.sizes`, `request_sizes` and `reply_sizes` are read
-only to skip an interface whose payload has no finite bound in that encoding,
-below. The conformance module holds every table to the Rust backend's
-(`FaceSizesTest`).
+The plugin leaves two parts of ridl's schema unread (#31). Of the request's
+deployment section (`CodegenRequest.deployment`), it reads only what
+`Instances.kt` needs (#137): the system and deployment names, and each
+instance's component, name, number and provisional mark. The regions, the
+channels, the bindings and the rest of an instance are for a backend that lays
+out memory for one deployment, and this one lays out none. The model's
+`reservation` and `table_budget` are not read either: a descriptor's size table
+is built from its codecs' `maxSize`, as the Rust backend builds `Sizes<E>` from
+each codec's `MAX_SIZE`. A FlatBuffers codec's is
+`Payload.flatbuffers_max_size`, which ridl keeps writing, equal to the bounded
+FlatBuffers state; a proto3 or a podbuf codec's is that encoding's size state of
+its declaration or its call. A call's is the proto3 or podbuf state of its
+`request_sizes` or `reply_sizes`, which gives the `maxSize` of the call's tuple
+codec (`tupleBounds`). Those states and `Payload.sizes` also skip an interface
+whose payload has no finite bound in that encoding, below. The conformance
+module holds every table to the Rust backend's (`FaceSizesTest`).
 
 ## Generated code on Android
 
@@ -564,7 +568,7 @@ driftsys/ridl#754 replaces both, through the `Propagation` hook.
   names `CATALOG`, never by `Model.name`. Its `number` is the interface's number
   in the unit's lock, and its `name` stays the short name, as in Rust. The
   region lookup and the region interface names #55 asks for do not apply here,
-  because the plugin reads no deployment section (#31).
+  because the plugin reads no region of the deployment section (#31).
 - **A binding over a port of another catalog throws `IllegalStateException`**
   (#27, driftsys/ridl#381, ADR-0023 decision 8), where the Rust face panics: in
   Kotlin the matching failure for a defect in how the program was assembled is
