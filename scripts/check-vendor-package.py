@@ -81,9 +81,16 @@ def gradle_dependencies(module, packed):
     """The Soong names of a module's `api` and `implementation` dependencies."""
     script = ROOT / "modules" / module / "build.gradle.kts"
     names = set()
-    for configuration, notation in re.findall(r"^\s*(\w+)\((.*)\)\s*$", script.read_text(), re.MULTILINE):
-        if configuration not in ("api", "implementation"):
+    for line in script.read_text().splitlines():
+        line = re.sub(r"//.*", "", line).strip()
+        if not re.match(r"(api|implementation)\b", line):
             continue
+        # A declaration this cannot read, such as one over several lines,
+        # fails the check instead of being skipped.
+        declaration = re.fullmatch(r"(api|implementation)\((.*)\)", line)
+        if not declaration:
+            sys.exit(f"{script.relative_to(ROOT)}: cannot read the dependency {line}")
+        configuration, notation = declaration.groups()
         project = re.fullmatch(r'project\(":([\w-]+)"\)', notation)
         if project:
             if project.group(1) not in packed:
@@ -140,15 +147,17 @@ def check_package():
     for name, library in java_libraries(bp, f"{archives[0].name}/Android.bp").items():
         tracked = {
             path.removeprefix("modules/")
-            for path in subprocess.run(["git", "-C", ROOT, "ls-files", "--", f"modules/{name}/src/main/kotlin"],
+            # HEAD, not the index: vendor-package.py packs the sources of HEAD.
+            for path in subprocess.run(["git", "-C", ROOT, "ls-tree", "-r", "--name-only", "HEAD", "--",
+                                        f"modules/{name}/src/main/kotlin"],
                                        capture_output=True, check=True, text=True).stdout.split()
         }
         if not tracked:
-            sys.exit(f"{name} has no tracked source under modules/{name}/src/main/kotlin")
+            sys.exit(f"{name} has no committed source under modules/{name}/src/main/kotlin")
         for path in sorted(tracked - packed):
             sys.exit(f"{archives[0].name} is missing a source of {name}: {path}")
         expected |= tracked
-        print(f"checked packed module: {name} ({len(tracked)} sources)")
+        print(f"checked packed module: {name} ({len(tracked)} source{'s' if len(tracked) != 1 else ''})")
     for path in sorted(packed - expected):
         sys.exit(f"{archives[0].name} holds a file no target builds: {path}")
     for path in sorted(expected - packed):
