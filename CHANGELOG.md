@@ -1,5 +1,146 @@
 # Changelog
 
+## [0.6.0] (2026-11-21)
+
+### Documentation
+
+- correct the unread schema parts and the rust-verdicts section ([#198])
+  ([c7444f3]), closes [#196], [#197]
+- **ridl-rt-kt-loopback:** say what close() does when a waker throws ([81e0cac])
+
+### Features
+
+- **ridlc-gen-kotlin:** generate the transcode functions on request ([#194])
+  ([4a9d235]), closes [#136]
+- **ridlc-gen-kotlin:** carry proto3 in the generated face ([#193]) ([e1bf21e])
+- **ridlc-gen-kotlin:** generate the proto3 codec when proto3 is selected
+  ([#192]) ([624059b])
+- **ridl-rt-kt-proto3:** port the proto3 runtime of ridl-rt ([#187])
+  ([5c7433c]), refs [#133], [#133]
+- **ridl-rt-kt-loopback:** attach instances through a node built from a
+  deployment descriptor ([#144]) ([d92e06b]), closes [#139]
+- **ridl-descriptor-kt:** read and verify a deployment descriptor ([#143])
+  ([6468b7e]), closes [#142], refs [#153]
+- report a caller's forget to stream providers (ridl 0.20.0 claimForget)
+  ([#163]) ([4aec735]), refs [#152], [#152], closes [#152]
+- **ridlc-gen-kotlin:** generate the instance constants of a system ([#140])
+  ([aeab7f4]), refs [#137]
+- **ridl-rt-kt:** mirror InstanceNo and its debug identities ([#141])
+  ([0f0dec3]), closes [#138]
+- **ridlc-gen-kotlin:** generate a podbuf codec when the manifest selects it
+  ([#135]) ([45bb66f])
+
+### Bug Fixes
+
+- **ridlc-gen-kotlin:** compile Codec.kt and Faces.kt that name a deprecated
+  type ([#195]) ([b7ede9b])
+- **ridlc-gen-kotlin:** follow ridl 0.21.0: match clauses, I-Regexp corpus,
+  service names ([#191]) ([89a7bc7]), closes [#186]
+- **ridlc-gen-kotlin:** check every named string scalar for an unpaired
+  surrogate ([#185]) ([b39d08d]), closes [#182]
+- **ridl-rt-kt-coroutines:** refuse an unpaired surrogate in a text stream value
+  ([#180]) ([938b199]), closes [#160]
+- **ridlc-gen-kotlin:** refuse an unpaired surrogate in strings ([#166])
+  ([0270538]), closes [#157]
+- **ridlc-gen-kotlin:** check a require on the parameter beside a stream
+  ([#181]) ([767f3ad]), closes [#156]
+- refuse closed attachment ports and unsupported pattern syntax; test forget
+  races ([#176]) ([7ca513b]), refs [#167], [#159], [#169], [#169], [#159],
+  [#167]
+- minor review findings from [#147], [#149], [#162] and partial [#148], [#167],
+  [#169] ([#174]) ([8cd8cdb]), refs [#147], [#148], closes [#149], [#162], refs
+  [#167], [#169], [#159]
+- **ridlc-gen-kotlin:** round float clause literals exactly, as the Rust face
+  does ([#161]) ([e31c658]), closes [#151]
+- **ridlc-gen-kotlin:** check f32 podbuf map keys for duplicates at f32 width
+  ([#158]) ([ed803db]), closes [#150]
+
+### BREAKING CHANGES
+
+- The plugin requires ridl editor-v0.21.0 or later and refuses a model from an
+  older ridl ([#191]). A pattern now matches the whole value, so a value that
+  only contains a match is refused. ridl 0.21.0 refuses patterns outside
+  I-Regexp (RFC 9485), such as `\d`, `\w`, `^` and `$` anchors, `\p{...}`,
+  inline flags and `(?m:`, so schemas that use them must be rewritten. This
+  replaces the pattern translation and pattern refusals of [#168] and [#176].
+- The constructors of constrained named string scalars and the generated
+  encoders now refuse a string that holds an unpaired surrogate, which they used
+  to accept ([#166]). Generated code calls `ridl.rt.payload.isWellFormedString`,
+  so it needs a ridl-rt-kt that has that function.
+- A port call on a loopback attachment after `close()` throws
+  `IllegalStateException` ([#176], [#178]).
+
+[0.6.0]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.5.0...v0.6.0
+[c7444f3]: https://github.com/driftsys/ridlc-gen-kotlin/commit/c7444f3
+[#168]: https://github.com/driftsys/ridlc-gen-kotlin/issues/168
+[#178]: https://github.com/driftsys/ridlc-gen-kotlin/issues/178
+[#198]: https://github.com/driftsys/ridlc-gen-kotlin/issues/198
+[#196]: https://github.com/driftsys/ridlc-gen-kotlin/issues/196
+[#197]: https://github.com/driftsys/ridlc-gen-kotlin/issues/197
+[81e0cac]: https://github.com/driftsys/ridlc-gen-kotlin/commit/81e0cac
+[4a9d235]: https://github.com/driftsys/ridlc-gen-kotlin/commit/4a9d235
+[#194]: https://github.com/driftsys/ridlc-gen-kotlin/issues/194
+[#136]: https://github.com/driftsys/ridlc-gen-kotlin/issues/136
+[e1bf21e]: https://github.com/driftsys/ridlc-gen-kotlin/commit/e1bf21e
+[#193]: https://github.com/driftsys/ridlc-gen-kotlin/issues/193
+[624059b]: https://github.com/driftsys/ridlc-gen-kotlin/commit/624059b
+[#192]: https://github.com/driftsys/ridlc-gen-kotlin/issues/192
+[5c7433c]: https://github.com/driftsys/ridlc-gen-kotlin/commit/5c7433c
+[#187]: https://github.com/driftsys/ridlc-gen-kotlin/issues/187
+[#133]: https://github.com/driftsys/ridlc-gen-kotlin/issues/133
+[d92e06b]: https://github.com/driftsys/ridlc-gen-kotlin/commit/d92e06b
+[#144]: https://github.com/driftsys/ridlc-gen-kotlin/issues/144
+[#139]: https://github.com/driftsys/ridlc-gen-kotlin/issues/139
+[6468b7e]: https://github.com/driftsys/ridlc-gen-kotlin/commit/6468b7e
+[#143]: https://github.com/driftsys/ridlc-gen-kotlin/issues/143
+[#142]: https://github.com/driftsys/ridlc-gen-kotlin/issues/142
+[#153]: https://github.com/driftsys/ridlc-gen-kotlin/issues/153
+[4aec735]: https://github.com/driftsys/ridlc-gen-kotlin/commit/4aec735
+[#163]: https://github.com/driftsys/ridlc-gen-kotlin/issues/163
+[#152]: https://github.com/driftsys/ridlc-gen-kotlin/issues/152
+[aeab7f4]: https://github.com/driftsys/ridlc-gen-kotlin/commit/aeab7f4
+[#140]: https://github.com/driftsys/ridlc-gen-kotlin/issues/140
+[#137]: https://github.com/driftsys/ridlc-gen-kotlin/issues/137
+[0f0dec3]: https://github.com/driftsys/ridlc-gen-kotlin/commit/0f0dec3
+[#141]: https://github.com/driftsys/ridlc-gen-kotlin/issues/141
+[#138]: https://github.com/driftsys/ridlc-gen-kotlin/issues/138
+[45bb66f]: https://github.com/driftsys/ridlc-gen-kotlin/commit/45bb66f
+[#135]: https://github.com/driftsys/ridlc-gen-kotlin/issues/135
+[b7ede9b]: https://github.com/driftsys/ridlc-gen-kotlin/commit/b7ede9b
+[#195]: https://github.com/driftsys/ridlc-gen-kotlin/issues/195
+[89a7bc7]: https://github.com/driftsys/ridlc-gen-kotlin/commit/89a7bc7
+[#191]: https://github.com/driftsys/ridlc-gen-kotlin/issues/191
+[#186]: https://github.com/driftsys/ridlc-gen-kotlin/issues/186
+[b39d08d]: https://github.com/driftsys/ridlc-gen-kotlin/commit/b39d08d
+[#185]: https://github.com/driftsys/ridlc-gen-kotlin/issues/185
+[#182]: https://github.com/driftsys/ridlc-gen-kotlin/issues/182
+[938b199]: https://github.com/driftsys/ridlc-gen-kotlin/commit/938b199
+[#180]: https://github.com/driftsys/ridlc-gen-kotlin/issues/180
+[#160]: https://github.com/driftsys/ridlc-gen-kotlin/issues/160
+[0270538]: https://github.com/driftsys/ridlc-gen-kotlin/commit/0270538
+[#166]: https://github.com/driftsys/ridlc-gen-kotlin/issues/166
+[#157]: https://github.com/driftsys/ridlc-gen-kotlin/issues/157
+[767f3ad]: https://github.com/driftsys/ridlc-gen-kotlin/commit/767f3ad
+[#181]: https://github.com/driftsys/ridlc-gen-kotlin/issues/181
+[#156]: https://github.com/driftsys/ridlc-gen-kotlin/issues/156
+[7ca513b]: https://github.com/driftsys/ridlc-gen-kotlin/commit/7ca513b
+[#176]: https://github.com/driftsys/ridlc-gen-kotlin/issues/176
+[#167]: https://github.com/driftsys/ridlc-gen-kotlin/issues/167
+[#159]: https://github.com/driftsys/ridlc-gen-kotlin/issues/159
+[#169]: https://github.com/driftsys/ridlc-gen-kotlin/issues/169
+[8cd8cdb]: https://github.com/driftsys/ridlc-gen-kotlin/commit/8cd8cdb
+[#147]: https://github.com/driftsys/ridlc-gen-kotlin/issues/147
+[#149]: https://github.com/driftsys/ridlc-gen-kotlin/issues/149
+[#162]: https://github.com/driftsys/ridlc-gen-kotlin/issues/162
+[#148]: https://github.com/driftsys/ridlc-gen-kotlin/issues/148
+[#174]: https://github.com/driftsys/ridlc-gen-kotlin/issues/174
+[e31c658]: https://github.com/driftsys/ridlc-gen-kotlin/commit/e31c658
+[#161]: https://github.com/driftsys/ridlc-gen-kotlin/issues/161
+[#151]: https://github.com/driftsys/ridlc-gen-kotlin/issues/151
+[ed803db]: https://github.com/driftsys/ridlc-gen-kotlin/commit/ed803db
+[#158]: https://github.com/driftsys/ridlc-gen-kotlin/issues/158
+[#150]: https://github.com/driftsys/ridlc-gen-kotlin/issues/150
+
 ## [0.5.0] (2026-11-16)
 
 ### Build System
