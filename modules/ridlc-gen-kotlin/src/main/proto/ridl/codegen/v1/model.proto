@@ -18,8 +18,10 @@ syntax = "proto3";
 // Encoding: canonical protobuf JSON, the dialect ADR-0014 decision 14 fixes
 // for the IR, through the same pbjson-generated impls and the same reader
 // guards (`ridl_ir::codegen::to_json_pretty`, `from_json`). The nesting bound
-// a reader must provision is 266 JSON levels and 262 message levels below the
-// root (design note §6.2).
+// a reader must provision is 267 JSON levels and 263 message levels below the
+// root: 266 and 262 for the deepest shape declared in the package itself
+// (design note §6.2), and one more of each when that shape is a declaration of
+// another package, copied inside a `ForeignDeclaration`.
 //
 // Field numbering scheme, as `ir.proto` has it: envelope and data fields
 // start at 1; `oneof` members start at 10.
@@ -1049,8 +1051,8 @@ message FbRoot {
   }
 }
 
-// `unbounded_member`'s attribution, computed as the Rust backend computes it
-// today — over the package alone (design note §9 item 7).
+// `unbounded_member`'s attribution, computed over the scope the codec is
+// handed.
 message FbUnbounded {
   FbUnboundedCause cause = 1;
   // MEMBER, UNTYPED: the member named.
