@@ -10,6 +10,10 @@ struct Holder {
   count  : Small
 }
 
+// A constant typed by another package's constrained scalar: its value is
+// built through the scalar's checked constructor, which needs the import.
+const LIMIT : Small = 7
+
 interface Pick {
   signal  pick   : Choice @100ms
   signal  holder : Holder @100ms
