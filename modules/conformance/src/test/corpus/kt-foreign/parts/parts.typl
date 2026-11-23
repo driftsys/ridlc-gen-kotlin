@@ -4,6 +4,10 @@ package kt.foreign.parts
 // copied into kt.foreign's model as a foreign declaration's member.
 type Small : integer [0..100] = 0
 
+// Used by kt.foreign's constant alone, so kt.foreign's Types.kt imports it
+// only for that constant.
+type Limit : integer [0..10] = 0
+
 struct Duo {
   left  : Small
   right : Small
