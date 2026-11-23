@@ -44,8 +44,8 @@ preamble when there is one.
 
 #7: the clients and `serve` of ADR-0023 decision 6 (ridl `main` at 1eb0fba).
 
-The plugin requires ridl `editor-v0.21.0` or later and is tested against that
-release (`modules/conformance/ridl-release`). It refuses a model from an older
+The plugin requires ridl `editor-v0.21.0` or later and is tested against the
+release in `modules/conformance/ridl-release`. It refuses a model from an older
 ridl that carries only the deprecated pattern fields; it does not interpret
 those fields as match clauses.
 
