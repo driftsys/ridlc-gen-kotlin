@@ -1,6 +1,7 @@
 package kt.foreign
 
 import kt.foreign.parts.Choice
+import kt.foreign.parts.Limit
 import kt.foreign.parts.Small
 
 // A package whose types are all another package's: the arms of an imported
@@ -9,6 +10,10 @@ struct Holder {
   choice : Choice
   count  : Small
 }
+
+// A constant typed by another package's constrained scalar: its value is
+// built through the scalar's checked constructor, which needs the import.
+const LIMIT : Limit = 7
 
 interface Pick {
   signal  pick   : Choice @100ms

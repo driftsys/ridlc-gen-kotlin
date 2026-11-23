@@ -62,6 +62,19 @@ class TypesTest {
     }
 
     /**
+     * A constant typed by a constrained scalar of another package is built
+     * through that scalar's checked constructor, and its file imports the
+     * scalar, which nothing else in the file uses (#201; driftsys/ridl#1437
+     * fixed the same case in the Rust backend).
+     */
+    @Test
+    fun `a constant typed by a foreign constrained scalar uses its wrapper and import`() {
+        val types = generate("kt-foreign").sources.getValue("kt/foreign/Types.kt")
+        assertTrue("import kt.foreign.parts.Limit" in types.lines(), types)
+        assertTrue(types.lines().any { it.trim() == "public val LIMIT: Limit = Limit.of(7L)" }, types)
+    }
+
+    /**
      * A deprecated declaration, field or enum value is still encoded, as Rust
      * does under `#[allow(deprecated)]`: every generated file that names one
      * compiles with warnings as errors, in each encoding and in the face.
