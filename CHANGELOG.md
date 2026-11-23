@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.1] (2026-11-23)
+
+### Build System
+
+- **repo:** follow ridl 0.22.0 ([#200]) ([724cb76])
+
+### Tests
+
+- **conformance:** pin a constant typed by a constrained scalar of another
+  package ([#202]) ([45f2efc]), closes [#201]
+
+[0.6.1]: https://github.com/driftsys/ridlc-gen-kotlin/compare/v0.6.0...v0.6.1
+[724cb76]: https://github.com/driftsys/ridlc-gen-kotlin/commit/724cb76
+[#200]: https://github.com/driftsys/ridlc-gen-kotlin/issues/200
+[45f2efc]: https://github.com/driftsys/ridlc-gen-kotlin/commit/45f2efc
+[#202]: https://github.com/driftsys/ridlc-gen-kotlin/issues/202
+[#201]: https://github.com/driftsys/ridlc-gen-kotlin/issues/201
+
 ## [0.6.0] (2026-11-21)
 
 ### Documentation
